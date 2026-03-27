@@ -60,10 +60,10 @@ class DroneOffboardNode(Node):
         if self.current_x is None:
             self.get_logger().info('Sensores travados! Calculando rota (10m Frente, 5m Esquerda)...')
             
-            self.target_x = msg.x + 20.0
-            self.target_y = msg.y + 5.0
-            self.target_z = msg.z - 7.5
-            
+            self.target_x = msg.x + 40.0
+            self.target_y = msg.y
+            self.target_z = msg.z - 20
+          
         self.current_x = msg.x
         self.current_y = msg.y
         self.current_z = msg.z
@@ -126,7 +126,6 @@ class DroneOffboardNode(Node):
                 self.tempo_chegada = self.ciclos/2
                 self.velocidade_maxima = 0.0
         
-        # Gira a câmera/frente do drone (Yaw) para olhar para onde está voando
         yaw_alvo = self.current_yaw
         if math.hypot(vx, vy) > 0.2:
             yaw_alvo = math.atan2(vy, vx)
