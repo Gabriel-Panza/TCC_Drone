@@ -9,6 +9,16 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
+    
+    # ==================================================================================
+    # O script inicializa o nó do ROS 2 e define um Perfil de Qualidade de Serviço (QoS) 
+    # como BEST_EFFORT e VOLATILE. Na função pos_callback, ele lê a coordenada em que o 
+    # drone "nasceu" (Marco Zero) e soma os seus waypoints relativos [5.0, 2.5, -2.5] 
+    # a essa origem para gerar alvos absolutos.
+    # 
+    # A Fonte: 
+    # Repositório oficial PX4/px4_ros_com (Arquivo: offboard_control.py).
+    # ==================================================================================
     def __init__(self):
         super().__init__('drone_offboard_node')
 
@@ -49,7 +59,7 @@ class DroneOffboardNode(Node):
             [5.0, 2.5, -2.5],
             [0.0, 0.0, -5.0]]
         
-        self.lista_alvos_absolutos = []
+        self.lista_alvos_absolutos =
         self.wp_atual_index = 0
 
         self.ciclos = 0
@@ -72,7 +82,7 @@ class DroneOffboardNode(Node):
             
             for wp in self.waypoints_relativos:
                 self.lista_alvos_absolutos.append([
-                    self.start_x + wp[0],
+                    self.start_x + wp,
                     self.start_y + wp[1],
                     self.start_z + wp[2]])
             self.get_logger().info(f'Rota mapeada com {len(self.lista_alvos_absolutos)} waypoints. Decolando...')
@@ -82,6 +92,15 @@ class DroneOffboardNode(Node):
         self.current_z = msg.z
         self.current_yaw = msg.heading
 
+
+    # ==================================================================================
+    # Existe um timer rodando a 25Hz (0.04s) que envia o modo de controle 
+    # (OffboardControlMode) ininterruptamente. Somente após 50 ciclos (2 segundos), 
+    # o script emite a ordem para armar (arm()) e decolar.
+    # 
+    # A Fonte: 
+    # https://docs.px4.io/main/en/ros2/offboard_control
+    # ==================================================================================
     def timer_callback(self):
         if self.current_x is None:
             return
@@ -105,9 +124,16 @@ class DroneOffboardNode(Node):
 
         self.ciclos += 1
 
+    # ==================================================================================
+    # A função calcula a distância até o waypoint alvo. Se a distância for maior que 
+    # a margem de corte (distancia_corte = 1.0 metro / ou 0.5 no código atual), ele converte 
+    # a distância restante em um vetor de velocidade (v) normalizado. Quando a distância cai 
+    # abaixo desse limite, o script não freia o drone; ele simplesmente muda o alvo para o 
+    # próximo ponto da lista.
+    # ==================================================================================
     def navegar_por_waypoints(self):
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
-        target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
+        target_x, target_y, target_z = alvo_atual, alvo_atual[1], alvo_atual[2]
         
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
@@ -137,7 +163,11 @@ class DroneOffboardNode(Node):
         if math.hypot(vx, vy) > 0.2:
             yaw_alvo = math.atan2(vy, vx)
 
-        # Publica o pacote vetorial embutido com os waypoints (Posição + Feedforward)
+        # ==================================================================================
+        # O código instrui o PX4 a priorizar a Posição (msg.position = True, msg.velocity = False), 
+        # mas no envio da trajetória (TrajectorySetpoint), ele preenche a posição alvo e envia o 
+        # vetor calculado na variável msg.velocity. Além disso, ele injeta float('nan') nos eixos de aceleração e jerk.
+        # ==================================================================================
         msg = TrajectorySetpoint()
         msg.position = [target_x, target_y, target_z] 
         msg.velocity = [vx, vy, vz]
