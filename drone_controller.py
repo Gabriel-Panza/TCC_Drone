@@ -9,7 +9,6 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
-    
     # ==================================================================================
     # O script inicializa o nó do ROS 2 e define um Perfil de Qualidade de Serviço (QoS) 
     # como BEST_EFFORT e VOLATILE. Na função pos_callback, ele lê a coordenada em que o 
