@@ -58,7 +58,7 @@ class DroneOffboardNode(Node):
             [5.0, 2.5, -2.5],
             [0.0, 0.0, -5.0]]
         
-        self.lista_alvos_absolutos =
+        self.lista_alvos_absolutos = []
         self.wp_atual_index = 0
 
         self.ciclos = 0
@@ -81,7 +81,7 @@ class DroneOffboardNode(Node):
             
             for wp in self.waypoints_relativos:
                 self.lista_alvos_absolutos.append([
-                    self.start_x + wp,
+                    self.start_x + wp[0],
                     self.start_y + wp[1],
                     self.start_z + wp[2]])
             self.get_logger().info(f'Rota mapeada com {len(self.lista_alvos_absolutos)} waypoints. Decolando...')
@@ -132,7 +132,7 @@ class DroneOffboardNode(Node):
     # ==================================================================================
     def navegar_por_waypoints(self):
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
-        target_x, target_y, target_z = alvo_atual, alvo_atual[1], alvo_atual[2]
+        target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
