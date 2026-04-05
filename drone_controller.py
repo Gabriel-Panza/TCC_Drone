@@ -9,15 +9,14 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
-    # ==================================================================================
-    # O script inicializa o nó do ROS 2 e define um Perfil de Qualidade de Serviço (QoS) 
-    # como BEST_EFFORT e VOLATILE. Na função pos_callback, ele lê a coordenada em que o 
-    # drone "nasceu" (Marco Zero) e soma os seus waypoints relativos [5.0, 2.5, -2.5] 
-    # a essa origem para gerar alvos absolutos.
+    # ======================================================================================
+    # O script inicializa o nó do ROS 2. Na função pos_callback, ele lê a coordenada em que 
+    # o drone "nasceu" (Marco Zero) e soma os seus waypoints relativos [5.0, 2.5, -2.5] a
+    # essa origem para gerar alvos absolutos.
     # 
     # A Fonte: 
     # Repositório oficial PX4/px4_ros_com (Arquivo: offboard_control.py).
-    # ==================================================================================
+    # ======================================================================================
     def __init__(self):
         super().__init__('drone_offboard_node')
 
