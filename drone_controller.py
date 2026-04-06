@@ -10,7 +10,7 @@ from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
     # ======================================================================================
-    # O script inicializa o nó do ROS 2. Na função pos_callback, ele lê a coordenada em que 
+    # O script inicializa o nó do ROS 2. Na função pos_callback, ele lê a coordenada em que
     # o drone "nasceu" (Marco Zero) e soma os seus waypoints relativos [5.0, 2.5, -2.5] a
     # essa origem para gerar alvos absolutos.
     # 
@@ -48,13 +48,12 @@ class DroneOffboardNode(Node):
         self.start_y = None
         self.start_z = None
 
-        self.waypoints_relativos = [[5.0, 2.5, -2.5],
-            [7.5, 5.0, -5.0],
-            [10.0, 7.5, -7.5],
-            [12.5, 10.0, -10.0],
-            [10.0, 7.5, -7.5],
-            [7.5, 5.0, -5.0],
-            [5.0, 2.5, -2.5],
+        self.waypoints_relativos = [[50.0, -25.0, -2.0],
+            [49.0, -30.0, -2.0],
+            [49.0, -35.0, -2.0],
+            [48.0, -40.0, -2.0],
+            [48.0, -45.0, -2.0],
+            [24.0, -22.5, -3.5],
             [0.0, 0.0, -5.0]]
         
         self.lista_alvos_absolutos = []
@@ -66,8 +65,8 @@ class DroneOffboardNode(Node):
         self.tempo_chegada = 0
         self.encerrando = False
         
-        self.velocidade_maxima = 2.0 # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 0.5 # Distância em metros para trocar de waypoint
+        self.velocidade_maxima = 10.0 # Velocidade do vetor m/s
+        self.raio_de_aceitacao = 1.5  # Distância em metros para trocar de waypoint
 
         self.timer = self.create_timer(0.04, self.timer_callback)
 
@@ -143,10 +142,13 @@ class DroneOffboardNode(Node):
         
         distancia_corte = 0.3 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
         if distancia > distancia_corte:
-            # Vetor de velocidade baseado no Calculo de Hipotenusa
-            vx = (pos_x / distancia) * self.velocidade_maxima
-            vy = (pos_y / distancia) * self.velocidade_maxima
-            vz = (pos_z / distancia) * self.velocidade_maxima
+            velocidade_dinamica = self.velocidade_maxima
+            if distancia < 5.0:
+                velocidade_dinamica = max(2, self.velocidade_maxima * (distancia / 5.0))
+
+            vx = (pos_x / distancia) * velocidade_dinamica
+            vy = (pos_y / distancia) * velocidade_dinamica
+            vz = (pos_z / distancia) * velocidade_dinamica
         else:
             if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
                 self.wp_atual_index += 1
@@ -216,9 +218,8 @@ class DroneOffboardNode(Node):
         
         # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
-        self.velocidade_maxima = 4.0
         
-        time.sleep(4)
+        time.sleep(3.5)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
