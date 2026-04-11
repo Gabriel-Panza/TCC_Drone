@@ -9,7 +9,7 @@ A simulação de alta fidelidade é alcançada através da integração do contr
 O objetivo principal é criar uma base modular e segura para navegação de drones em ambientes simulados complexos. As principais características do projeto incluem:
 
 *   **Controle Offboard Avançado:** O drone decola, estabiliza e se move utilizando vetores de velocidade, com interpolação suave para evitar trancos e capotamentos na simulação.
-*   **Evasão Reativa de Obstáculos:** Utilizando uma câmera de profundidade (`x500_depth`), o drone processa matrizes de distância em tempo real. Se um obstáculo for detectado à frente, ele calcula vetores de força lateral e vertical para frear e desviar automaticamente da colisão através de Campos Potenciais.
+*   **Evasão Reativa de Obstáculos:** Utilizando uma câmera monocular, o drone irá processar matrizes de distância em tempo real. Se um obstáculo for detectado à frente ou no trajeto, ele calcula vetores de força lateral e vertical para frear e desviar automaticamente da colisão através de Campos Potenciais.
 
 ---
 
