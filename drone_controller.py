@@ -2,7 +2,8 @@ import os
 import time
 import numpy as np
 import math
-import threading
+import cv2
+from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition
@@ -36,9 +37,16 @@ class DroneOffboardNode(Node):
 
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition, '/fmu/out/vehicle_local_position_v1', self.pos_callback, qos_profile)
-        self.depth_sub = self.create_subscription(
-            Image, '/depth_camera', self.depth_callback, qos_profile)
 
+        # Inicializa a ponte de conversão ROS -> OpenCV
+        self.bridge = CvBridge()
+
+        self.camera_sub = self.create_subscription(
+            Image, 
+            '/camera',
+            self.image_callback, 
+            qos_profile)
+        
         self.current_x = None
         self.current_y = None
         self.current_z = None
@@ -224,6 +232,18 @@ class DroneOffboardNode(Node):
         time.sleep(1)
         os._exit(0)
 
-    def depth_callback(self, msg):
-        # A lógica de desvio entrará aqui
-        pass
+    def image_callback(self, msg):
+        resolucao_largura = msg.width
+        resolucao_altura = msg.height
+        formato_ros = msg.encoding # Geralmente 'rgb8'
+        
+        try:
+            # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            
+            # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL AINDA A SER DESENVOLVIDA ---
+            
+            cv2.imshow("Visão do Drone (Gazebo)", cv_image)
+            cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
+        except Exception as e:
+            self.get_logger().error(f'Erro na conversão da imagem: {e}')
