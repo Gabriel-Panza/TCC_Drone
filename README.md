@@ -54,7 +54,7 @@ ros2 run ros_gz_bridge parameter_bridge /camera@sensor_msgs/msg/Image[gz.msgs.Im
 
 **Terminal 4: Iniciar o Controle Autônomo (Cérebro do Drone)**
 ```bash
-cd ~/TCC_Drone_Panza
+cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/ws_ros2/install/setup.bash
 python3 main.py
