@@ -9,7 +9,7 @@ A simulação de alta fidelidade é alcançada através da integração do contr
 O objetivo principal é criar uma base modular e segura para navegação de drones em ambientes simulados complexos. As principais características do projeto incluem:
 
 *   **Controle Offboard Avançado:** O drone decola, estabiliza e se move utilizando vetores de velocidade, com interpolação suave para evitar trancos e capotamentos na simulação.
-*   **Evasão Reativa de Obstáculos:** Utilizando uma câmera monocular, o drone irá processar matrizes de distância em tempo real. Se um obstáculo for detectado à frente ou no trajeto, ele calcula vetores de força lateral e vertical para frear e desviar automaticamente da colisão através de Campos Potenciais.
+*   **Evasão Reativa de Obstáculos:** Utilizando uma câmera monocular, o drone captura e processa imagens RGB em tempo real. Se um obstáculo for detectado à frente através de técnicas de Visão Computacional, ele calcula vetores de força lateral e vertical para frear e desviar automaticamente da colisão através de Campos Potenciais.
 
 ---
 
@@ -21,14 +21,13 @@ O código foi estruturado de forma modular, dividindo as responsabilidades de re
 É o arquivo executável do projeto. Ele é responsável por:
 *   Inicializar o ambiente do ROS 2.
 *   Instanciar o nó do controlador de voo (`DroneOffboardNode`).
-*   Instanciar e iniciar a thread da interface de terminal (`TerminalInterface`).
 *   Manter o programa vivo e rodando o `rclpy.spin()`, garantindo que os callbacks de sensores e atuadores ocorram continuamente.
 
 ### 2. `drone_controller.py` (O Cérebro / Model-Controller)
-Este arquivo contém toda a matemática, física e comunicação com o PX4. Ele herda a classe `Node` do ROS 2 e é responsável por:
-*   **Comunicação Bidirecional:** Publicar mensagens (`OffboardControlMode`, `TrajectorySetpoint`, `VehicleCommand`) e assinar sensores (`VehicleLocalPosition`, câmera de profundidade).
+Este arquivo contém toda a matemática, física e comunicação com o PX4. Ele herda a classe Node do ROS 2 e é responsável por:
+*   **Comunicação Bidirecional:** Publicar mensagens (`OffboardControlMode`, `TrajectorySetpoint`, `VehicleCommand`) e assinar sensores (VehicleLocalPosition, tópicos de imagem da câmera).
 *   **Movimento Suave:** Gerenciar a diferença entre a "Posição Atual" e a "Posição Alvo", aplicando passos de interpolação baseados na velocidade do drone, operando sempre a 50Hz.
-*   **Visão Computacional:** Processar os *raw bytes* da matriz de profundidade do Gazebo usando arrays e máscaras do NumPy para detectar obstáculos e modificar os *setpoints* de trajetória instantaneamente.
+*   **Visão Computacional:** Utilizar o CvBridge para converter os dados brutos de imagem do ROS 2 em matrizes OpenCV (NumPy). Isso permite aplicar filtros visuais para extrair informações do ambiente, identificar obstáculos e modificar os setpoints de trajetória instantaneamente.
 
 ---
 
@@ -39,7 +38,7 @@ Para executar o ecossistema completo, são necessários **4 terminais** rodando 
 **Terminal 1: Iniciar o Simulador Gazebo + PX4**
 ```bash
 cd ~/PX4-Autopilot
-PX4_GZ_WORLD=forest make px4_sitl gz_x500_depth
+PX4_GZ_WORLD=forest make px4_sitl gz_x500_mono_cam
 ```
 
 **Terminal 2: Iniciar a Ponte DDS (Tradução PX4 <-> ROS 2)**
@@ -50,7 +49,7 @@ MicroXRCEAgent udp4 -p 8888
 **Terminal 3: Iniciar a Ponte da Câmera (Gazebo <-> ROS 2)**
 ```bash
 source /opt/ros/humble/setup.bash
-ros2 run ros_gz_bridge parameter_bridge /depth_camera@sensor_msgs/msg/Image[gz.msgs.Image
+ros2 run ros_gz_bridge parameter_bridge /camera@sensor_msgs/msg/Image[gz.msgs.Image
 ```
 
 **Terminal 4: Iniciar o Controle Autônomo (Cérebro do Drone)**
