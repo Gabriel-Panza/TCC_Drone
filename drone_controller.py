@@ -233,11 +233,25 @@ class DroneOffboardNode(Node):
         time.sleep(1)
         os._exit(0)
 
+    # ==================================================================================
+    # O image_callback é chamado exatamente a cada novo frame (quadro) que a câmera do Gazebo gera e publica no tópico.
+    # No modelo x500_mono_cam, são 30 imagens por segundo, portanto o image_callback será chamado 30 vezes por segundo.
+    # Como a parte de Visão Computacional vai rodar dentro desse callback, o algoritmo precisa ser executado e finalizado em menos de 0.033 segundos (30 FPS).
+    #
+    # As Fontes:
+    # https://github.com/ros-perception/vision_opencv/tree/humble/cv_bridge
+    # https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
+    # https://docs.opencv.org/4.x/dc/d2e/tutorial_py_image_display.html
+    # ==================================================================================
     def image_callback(self, msg):
         resolucao_largura = msg.width
         resolucao_altura = msg.height
         formato_ros = msg.encoding # Geralmente 'rgb8'
         
+        # self.get_logger().info(f'Frame Recebido - Resolução: {resolucao_largura}x{resolucao_altura} pixels | Formato: {formato_ros}')
+        # Original:                       Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
+        # Após modificação do model.sdf:  Frame Recebido - Resolução: 640x480  pixels | Formato: rgb8
+
         try:
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
