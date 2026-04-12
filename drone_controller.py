@@ -6,6 +6,7 @@ import cv2
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.qos import qos_profile_sensor_data
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition
 from sensor_msgs.msg import Image
 
@@ -43,9 +44,9 @@ class DroneOffboardNode(Node):
 
         self.camera_sub = self.create_subscription(
             Image, 
-            '/camera',
+            '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image',
             self.image_callback, 
-            qos_profile)
+            qos_profile_sensor_data)
         
         self.current_x = None
         self.current_y = None
@@ -57,10 +58,10 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [[50.0, -25.0, -2.0],
-            [49.0, -30.0, -2.0],
-            [49.0, -35.0, -2.0],
+            [48.0, -32.5, -2.0],
             [48.0, -40.0, -2.0],
-            [48.0, -45.0, -2.0],
+            [48.0, -47.5, -2.0],
+            [44.0, -42.5, -2.0],
             [24.0, -22.5, -3.5],
             [0.0, 0.0, -5.0]]
         
@@ -227,7 +228,7 @@ class DroneOffboardNode(Node):
         # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(3.5)
+        time.sleep(4)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
