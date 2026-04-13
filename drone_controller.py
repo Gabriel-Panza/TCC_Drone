@@ -256,9 +256,38 @@ class DroneOffboardNode(Node):
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
-            # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL AINDA A SER DESENVOLVIDA ---
+            # --- 1. ESTABILIZAÇÃO DA IMAGEM (IMU) ---
+            if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
+                # Cria as matrizes de rotação para Roll (Eixo X) e Pitch (Eixo Y)
+                # O sinal negativo inverte a rotação para compensar o movimento do drone
+                theta_x = -self.current_pitch 
+                theta_y = -self.current_roll  
+                
+                Rx = np.array([
+                    [1, 0, 0],
+                    [0, math.cos(theta_x), -math.sin(theta_x)],
+                    [0, math.sin(theta_x), math.cos(theta_x)]
+                ])
+                Ry = np.array([
+                    [math.cos(theta_y), 0, math.sin(theta_y)],
+                    [0, 1, 0],
+                    [-math.sin(theta_y), 0, math.cos(theta_y)]
+                ])
+                R = Ry @ Rx 
+                
+                # Calcula a Homografia: H = K * R * K_inv
+                K_inv = np.linalg.inv(self.K)
+                H = self.K @ R @ K_inv
+                
+                # Aplica a transformação para estabilizar a imagem
+                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480))
+            else:
+                imagem_estabilizada = cv_image
             
-            cv2.imshow("Visão do Drone (Gazebo)", cv_image)
+            # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
+            
+            cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
+            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
