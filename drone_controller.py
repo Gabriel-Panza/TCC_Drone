@@ -7,7 +7,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.qos import qos_profile_sensor_data
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
@@ -48,6 +48,26 @@ class DroneOffboardNode(Node):
             self.image_callback, 
             qos_profile_sensor_data)
         
+        self.current_roll = 0.0
+        self.current_pitch = 0.0
+        
+        # --- MATRIZ INTRÍNSECA DA CÂMERA (K) ---
+        fov_rad = 1.047
+        focal_length = 640.0 / (2.0 * math.tan(fov_rad / 2.0)) # (f = largura / (2 * tan(FOV/2)))
+
+        # Matriz para a resolução de 640x480
+        self.K = np.array([
+            [focal_length, 0, 320.0], # 320 é o centro X (640/2)
+            [0, focal_length, 240.0], # 240 é o centro Y (480/2)
+            [0, 0, 1]
+        ])
+
+        self.attitude_sub = self.create_subscription(
+            VehicleAttitude, 
+            '/fmu/out/vehicle_attitude', 
+            self.attitude_callback, 
+            qos_profile)
+
         self.current_x = None
         self.current_y = None
         self.current_z = None
@@ -61,8 +81,8 @@ class DroneOffboardNode(Node):
             [48.0, -32.5, -2.0],
             [48.0, -40.0, -2.0],
             [48.0, -47.5, -2.0],
-            [44.0, -42.5, -2.0],
-            [24.0, -22.5, -3.5],
+            [36.0, -32.5, -2.5],
+            [24.0, -17.5, -3.7],
             [0.0, 0.0, -5.0]]
         
         self.lista_alvos_absolutos = []
@@ -100,9 +120,8 @@ class DroneOffboardNode(Node):
 
 
     # ==================================================================================
-    # Existe um timer rodando a 25Hz (0.04s) que envia o modo de controle 
-    # (OffboardControlMode) ininterruptamente. Somente após 50 ciclos (2 segundos), 
-    # o script emite a ordem para armar (arm()) e decolar.
+    # Existe um timer rodando a 25Hz (0.04s) que envia o modo de controle (OffboardControlMode). 
+    # Somente após 50 ciclos (2 segundos), o script emite a ordem para armar (arm()) e decolar.
     # 
     # A Fonte: 
     # https://docs.px4.io/main/en/ros2/offboard_control
@@ -134,8 +153,7 @@ class DroneOffboardNode(Node):
     # A função calcula a distância até o waypoint alvo. Se a distância for maior que 
     # a margem de corte (distancia_corte = 1.0 metro / ou 0.5 no código atual), ele converte 
     # a distância restante em um vetor de velocidade (v) normalizado. Quando a distância cai 
-    # abaixo desse limite, o script não freia o drone; ele simplesmente muda o alvo para o 
-    # próximo ponto da lista.
+    # abaixo desse limite, o script simplesmente muda o alvo para o próximo ponto da lista.
     # ==================================================================================
     def navegar_por_waypoints(self):
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
@@ -251,35 +269,35 @@ class DroneOffboardNode(Node):
         # self.get_logger().info(f'Frame Recebido - Resolução: {resolucao_largura}x{resolucao_altura} pixels | Formato: {formato_ros}')
         # Original:                       Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
         # Após modificação do model.sdf:  Frame Recebido - Resolução: 640x480  pixels | Formato: rgb8
-
+        
         try:
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
             # --- 1. ESTABILIZAÇÃO DA IMAGEM (IMU) ---
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
-                # Cria as matrizes de rotação para Roll (Eixo X) e Pitch (Eixo Y)
-                # O sinal negativo inverte a rotação para compensar o movimento do drone
                 theta_x = -self.current_pitch 
-                theta_y = -self.current_roll  
+                theta_z = -self.current_roll  
                 
+                # Matriz de rotação em X (Compensa o nariz subindo/descendo)
                 Rx = np.array([
                     [1, 0, 0],
                     [0, math.cos(theta_x), -math.sin(theta_x)],
                     [0, math.sin(theta_x), math.cos(theta_x)]
                 ])
-                Ry = np.array([
-                    [math.cos(theta_y), 0, math.sin(theta_y)],
-                    [0, 1, 0],
-                    [-math.sin(theta_y), 0, math.cos(theta_y)]
-                ])
-                R = Ry @ Rx 
                 
-                # Calcula a Homografia: H = K * R * K_inv
+                # Matriz de rotação em Z (Compensa a inclinação lateral)
+                Rz = np.array([
+                    [math.cos(theta_z), -math.sin(theta_z), 0],
+                    [math.sin(theta_z), math.cos(theta_z), 0],
+                    [0, 0, 1]
+                ])
+                R = Rz @ Rx 
+                
+                # Calcula a Homografia original
                 K_inv = np.linalg.inv(self.K)
                 H = self.K @ R @ K_inv
                 
-                # Aplica a transformação para estabilizar a imagem
                 imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480))
             else:
                 imagem_estabilizada = cv_image
@@ -291,3 +309,31 @@ class DroneOffboardNode(Node):
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
+
+    # ==================================================================================
+    # O attitude_callback é acionado de forma assíncrona e em altíssima frequência 
+    # (geralmente entre 50Hz e 250Hz) sempre que o PX4 atualiza os dados do IMU/Giroscópio.
+    # 
+    # A função recebe a orientação espacial absoluta do drone em formato de Quaternions 
+    # (w, x, y, z) e aplica a conversão geométrica para extrair os ângulos de Euler 
+    # (Roll e Pitch) em radianos. Ter esses ângulos sempre atualizados é o que garante 
+    # que o image_callback saiba a inclinação exata da câmera a cada novo frame gerado.
+    #
+    # As Fontes:
+    # https://github.com/PX4/px4_msgs/blob/main/msg/VehicleAttitude.msg
+    # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+    # ==================================================================================
+    def attitude_callback(self, msg):
+        w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
+        
+        # Fórmula de conversão para Roll (Eixo X)
+        sinr_cosp = 2.0 * (w * x + y * z)
+        cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+        self.current_roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # Fórmula de conversão para Pitch (Eixo Y)
+        sinp = 2.0 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            self.current_pitch = math.copysign(math.pi / 2.0, sinp) # Trava em 90 graus
+        else:
+            self.current_pitch = math.asin(sinp)
