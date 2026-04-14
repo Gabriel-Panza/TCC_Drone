@@ -52,7 +52,7 @@ class DroneOffboardNode(Node):
         self.current_pitch = 0.0
         
         # --- MATRIZ INTRÍNSECA DA CÂMERA (K) ---
-        fov_rad = 1.047
+        fov_rad = 1.74
         focal_length = 640.0 / (2.0 * math.tan(fov_rad / 2.0)) # (f = largura / (2 * tan(FOV/2)))
 
         # Matriz para a resolução de 640x480
@@ -256,10 +256,19 @@ class DroneOffboardNode(Node):
     # No modelo x500_mono_cam, são 30 imagens por segundo, portanto o image_callback será chamado 30 vezes por segundo.
     # Como a parte de Visão Computacional vai rodar dentro desse callback, o algoritmo precisa ser executado e finalizado em menos de 0.033 segundos (30 FPS).
     #
+    # --- METODOLOGIA: GIMBAL VIRTUAL E ESTABILIZAÇÃO ELETRÔNICA ---
+    # Para anular a inclinação física do drone, simulamos um Gimbal mecânico através
+    # de Transformação de Perspectiva (Homografia). A matemática opera nos seguintes passos:
+    # 1. Puxa os dados de Atitude do IMU (Roll e Pitch).
+    # 2. Gera Matrizes de Rotação 3D (Rx e Rz) aplicando força na direção contrária ao movimento.
+    # 3. Calcula a Homografia: H = K_zoom * R * K_inv, que achata a imagem num plano reto.
+    # 4. Um fator de "Zoom Digital" (Crop) é injetado na matriz intrínseca para esticar
+    #    a imagem e esconder os "fundos pretos" revelados nas curvas (Similar a GoPro/DJI).
+    #
     # As Fontes:
-    # https://github.com/ros-perception/vision_opencv/tree/humble/cv_bridge
-    # https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
-    # https://docs.opencv.org/4.x/dc/d2e/tutorial_py_image_display.html
+    # [ROS/cv_bridge] https://github.com/ros-perception/vision_opencv/tree/humble/cv_bridge
+    # [OpenCV Homografia] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
+    # [OpenCV Camera Matriz] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
     # ==================================================================================
     def image_callback(self, msg):
         resolucao_largura = msg.width
@@ -276,8 +285,8 @@ class DroneOffboardNode(Node):
             
             # --- 1. ESTABILIZAÇÃO DA IMAGEM (IMU) ---
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
-                theta_x = -self.current_pitch 
-                theta_z = -self.current_roll  
+                theta_x = self.current_pitch 
+                theta_z = self.current_roll  
                 
                 # Matriz de rotação em X (Compensa o nariz subindo/descendo)
                 Rx = np.array([
@@ -292,13 +301,20 @@ class DroneOffboardNode(Node):
                     [math.sin(theta_z), math.cos(theta_z), 0],
                     [0, 0, 1]
                 ])
-                R = Rz @ Rx 
+                R = Rx @ Rz 
                 
-                # Calcula a Homografia original
+                zoom = 1.25
+                
+                K_zoom = np.array([
+                    [self.K[0,0] * zoom, 0, 320.0],
+                    [0, self.K[1,1] * zoom, 240.0],
+                    [0, 0, 1]
+                ])
+                # Calcula a Homografia
                 K_inv = np.linalg.inv(self.K)
-                H = self.K @ R @ K_inv
+                H = K_zoom @ R @ K_inv
                 
-                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480))
+                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480), borderMode=cv2.BORDER_CONSTANT)
             else:
                 imagem_estabilizada = cv_image
             
