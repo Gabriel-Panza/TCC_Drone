@@ -72,7 +72,8 @@ class DroneOffboardNode(Node):
         self.current_y = None
         self.current_z = None
         self.current_yaw = 0.0
-        
+        self.smooth_yaw = 0.0
+
         self.start_x = None
         self.start_y = None
         self.start_z = None
@@ -167,11 +168,11 @@ class DroneOffboardNode(Node):
         vx, vy, vz = 0.0, 0.0, 0.0
         yaw_alvo = self.current_yaw
         
-        distancia_corte = 0.3 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
+        distancia_corte = 0.33 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
         if distancia > distancia_corte:
             velocidade_dinamica = self.velocidade_maxima
             if distancia < 5.0:
-                velocidade_dinamica = max(2, self.velocidade_maxima * (distancia / 5.0))
+                velocidade_dinamica = self.velocidade_maxima/2
 
             vx = (pos_x / distancia) * velocidade_dinamica
             vy = (pos_y / distancia) * velocidade_dinamica
@@ -189,7 +190,13 @@ class DroneOffboardNode(Node):
         
         if math.hypot(vx, vy) > 0.2:
             yaw_alvo = math.atan2(vy, vx)
-
+            
+            erro_yaw = math.atan2(math.sin(yaw_alvo - self.current_yaw), math.cos(yaw_alvo - self.current_yaw))
+            
+            # Aplica 50% da força de giro por ciclo (Isso cria uma virada suave)
+            taxa_de_giro = 0.50
+            self.smooth_yaw = self.current_yaw + (erro_yaw * taxa_de_giro)
+        
         # ==================================================================================
         # O código instrui o PX4 a priorizar a Posição (msg.position = True, msg.velocity = False), 
         # mas no envio da trajetória (TrajectorySetpoint), ele preenche a posição alvo e envia o 
@@ -200,7 +207,7 @@ class DroneOffboardNode(Node):
         msg.velocity = [vx, vy, vz]
         msg.acceleration = [float('nan'), float('nan'), float('nan')]
         msg.jerk = [float('nan'), float('nan'), float('nan')]
-        msg.yaw = yaw_alvo
+        msg.yaw = self.smooth_yaw
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
@@ -262,8 +269,6 @@ class DroneOffboardNode(Node):
     # 1. Puxa os dados de Atitude do IMU (Roll e Pitch).
     # 2. Gera Matrizes de Rotação 3D (Rx e Rz) aplicando força na direção contrária ao movimento.
     # 3. Calcula a Homografia: H = K_zoom * R * K_inv, que achata a imagem num plano reto.
-    # 4. Um fator de "Zoom Digital" (Crop) é injetado na matriz intrínseca para esticar
-    #    a imagem e esconder os "fundos pretos" revelados nas curvas (Similar a GoPro/DJI).
     #
     # As Fontes:
     # [ROS/cv_bridge] https://github.com/ros-perception/vision_opencv/tree/humble/cv_bridge
@@ -271,9 +276,9 @@ class DroneOffboardNode(Node):
     # [OpenCV Camera Matriz] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
     # ==================================================================================
     def image_callback(self, msg):
-        resolucao_largura = msg.width
-        resolucao_altura = msg.height
-        formato_ros = msg.encoding # Geralmente 'rgb8'
+        # resolucao_largura = msg.width
+        # resolucao_altura = msg.height
+        # formato_ros = msg.encoding # Geralmente 'rgb8'
         
         # self.get_logger().info(f'Frame Recebido - Resolução: {resolucao_largura}x{resolucao_altura} pixels | Formato: {formato_ros}')
         # Original:                       Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
