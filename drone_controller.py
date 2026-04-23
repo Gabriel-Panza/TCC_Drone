@@ -48,17 +48,14 @@ class DroneOffboardNode(Node):
             self.image_callback, 
             qos_profile_sensor_data)
         
-        self.current_roll = 0.0
-        self.current_pitch = 0.0
-        
         # --- MATRIZ INTRÍNSECA DA CÂMERA (K) ---
         fov_rad = 1.74
-        focal_length = 640.0 / (2.0 * math.tan(fov_rad / 2.0)) # (f = largura / (2 * tan(FOV/2)))
+        focal_length = 1280.0 / (2.0 * math.tan(fov_rad / 2.0)) # (f = largura / (2 * tan(FOV/2)))
 
-        # Matriz para a resolução de 640x480
+        # Matriz para a resolução de 1280x960
         self.K = np.array([
-            [focal_length, 0, 320.0], # 320 é o centro X (640/2)
-            [0, focal_length, 240.0], # 240 é o centro Y (480/2)
+            [focal_length, 0, 640.0], # 640 é o centro X (1280/2)
+            [0, focal_length, 480.0], # 480 é o centro Y (960/2)
             [0, 0, 1]
         ])
 
@@ -71,20 +68,25 @@ class DroneOffboardNode(Node):
         self.current_x = None
         self.current_y = None
         self.current_z = None
-        self.current_yaw = 0.0
+        self.current_roll = 0.0
+        self.current_pitch = 0.0
+        self.current_yaw = 0.0        
         self.smooth_yaw = 0.0
 
         self.start_x = None
         self.start_y = None
         self.start_z = None
 
-        self.waypoints_relativos = [[50.0, -25.0, -2.0],
+        self.waypoints_relativos = [
+            [50.0, -25.0, -2.0],
             [48.0, -32.5, -2.0],
             [48.0, -40.0, -2.0],
             [48.0, -47.5, -2.0],
-            [36.0, -32.5, -2.5],
-            [24.0, -17.5, -3.7],
-            [0.0, 0.0, -5.0]]
+            [36.0, -35.0, -2.5],
+            [24.0, -23.0, -3.2],
+            [12.0, -11.0, -4.1],
+            [0.0, 0.0, -5.0]
+        ]
         
         self.lista_alvos_absolutos = []
         self.wp_atual_index = 0
@@ -95,7 +97,7 @@ class DroneOffboardNode(Node):
         self.tempo_chegada = 0
         self.encerrando = False
         
-        self.velocidade_maxima = 10.0 # Velocidade do vetor m/s
+        self.velocidade_maxima = 10.5 # Velocidade do vetor m/s
         self.raio_de_aceitacao = 1.5  # Distância em metros para trocar de waypoint
 
         self.timer = self.create_timer(0.04, self.timer_callback)
@@ -157,44 +159,56 @@ class DroneOffboardNode(Node):
     # abaixo desse limite, o script simplesmente muda o alvo para o próximo ponto da lista.
     # ==================================================================================
     def navegar_por_waypoints(self):
+        # 1. Identifica o alvo atual da lista
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
+        # 2. Calcula a distância Euclidiana até o alvo
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
         pos_z = target_z - self.current_z
         distancia = math.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
         
         vx, vy, vz = 0.0, 0.0, 0.0
-        yaw_alvo = self.current_yaw
+        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+            self.smooth_yaw = self.current_yaw
         
-        distancia_corte = 0.33 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
-        if distancia > distancia_corte:
-            velocidade_dinamica = self.velocidade_maxima
-            if distancia < 5.0:
-                velocidade_dinamica = self.velocidade_maxima/2
+        distancia_corte = 0.5 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
 
+        # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
+        if distancia > distancia_corte:
+            dist_inicio_frenagem = self.velocidade_maxima * 0.75
+            velocidade_minima = self.velocidade_maxima * 0.35
+            
+            if distancia > dist_inicio_frenagem:
+                velocidade_dinamica = self.velocidade_maxima
+            else:
+                proporcao = (distancia - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
+                velocidade_dinamica = velocidade_minima + (self.velocidade_maxima - velocidade_minima) * proporcao
+
+            # Normalização do vetor de velocidade
             vx = (pos_x / distancia) * velocidade_dinamica
             vy = (pos_y / distancia) * velocidade_dinamica
             vz = (pos_z / distancia) * velocidade_dinamica
+            
         else:
             if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
                 self.wp_atual_index += 1
-                self.get_logger().info(f'Waypoint {self.wp_atual_index} alcançado. Indo para o próximo...')
+                self.get_logger().info(f'Indo para o Waypoint {self.wp_atual_index}...')
             else:
+                # Fim da missão
                 if not self.missao_concluida:
-                    self.get_logger().info('DESTINO FINAL ALCANÇADO! Pairando por 2 segundos...')
+                    self.get_logger().info('MISSÃO FINALIZADA!')
                     self.missao_concluida = True
                     self.tempo_chegada = self.ciclos
-                    self.velocidade_maxima = 0.0
-        
-        if math.hypot(vx, vy) > 0.2:
+                    self.velocidade_maxima = self.velocidade_maxima/5
+
+        # --- AJUSTE DE DIREÇÃO (YAW) ---
+        if math.hypot(vx, vy) > 0.15:
             yaw_alvo = math.atan2(vy, vx)
-            
             erro_yaw = math.atan2(math.sin(yaw_alvo - self.current_yaw), math.cos(yaw_alvo - self.current_yaw))
             
-            # Aplica 50% da força de giro por ciclo (Isso cria uma virada suave)
-            taxa_de_giro = 0.50
+            taxa_de_giro = 0.75
             self.smooth_yaw = self.current_yaw + (erro_yaw * taxa_de_giro)
         
         # ==================================================================================
@@ -258,6 +272,32 @@ class DroneOffboardNode(Node):
         time.sleep(1)
         os._exit(0)
 
+    def desenhar_telemetria_geometria(self, frame_original, H, largura_out=640, altura_out=480):
+        """ Desenha a moldura de corte estabilizada sobre a imagem real do sensor """
+        # Criamos uma cópia da imagem original para servir de fundo
+        canvas = cv2.resize(frame_original, (0, 0), fx=1, fy=1)
+        
+        # Definimos os cantos do que queremos (a janela de saída 640x480)
+        cantos_saida = np.array([
+            [0, 0], [largura_out, 0], [largura_out, altura_out], [0, altura_out]
+        ], dtype='float32').reshape(-1, 1, 2)
+
+        # Aplicamos a Homografia para saber onde esses pontos de 640x480 "moram" dentro da imagem original de 1280x960
+        H_inv = np.linalg.inv(H)
+        cantos_na_origem = cv2.perspectiveTransform(cantos_saida, H_inv).reshape(-1, 2)
+
+        pts_canvas = cantos_na_origem.astype(np.int32)
+        pts_canvas = pts_canvas.reshape((-1, 1, 2))
+        cv2.polylines(canvas, [pts_canvas], isClosed=True, color=(0, 255, 0), thickness=2)
+        
+        overlay = canvas.copy()
+        cv2.fillPoly(overlay, [pts_canvas], (0, 255, 0))
+        cv2.addWeighted(overlay, 0.2, canvas, 0.8, 0, canvas)
+        cv2.putText(canvas, "AREA DE ZOOM", (pts_canvas[0][0][0], pts_canvas[0][0][1]-10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        
+        return canvas
+
     # ==================================================================================
     # O image_callback é chamado exatamente a cada novo frame (quadro) que a câmera do Gazebo gera e publica no tópico.
     # No modelo x500_mono_cam, são 30 imagens por segundo, portanto o image_callback será chamado 30 vezes por segundo.
@@ -278,17 +318,16 @@ class DroneOffboardNode(Node):
     def image_callback(self, msg):
         # resolucao_largura = msg.width
         # resolucao_altura = msg.height
-        # formato_ros = msg.encoding # Geralmente 'rgb8'
+        # formato_ros = msg.encoding
         
         # self.get_logger().info(f'Frame Recebido - Resolução: {resolucao_largura}x{resolucao_altura} pixels | Formato: {formato_ros}')
-        # Original:                       Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
-        # Após modificação do model.sdf:  Frame Recebido - Resolução: 640x480  pixels | Formato: rgb8
+        # Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
         
         try:
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
-            # --- 1. ESTABILIZAÇÃO DA IMAGEM (IMU) ---
+            # --- ESTABILIZAÇÃO DA IMAGEM (IMU) ---
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
                 theta_x = self.current_pitch 
                 theta_z = self.current_roll  
@@ -315,18 +354,23 @@ class DroneOffboardNode(Node):
                     [0, self.K[1,1] * zoom, 240.0],
                     [0, 0, 1]
                 ])
-                # Calcula a Homografia
                 K_inv = np.linalg.inv(self.K)
-                H = K_zoom @ R @ K_inv
+
+                # Calcula a Homografia
+                H = K_zoom @ R @ K_inv 
                 
-                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480), borderMode=cv2.BORDER_CONSTANT)
+                # Gerar o Plot da visualização compensada em tempo real
+                img_geometria = self.desenhar_telemetria_geometria(cv_image, H)
+
+                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
             else:
                 imagem_estabilizada = cv_image
             
             # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
             
-            cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
+            #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
