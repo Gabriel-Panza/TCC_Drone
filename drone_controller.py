@@ -78,13 +78,13 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [
-            [54.0, -25.0, -1.5],
-            [48.0, -32.5, -2.0],
+            [54.0, -24.0, -1.5],
+            [48.0, -32.0, -2.0],
             [48.0, -40.0, -2.0],
-            [48.0, -47.0, -2.0],
-            [36.0, -32.0, -2.0],
-            [24.0, -16.0, -2.0],
-            [12.0, -8.0, -3.5],
+            [48.0, -48.0, -2.0],
+            [36.0, -36.0, -2.0],
+            [24.0, -18.0, -2.0],
+            [12.0, -9.0, -3.5],
             [0.0, 0.0, -5.0]
         ]
         
@@ -94,7 +94,6 @@ class DroneOffboardNode(Node):
         self.ciclos = 0
         self.voo_iniciado = False
         self.missao_concluida = False
-        self.tempo_chegada = 0
         self.encerrando = False
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
@@ -144,11 +143,9 @@ class DroneOffboardNode(Node):
             self.navegar_por_waypoints()
             
             if self.missao_concluida and not self.encerrando:
-                tempo_pairando = (self.ciclos - self.tempo_chegada) * 0.04
-                if tempo_pairando >= 2.0:
-                    self.encerrando = True
-                    import threading
-                    threading.Thread(target=self.comando_exit).start()
+                self.encerrando = True
+                import threading
+                threading.Thread(target=self.comando_exit).start()
 
         self.ciclos += 1
 
@@ -181,7 +178,7 @@ class DroneOffboardNode(Node):
                 dist_inicio_frenagem = self.velocidade_maxima * 1.2
             else:
                 dist_inicio_frenagem = self.velocidade_maxima * 0.6
-            velocidade_minima = self.velocidade_maxima * 0.2
+            velocidade_minima = self.velocidade_maxima * 0.1
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = self.velocidade_maxima
@@ -205,7 +202,6 @@ class DroneOffboardNode(Node):
                 if not self.missao_concluida:
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
-                    self.tempo_chegada = self.ciclos
 
         # --- AJUSTE DE DIREÇÃO (YAW) ---
         if self.wp_atual_index == 0:
@@ -329,7 +325,7 @@ class DroneOffboardNode(Node):
         
         try:
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
-            cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F')
+            cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F') * 255
             cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
             # --- ESTABILIZAÇÃO DA IMAGEM (IMU) ---
@@ -367,41 +363,49 @@ class DroneOffboardNode(Node):
                 # Gerar o Plot da visualização compensada em tempo real
                 img_geometria = self.desenhar_telemetria_geometria(cv_image, H)
 
-                imagem_estabilizada = cv2.warpPerspective(cv_image, H, (640, 480), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+                imagem_estabilizada = cv2.warpPerspective(
+                    cv_image, 
+                    H, 
+                    (640, 480), 
+                    flags=cv2.INTER_LINEAR, 
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=(0, 0, 0, 0)
+                )
+                mascara_alpha = imagem_estabilizada[:, :, 3]
             else:
                 imagem_estabilizada = cv_image
+                mascara_alpha = cv_image[:, :, 3]
             
             # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
             cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
 
-    # ==================================================================================
-    # O attitude_callback é acionado de forma assíncrona e em altíssima frequência 
-    # (geralmente entre 50Hz e 250Hz) sempre que o PX4 atualiza os dados do IMU/Giroscópio.
+    # =========================================================================================
+    # O attitude_callback é acionado de forma assíncrona e em altíssima frequência (geralmente
+    # entre 50Hz e 250Hz) sempre que o PX4 atualiza os dados do IMU/Giroscópio.
     # 
-    # A função recebe a orientação espacial absoluta do drone em formato de Quaternions 
-    # (w, x, y, z) e aplica a conversão geométrica para extrair os ângulos de Euler 
-    # (Roll e Pitch) em radianos. Ter esses ângulos sempre atualizados é o que garante 
-    # que o image_callback saiba a inclinação exata da câmera a cada novo frame gerado.
+    # A função recebe a orientação espacial absoluta do drone em formato de Quaternions (w, x, y, z)
+    # e aplica a conversão geométrica para extrair os ângulos de Euler (Roll e Pitch) em radianos.
     #
     # As Fontes:
     # https://github.com/PX4/px4_msgs/blob/main/msg/VehicleAttitude.msg
     # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
-    # ==================================================================================
+    # =========================================================================================
     def attitude_callback(self, msg):
         w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
         
-        # Fórmula de conversão para Roll (Eixo X)
+        # Fórmula de conversão para Roll
         sinr_cosp = 2.0 * (w * x + y * z)
         cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
         self.current_roll = math.atan2(sinr_cosp, cosr_cosp)
 
-        # Fórmula de conversão para Pitch (Eixo Y)
+        # Fórmula de conversão para Pitch
         sinp = 2.0 * (w * y - z * x)
         if abs(sinp) >= 1:
             self.current_pitch = math.copysign(math.pi / 2.0, sinp) # Trava em 90 graus
