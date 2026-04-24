@@ -78,13 +78,13 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [
-            [50.0, -25.0, -2.0],
-            [48.0, -32.5, -2.0],
-            [48.0, -40.0, -2.0],
-            [48.0, -47.5, -2.0],
-            [36.0, -35.0, -2.5],
-            [24.0, -23.0, -3.2],
-            [12.0, -11.0, -4.1],
+            [50.0, -25.0, -1.5],
+            [48.0, -32.5, -1.5],
+            [48.0, -40.0, -1.5],
+            [48.0, -48.0, -1.5],
+            [36.0, -36.0, -2.0],
+            [24.0, -18.0, -3.0],
+            [12.0, -6.0, -4.0],
             [0.0, 0.0, -5.0]
         ]
         
@@ -97,7 +97,7 @@ class DroneOffboardNode(Node):
         self.tempo_chegada = 0
         self.encerrando = False
         
-        self.velocidade_maxima = 10.5 # Velocidade do vetor m/s
+        self.velocidade_maxima = 10.0 # Velocidade do vetor m/s
         self.raio_de_aceitacao = 1.5  # Distância em metros para trocar de waypoint
 
         self.timer = self.create_timer(0.04, self.timer_callback)
@@ -177,8 +177,8 @@ class DroneOffboardNode(Node):
 
         # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
         if distancia > distancia_corte:
-            dist_inicio_frenagem = self.velocidade_maxima * 0.75
-            velocidade_minima = self.velocidade_maxima * 0.35
+            dist_inicio_frenagem = self.velocidade_maxima * 0.7
+            velocidade_minima = self.velocidade_maxima * 0.3
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = self.velocidade_maxima
@@ -204,11 +204,11 @@ class DroneOffboardNode(Node):
                     self.velocidade_maxima = self.velocidade_maxima/5
 
         # --- AJUSTE DE DIREÇÃO (YAW) ---
-        if math.hypot(vx, vy) > 0.15:
+        if math.hypot(vx, vy) > 0.3:
             yaw_alvo = math.atan2(vy, vx)
             erro_yaw = math.atan2(math.sin(yaw_alvo - self.current_yaw), math.cos(yaw_alvo - self.current_yaw))
             
-            taxa_de_giro = 0.75
+            taxa_de_giro = 0.8
             self.smooth_yaw = self.current_yaw + (erro_yaw * taxa_de_giro)
         
         # ==================================================================================
@@ -276,8 +276,6 @@ class DroneOffboardNode(Node):
         """ Desenha a moldura de corte estabilizada sobre a imagem real do sensor """
         # Criamos uma cópia da imagem original para servir de fundo
         canvas = cv2.resize(frame_original, (0, 0), fx=1, fy=1)
-        
-        # Definimos os cantos do que queremos (a janela de saída 640x480)
         cantos_saida = np.array([
             [0, 0], [largura_out, 0], [largura_out, altura_out], [0, altura_out]
         ], dtype='float32').reshape(-1, 1, 2)
@@ -369,8 +367,8 @@ class DroneOffboardNode(Node):
             # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
-            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
+            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
