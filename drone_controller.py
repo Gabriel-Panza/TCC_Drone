@@ -78,13 +78,13 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [
-            [50.0, -25.0, -1.5],
-            [48.0, -32.5, -1.5],
-            [48.0, -40.0, -1.5],
-            [48.0, -48.0, -1.5],
-            [36.0, -36.0, -2.0],
-            [24.0, -18.0, -3.0],
-            [12.0, -6.0, -4.0],
+            [54.0, -25.0, -1.5],
+            [48.0, -32.5, -2.0],
+            [48.0, -40.0, -2.0],
+            [48.0, -47.0, -2.0],
+            [36.0, -32.0, -2.0],
+            [24.0, -16.0, -2.0],
+            [12.0, -8.0, -3.5],
             [0.0, 0.0, -5.0]
         ]
         
@@ -97,8 +97,8 @@ class DroneOffboardNode(Node):
         self.tempo_chegada = 0
         self.encerrando = False
         
-        self.velocidade_maxima = 10.0 # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 1.5  # Distância em metros para trocar de waypoint
+        self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
+        self.raio_de_aceitacao = 1.75  # Distância em metros para trocar de waypoint
 
         self.timer = self.create_timer(0.04, self.timer_callback)
 
@@ -159,66 +159,72 @@ class DroneOffboardNode(Node):
     # abaixo desse limite, o script simplesmente muda o alvo para o próximo ponto da lista.
     # ==================================================================================
     def navegar_por_waypoints(self):
-        # 1. Identifica o alvo atual da lista
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
-        # 2. Calcula a distância Euclidiana até o alvo
+        # Calcula a distância Euclidiana até o alvo
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
         pos_z = target_z - self.current_z
         distancia = math.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
         
-        vx, vy, vz = 0.0, 0.0, 0.0
+        vx, vy = 0.0, 0.0
         if self.smooth_yaw is None or self.smooth_yaw == 0.0:
             self.smooth_yaw = self.current_yaw
         
-        distancia_corte = 0.5 if self.wp_atual_index == (len(self.lista_alvos_absolutos) - 1) else self.raio_de_aceitacao
+        is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
+        distancia_corte = 0.3 if is_ultimo_wp else self.raio_de_aceitacao
 
         # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
         if distancia > distancia_corte:
-            dist_inicio_frenagem = self.velocidade_maxima * 0.7
-            velocidade_minima = self.velocidade_maxima * 0.3
+            if is_ultimo_wp:
+                dist_inicio_frenagem = self.velocidade_maxima * 1.2
+            else:
+                dist_inicio_frenagem = self.velocidade_maxima * 0.6
+            velocidade_minima = self.velocidade_maxima * 0.2
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = self.velocidade_maxima
             else:
                 proporcao = (distancia - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
+                
+                if is_ultimo_wp:
+                    proporcao = proporcao ** 1.5 
+
                 velocidade_dinamica = velocidade_minima + (self.velocidade_maxima - velocidade_minima) * proporcao
 
             # Normalização do vetor de velocidade
             vx = (pos_x / distancia) * velocidade_dinamica
             vy = (pos_y / distancia) * velocidade_dinamica
-            vz = (pos_z / distancia) * velocidade_dinamica
             
         else:
-            if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
+            if not is_ultimo_wp:
                 self.wp_atual_index += 1
                 self.get_logger().info(f'Indo para o Waypoint {self.wp_atual_index}...')
             else:
-                # Fim da missão
                 if not self.missao_concluida:
-                    self.get_logger().info('MISSÃO FINALIZADA!')
+                    self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
                     self.tempo_chegada = self.ciclos
-                    self.velocidade_maxima = self.velocidade_maxima/5
 
         # --- AJUSTE DE DIREÇÃO (YAW) ---
-        if math.hypot(vx, vy) > 0.3:
-            yaw_alvo = math.atan2(vy, vx)
-            erro_yaw = math.atan2(math.sin(yaw_alvo - self.current_yaw), math.cos(yaw_alvo - self.current_yaw))
-            
-            taxa_de_giro = 0.8
-            self.smooth_yaw = self.current_yaw + (erro_yaw * taxa_de_giro)
+        if self.wp_atual_index == 0:
+            orig_x, orig_y = self.start_x, self.start_y
+        else:
+            orig_x = self.lista_alvos_absolutos[self.wp_atual_index - 1][0]
+            orig_y = self.lista_alvos_absolutos[self.wp_atual_index - 1][1]
+
+        yaw_alvo_estatico = math.atan2(target_y - orig_y, target_x - orig_x)
         
-        # ==================================================================================
-        # O código instrui o PX4 a priorizar a Posição (msg.position = True, msg.velocity = False), 
-        # mas no envio da trajetória (TrajectorySetpoint), ele preenche a posição alvo e envia o 
-        # vetor calculado na variável msg.velocity. Além disso, ele injeta float('nan') nos eixos de aceleração e jerk.
-        # ==================================================================================
+        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+            self.smooth_yaw = self.current_yaw
+
+        erro_yaw = math.atan2(math.sin(yaw_alvo_estatico - self.smooth_yaw), math.cos(yaw_alvo_estatico - self.smooth_yaw))
+        self.smooth_yaw += (erro_yaw * 0.3)
+
         msg = TrajectorySetpoint()
-        msg.position = [target_x, target_y, target_z] 
-        msg.velocity = [vx, vy, vz]
+        msg.position = [float('nan'), float('nan'), target_z] 
+        msg.velocity = [vx, vy, float('nan')]
         msg.acceleration = [float('nan'), float('nan'), float('nan')]
         msg.jerk = [float('nan'), float('nan'), float('nan')]
         msg.yaw = self.smooth_yaw
@@ -229,7 +235,7 @@ class DroneOffboardNode(Node):
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
         msg.position = True
-        msg.velocity = False
+        msg.velocity = True
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
@@ -314,8 +320,8 @@ class DroneOffboardNode(Node):
     # [OpenCV Camera Matriz] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
     # ==================================================================================
     def image_callback(self, msg):
-        # resolucao_largura = msg.width
-        # resolucao_altura = msg.height
+        resolucao_largura = msg.width
+        resolucao_altura = msg.height
         # formato_ros = msg.encoding
         
         # self.get_logger().info(f'Frame Recebido - Resolução: {resolucao_largura}x{resolucao_altura} pixels | Formato: {formato_ros}')
@@ -323,7 +329,8 @@ class DroneOffboardNode(Node):
         
         try:
             # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F')
+            cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
             # --- ESTABILIZAÇÃO DA IMAGEM (IMU) ---
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
