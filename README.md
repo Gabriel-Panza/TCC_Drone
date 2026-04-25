@@ -38,7 +38,7 @@ Para executar o ecossistema completo, são necessários **4 terminais** rodando 
 **Terminal 1: Iniciar o Simulador Gazebo + PX4**
 ```bash
 cd ~/PX4-Autopilot
-PX4_GZ_WORLD=forest make px4_sitl gz_x500_mono_cam
+PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
 ```
 
 **Terminal 2: Iniciar a Ponte DDS (Tradução PX4 <-> ROS 2)**
@@ -49,7 +49,7 @@ MicroXRCEAgent udp4 -p 8888
 **Terminal 3: Iniciar a Ponte da Câmera (Gazebo <-> ROS 2)**
 ```bash
 source /opt/ros/humble/setup.bash
-ros2 run ros_gz_bridge parameter_bridge /camera@sensor_msgs/msg/Image[gz.msgs.Image
+ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image
 ```
 
 **Terminal 4: Iniciar o Controle Autônomo (Cérebro do Drone)**
