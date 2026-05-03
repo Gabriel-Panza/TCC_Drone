@@ -102,8 +102,11 @@ class DroneOffboardNode(Node):
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
         self.raio_de_aceitacao = 2.0  # Distância em metros para trocar de waypoint
+        self.look_ahead_distance = 4.0  # Distância para antecipar próximo waypoint em yaw
+        self.max_lateral_acceleration = 8.0  # m/s² limite para aceleração lateral
 
-        self.timer = self.create_timer(0.04, self.timer_callback)
+        self.dt = 0.04  # (25Hz)
+        self.timer = self.create_timer(self.dt, self.timer_callback)
 
     def pos_callback(self, msg):
         """ Na primeira leitura, trava a origem e mapeia a rota de waypoints """
@@ -176,23 +179,30 @@ class DroneOffboardNode(Node):
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
         distancia_corte = 0.3 if is_ultimo_wp else self.raio_de_aceitacao
 
+        # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
+        velocidade_maxima_atual = self.velocidade_maxima
+        if not is_ultimo_wp:
+            curvatura = self.calcular_curvatura_wp_atual()
+            if curvatura > 0.5:
+                velocidade_maxima_atual *= (1.0 - min(curvatura * 0.3, 0.5))
+
         # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
         if distancia > distancia_corte:
             if is_ultimo_wp:
-                dist_inicio_frenagem = self.velocidade_maxima * 1.2
+                dist_inicio_frenagem = velocidade_maxima_atual * 1.2
             else:
-                dist_inicio_frenagem = self.velocidade_maxima * 0.6
-            velocidade_minima = self.velocidade_maxima * 0.1
+                dist_inicio_frenagem = velocidade_maxima_atual * 0.6
+            velocidade_minima = velocidade_maxima_atual * 0.1
             
             if distancia > dist_inicio_frenagem:
-                velocidade_dinamica = self.velocidade_maxima
+                velocidade_dinamica = velocidade_maxima_atual
             else:
                 proporcao = (distancia - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
                 
                 if is_ultimo_wp:
                     proporcao = proporcao ** 1.5 
 
-                velocidade_dinamica = velocidade_minima + (self.velocidade_maxima - velocidade_minima) * proporcao
+                velocidade_dinamica = velocidade_minima + (velocidade_maxima_atual - velocidade_minima) * proporcao
 
             # Normalização do vetor de velocidade
             vx = (pos_x / distancia) * velocidade_dinamica
@@ -207,15 +217,24 @@ class DroneOffboardNode(Node):
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
 
+        # --- LIMITAÇÃO DE ACELERAÇÃO LATERAL ---
+        accel_x = (vx - self.smooth_vx) / self.dt
+        accel_y = (vy - self.smooth_vy) / self.dt
+        accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
+        if accel_lateral > self.max_lateral_acceleration:
+            scale = self.max_lateral_acceleration / accel_lateral
+            vx = self.smooth_vx + accel_x * scale * self.dt
+            vy = self.smooth_vy + accel_y * scale * self.dt
+
         # --- FILTRAGEM DE VELOCIDADE ---
         self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
         self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
-        # --- AJUSTE DE DIREÇÃO (YAW) USANDO A POSIÇÃO ATUAL ---
+        # --- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ---
         if self.smooth_yaw is None or self.smooth_yaw == 0.0:
             self.smooth_yaw = self.current_yaw
 
-        yaw_alvo = math.atan2(target_y - self.current_y, target_x - self.current_x)
+        yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
         yaw_gain = self.yaw_smooth_alpha * (0.65 if abs(erro_yaw) > 0.8 else 1.0)
         self.smooth_yaw += (erro_yaw * yaw_gain)
@@ -229,6 +248,52 @@ class DroneOffboardNode(Node):
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
+
+    def calcular_curvatura_wp_atual(self):
+        """ Calcula a curvatura (mudança de direção) no waypoint atual """
+        if self.wp_atual_index == 0 or self.wp_atual_index >= len(self.lista_alvos_absolutos) - 1:
+            return 0.0
+        
+        # Vetor do waypoint anterior para o atual
+        prev_wp = self.lista_alvos_absolutos[self.wp_atual_index - 1]
+        curr_wp = self.lista_alvos_absolutos[self.wp_atual_index]
+        next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
+        
+        vec1_x = curr_wp[0] - prev_wp[0]
+        vec1_y = curr_wp[1] - prev_wp[1]
+        vec2_x = next_wp[0] - curr_wp[0]
+        vec2_y = next_wp[1] - curr_wp[1]
+        
+        # Ângulo entre os vetores
+        dot = vec1_x * vec2_x + vec1_y * vec2_y
+        mag1 = math.sqrt(vec1_x**2 + vec1_y**2)
+        mag2 = math.sqrt(vec2_x**2 + vec2_y**2)
+        if mag1 == 0 or mag2 == 0:
+            return 0.0
+        cos_angle = dot / (mag1 * mag2)
+        cos_angle = max(-1.0, min(1.0, cos_angle))  # Clamp
+        angle = math.acos(cos_angle)
+        return angle / math.pi  # Normalizado 0-1
+
+    def calcular_yaw_com_look_ahead(self, target_x, target_y):
+        """ Calcula yaw alvo com look-ahead para próximo waypoint """
+        yaw_base = math.atan2(target_y - self.current_y, target_x - self.current_x)
+        
+        # Se não há próximo waypoint, usa o base
+        if self.wp_atual_index >= len(self.lista_alvos_absolutos) - 1:
+            return yaw_base
+        
+        next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
+        dist_to_next = math.sqrt((next_wp[0] - self.current_x)**2 + (next_wp[1] - self.current_y)**2)
+        
+        if dist_to_next < self.look_ahead_distance:
+            # Interpola entre current e next
+            yaw_next = math.atan2(next_wp[1] - self.current_y, next_wp[0] - self.current_x)
+            blend = dist_to_next / self.look_ahead_distance
+            erro = math.atan2(math.sin(yaw_next - yaw_base), math.cos(yaw_next - yaw_base))
+            return yaw_base + erro * (1.0 - blend)
+        else:
+            return yaw_base
 
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
