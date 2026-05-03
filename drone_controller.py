@@ -86,9 +86,10 @@ class DroneOffboardNode(Node):
             [48.0, -32.0, -2.0],
             [48.0, -40.0, -2.0],
             [48.0, -48.0, -2.0],
-            [36.0, -36.0, -2.0],
-            [24.0, -18.0, -2.0],
-            [12.0, -9.0, -3.5],
+            [36.0, -33.0, -2.0],
+            [40.0, -56.0, -2.0],
+            [28.0, -33.0, -2.0],
+            [12.0, -12.0, -3.5],
             [0.0, 0.0, -5.0]
         ]
         
@@ -101,7 +102,7 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 2.0   # Raio de aceitação para mudar de waypoint
+        self.raio_de_aceitacao = 2.4   # Raio de aceitação para mudar de waypoint
         self.max_lateral_acceleration = 8.0  # m/s² limite para aceleração lateral
 
         self.dt = 0.04  # (25Hz)
@@ -218,13 +219,13 @@ class DroneOffboardNode(Node):
                     self.missao_concluida = True
 
         # --- LIMITAÇÃO DE ACELERAÇÃO LATERAL ---
-        accel_x = (vx - self.smooth_vx) / self.dt
-        accel_y = (vy - self.smooth_vy) / self.dt
+        accel_x = (vx - self.smooth_vx) / (self.dt * 4)
+        accel_y = (vy - self.smooth_vy) / (self.dt * 4)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * self.dt
-            vy = self.smooth_vy + accel_y * scale * self.dt
+            vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
+            vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
 
         # --- FILTRAGEM DE VELOCIDADE ---
         self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
