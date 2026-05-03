@@ -72,6 +72,10 @@ class DroneOffboardNode(Node):
         self.current_pitch = 0.0
         self.current_yaw = 0.0        
         self.smooth_yaw = 0.0
+        self.smooth_vx = 0.0
+        self.smooth_vy = 0.0
+        self.velocity_smooth_alpha = 0.2
+        self.yaw_smooth_alpha = 0.15
 
         self.start_x = None
         self.start_y = None
@@ -203,24 +207,22 @@ class DroneOffboardNode(Node):
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
 
-        # --- AJUSTE DE DIREÇÃO (YAW) ---
-        if self.wp_atual_index == 0:
-            orig_x, orig_y = self.start_x, self.start_y
-        else:
-            orig_x = self.lista_alvos_absolutos[self.wp_atual_index - 1][0]
-            orig_y = self.lista_alvos_absolutos[self.wp_atual_index - 1][1]
+        # --- FILTRAGEM DE VELOCIDADE ---
+        self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
+        self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
-        yaw_alvo_estatico = math.atan2(target_y - orig_y, target_x - orig_x)
-        
+        # --- AJUSTE DE DIREÇÃO (YAW) USANDO A POSIÇÃO ATUAL ---
         if self.smooth_yaw is None or self.smooth_yaw == 0.0:
             self.smooth_yaw = self.current_yaw
 
-        erro_yaw = math.atan2(math.sin(yaw_alvo_estatico - self.smooth_yaw), math.cos(yaw_alvo_estatico - self.smooth_yaw))
-        self.smooth_yaw += (erro_yaw * 0.3)
+        yaw_alvo = math.atan2(target_y - self.current_y, target_x - self.current_x)
+        erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
+        yaw_gain = self.yaw_smooth_alpha * (0.65 if abs(erro_yaw) > 0.8 else 1.0)
+        self.smooth_yaw += (erro_yaw * yaw_gain)
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
-        msg.velocity = [vx, vy, float('nan')]
+        msg.velocity = [self.smooth_vx, self.smooth_vy, float('nan')]
         msg.acceleration = [float('nan'), float('nan'), float('nan')]
         msg.jerk = [float('nan'), float('nan'), float('nan')]
         msg.yaw = self.smooth_yaw
