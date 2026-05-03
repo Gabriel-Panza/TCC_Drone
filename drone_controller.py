@@ -74,8 +74,8 @@ class DroneOffboardNode(Node):
         self.smooth_yaw = 0.0
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
-        self.velocity_smooth_alpha = 0.2
-        self.yaw_smooth_alpha = 0.2
+        self.velocity_smooth_alpha = 0.3
+        self.yaw_smooth_alpha = 0.3
 
         self.start_x = None
         self.start_y = None
@@ -102,7 +102,7 @@ class DroneOffboardNode(Node):
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
         self.raio_de_aceitacao = 2.0  # Distância em metros para trocar de waypoint
-        self.look_ahead_distance = 4.0  # Distância para antecipar próximo waypoint em yaw
+        self.look_ahead_distance = 2.0  # Reduzido de 4.0 para menos antecipação
         self.max_lateral_acceleration = 8.0  # m/s² limite para aceleração lateral
 
         self.dt = 0.04  # (25Hz)
@@ -191,13 +191,14 @@ class DroneOffboardNode(Node):
             if is_ultimo_wp:
                 dist_inicio_frenagem = velocidade_maxima_atual * 1.2
             else:
-                dist_inicio_frenagem = velocidade_maxima_atual * 0.6
-            velocidade_minima = velocidade_maxima_atual * 0.1
+                dist_inicio_frenagem = velocidade_maxima_atual * 0.4  # Reduzido de 0.6 para 0.4 para frenagem mais cedo
+            velocidade_minima = velocidade_maxima_atual * 0.05  # Reduzido para frenagem mais forte
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = velocidade_maxima_atual
             else:
                 proporcao = (distancia - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
+                proporcao = proporcao ** 2.0  # Quadrático para frenagem mais agressiva
                 
                 if is_ultimo_wp:
                     proporcao = proporcao ** 1.5 
@@ -236,7 +237,7 @@ class DroneOffboardNode(Node):
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.65 if abs(erro_yaw) > 0.8 else 1.0)
+        yaw_gain = self.yaw_smooth_alpha * (0.8 if abs(erro_yaw) > 0.8 else 1.2)  # Aumentado para resposta mais rápida
         self.smooth_yaw += (erro_yaw * yaw_gain)
 
         msg = TrajectorySetpoint()
