@@ -75,7 +75,7 @@ class DroneOffboardNode(Node):
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
         self.velocity_smooth_alpha = 0.2
-        self.yaw_smooth_alpha = 0.15
+        self.yaw_smooth_alpha = 0.2
 
         self.start_x = None
         self.start_y = None
@@ -101,7 +101,7 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 1.75  # Distância em metros para trocar de waypoint
+        self.raio_de_aceitacao = 2.0  # Distância em metros para trocar de waypoint
 
         self.timer = self.create_timer(0.04, self.timer_callback)
 
