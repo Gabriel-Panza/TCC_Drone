@@ -11,14 +11,29 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from sensor_msgs.msg import Image
 
 class DroneOffboardNode(Node):
-    # ======================================================================================
-    # O script inicializa o nó do ROS 2. Na função pos_callback, ele lê a coordenada em que
-    # o drone "nasceu" (Marco Zero) e soma os seus waypoints relativos [5.0, 2.5, -2.5] a
-    # essa origem para gerar alvos absolutos.
-    # 
-    # A Fonte: 
-    # Repositório oficial PX4/px4_ros_com (Arquivo: offboard_control.py).
-    # ======================================================================================
+    """
+    ======================================================================================
+    Inicializa o nó principal de controle autônomo em ROS 2, criando os publishers,
+    subscribers, parâmetros de missão, matriz intrínseca da câmera e variáveis de estado.
+    
+    O nó publica mensagens de controle Offboard para o PX4, envia setpoints de trajetória
+    pelo tópico /fmu/in/trajectory_setpoint, envia comandos de veículo pelo tópico
+    /fmu/in/vehicle_command e recebe posição local, atitude e imagem da câmera simulada.
+    
+    Também são configurados parâmetros de voo adaptativo, como velocidade máxima,
+    raio de aceitação reduzido, zona de frenagem por curvatura, aceleração lateral máxima
+    e suavização de velocidade/yaw. Esses parâmetros foram adicionados para permitir
+    curvas mais estreitas sem aumentar excessivamente o raio de aceitação, preservando
+    a proposta de navegação em ambientes complexos, como florestas.
+    
+    Fontes:
+    [PX4 Offboard ROS 2] https://docs.px4.io/main/en/ros2/offboard_control
+    [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+    [ROS 2 QoS] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
+    [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+    ======================================================================================
+    """
+    
     def __init__(self):
         super().__init__('drone_offboard_node')
 
@@ -102,14 +117,38 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 2.4   # Raio de aceitação para mudar de waypoint
-        self.max_lateral_acceleration = 8.0  # m/s² limite para aceleração lateral
+        self.raio_de_aceitacao = 1.5   # Raio de aceitação para mudar de waypoint
+        
+        self.zona_frenagem_curva = 6.0
+        self.velocidade_curva_minima = 2.5
+        self.angulo_curva_forte = math.radians(35)
+
+        self.max_lateral_acceleration = 8.0
+        self.velocity_smooth_alpha = 0.2
+        self.yaw_smooth_alpha = 0.2
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
     def pos_callback(self, msg):
-        """ Na primeira leitura, trava a origem e mapeia a rota de waypoints """
+        """
+        ==================================================================================
+        Recebe a posição local estimada pelo PX4 e atualiza o estado atual do drone.
+        
+        Na primeira leitura válida, a função fixa o ponto de partida como origem local da
+        missão e converte a lista de waypoints relativos em waypoints absolutos. Isso evita
+        depender de coordenadas fixas do mundo e permite que a mesma rota seja executada a
+        partir do ponto em que o drone nasceu na simulação.
+        
+        O PX4 informa a posição local no referencial NED: x = Norte, y = Leste e z = Down
+        (altitude negativa para cima). O campo heading é o yaw em radianos no plano local.
+        
+        Fontes:
+        [PX4 VehicleLocalPosition] https://docs.px4.io/main/en/msg_docs/VehicleLocalPosition
+        [PX4 Offboard Mode - NED] https://docs.px4.io/main/en/flight_modes/offboard
+        ==================================================================================
+        """
+
         if self.current_x is None:
             self.start_x = msg.x
             self.start_y = msg.y
@@ -127,15 +166,23 @@ class DroneOffboardNode(Node):
         self.current_z = msg.z
         self.current_yaw = msg.heading
 
-
-    # ==================================================================================
-    # Existe um timer rodando a 25Hz (0.04s) que envia o modo de controle (OffboardControlMode). 
-    # Somente após 50 ciclos (2 segundos), o script emite a ordem para armar (arm()) e decolar.
-    # 
-    # A Fonte: 
-    # https://docs.px4.io/main/en/ros2/offboard_control
-    # ==================================================================================
     def timer_callback(self):
+        """
+        ==================================================================================
+        Existe um timer rodando a 25Hz (0.04s) que envia o modo de controle (OffboardControlMode). 
+        Somente após 50 ciclos (2 segundos), o script emite a ordem para armar (arm()) e decolar.
+        
+        Depois que o voo é iniciado, a função chama navegar_por_waypoints(), responsável por
+        gerar os setpoints de velocidade, posição vertical e yaw. Quando a missão termina,
+        uma thread separada executa o procedimento de encerramento para não bloquear o timer.
+        
+        A Fonte: 
+        [PX4 ROS 2 Offboard Control Example] https://docs.px4.io/main/en/ros2/offboard_control
+        [PX4 OffboardControlMode] https://docs.px4.io/main/en/msg_docs/OffboardControlMode
+        [ROS 2 Node Timers] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
+        ==================================================================================
+        """
+        
         if self.current_x is None:
             return
 
@@ -156,13 +203,78 @@ class DroneOffboardNode(Node):
 
         self.ciclos += 1
 
-    # ==================================================================================
-    # A função calcula a distância até o waypoint alvo. Se a distância for maior que 
-    # a margem de corte (distancia_corte = 1.0 metro / ou 0.5 no código atual), ele converte 
-    # a distância restante em um vetor de velocidade (v) normalizado. Quando a distância cai 
-    # abaixo desse limite, o script simplesmente muda o alvo para o próximo ponto da lista.
-    # ==================================================================================
+    def calcular_angulo_curva_wp_atual_rad(self):
+        """
+        ==================================================================================
+        Calcula o ângulo geométrico da curva formada por três waypoints consecutivos:
+        waypoint anterior, waypoint atual e próximo waypoint.
+        
+        O cálculo utiliza produto escalar entre vetores 2D no plano horizontal (x, y):
+        cos(theta) = (v1 . v2) / (|v1| |v2|). O resultado final é retornado em radianos.
+        
+        Essa função foi adicionada para detectar curvas fechadas antes da troca de waypoint.
+        Quando o ângulo ultrapassa o limite configurado em angulo_curva_forte, o controlador
+        reduz progressivamente a velocidade dentro da zona_frenagem_curva. Assim, o drone
+        mantém raio de aceitação pequeno, mas evita entrar em curvas estreitas com velocidade
+        incompatível com a aceleração lateral disponível.
+        
+        Fontes:
+        [Python math.acos] https://docs.python.org/3/library/math.html#math.acos
+        [PX4 Offboard Mode - setpoints em NED] https://docs.px4.io/main/en/flight_modes/offboard
+        ==================================================================================
+        """
+        
+        if self.wp_atual_index == 0 or self.wp_atual_index >= len(self.lista_alvos_absolutos) - 1:
+            return 0.0
+
+        prev_wp = self.lista_alvos_absolutos[self.wp_atual_index - 1]
+        curr_wp = self.lista_alvos_absolutos[self.wp_atual_index]
+        next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
+
+        v1x = curr_wp[0] - prev_wp[0]
+        v1y = curr_wp[1] - prev_wp[1]
+        v2x = next_wp[0] - curr_wp[0]
+        v2y = next_wp[1] - curr_wp[1]
+
+        mag1 = math.sqrt(v1x**2 + v1y**2)
+        mag2 = math.sqrt(v2x**2 + v2y**2)
+
+        if mag1 == 0 or mag2 == 0:
+            return 0.0
+
+        dot = v1x * v2x + v1y * v2y
+        cos_angle = dot / (mag1 * mag2)
+        cos_angle = max(-1.0, min(1.0, cos_angle))
+
+        return math.acos(cos_angle)
+
     def navegar_por_waypoints(self):
+        """
+        ==================================================================================
+        Executa a lógica principal de navegação por waypoints.
+        
+        A função calcula a distância até o waypoint atual, define uma velocidade dinâmica,
+        aplica frenagem progressiva em curvas fechadas, limita a aceleração lateral, suaviza
+        o vetor de velocidade e ajusta o yaw com look-ahead. Em seguida, publica um
+        TrajectorySetpoint para o PX4.
+        
+        A estratégia atual não aumenta o raio de aceitação para estabilizar o voo. Em vez
+        disso, mantém raio reduzido e reduz a velocidade apenas quando detecta curva forte
+        próxima ao waypoint. Isso preserva a proposta de navegação em ambientes estreitos,
+        como corredores entre árvores, evitando que o drone corte caminho cedo demais.
+        
+        O TrajectorySetpoint usa position = [NaN, NaN, target_z], mantendo controle de altura
+        pelo eixo z, e velocity = [vx, vy, NaN], usando velocidade horizontal como comando
+        principal. No PX4, valores NaN indicam campos não comandados; valores não-NaN de
+        velocidade podem atuar como feedforward ou setpoint conforme a combinação enviada.
+        
+        Fontes:
+        [PX4 Offboard Mode - TrajectorySetpoint] https://docs.px4.io/main/en/flight_modes/offboard
+        [PX4 ROS 2 Offboard Control] https://docs.px4.io/main/en/ros2/offboard_control
+        [PX4 VehicleLocalPosition - NED] https://docs.px4.io/main/en/msg_docs/VehicleLocalPosition
+        ==================================================================================
+        """
+        
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
@@ -181,10 +293,33 @@ class DroneOffboardNode(Node):
 
         # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
         velocidade_maxima_atual = self.velocidade_maxima
+
         if not is_ultimo_wp:
-            curvatura = self.calcular_curvatura_wp_atual()
-            if curvatura > 0.5:
-                velocidade_maxima_atual *= (1.0 - min(curvatura * 0.3, 0.5))
+            angulo_curva = self.calcular_angulo_curva_wp_atual_rad()
+
+            if angulo_curva > self.angulo_curva_forte and distancia < self.zona_frenagem_curva:
+                velocidade_segura_curva = math.sqrt(
+                    self.max_lateral_acceleration * max(self.raio_de_aceitacao, 1.0)
+                )
+
+                velocidade_segura_curva = max(
+                    self.velocidade_curva_minima,
+                    min(velocidade_segura_curva, 5.0)
+                )
+
+                # Quanto mais perto do waypoint, mais reduz a velocidade
+                t = (distancia - self.raio_de_aceitacao) / (
+                    self.zona_frenagem_curva - self.raio_de_aceitacao
+                )
+                t = max(0.0, min(1.0, t))
+
+                # Smoothstep: transição suave, sem queda brusca de velocidade
+                t = t * t * (3.0 - 2.0 * t)
+
+                velocidade_maxima_atual = (
+                    velocidade_segura_curva +
+                    (self.velocidade_maxima - velocidade_segura_curva) * t
+                )
 
         # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
         if distancia > distancia_corte:
@@ -250,34 +385,25 @@ class DroneOffboardNode(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
 
-    def calcular_curvatura_wp_atual(self):
-        """ Calcula a curvatura (mudança de direção) no waypoint atual """
-        if self.wp_atual_index == 0 or self.wp_atual_index >= len(self.lista_alvos_absolutos) - 1:
-            return 0.0
-        
-        # Vetor do waypoint anterior para o atual
-        prev_wp = self.lista_alvos_absolutos[self.wp_atual_index - 1]
-        curr_wp = self.lista_alvos_absolutos[self.wp_atual_index]
-        next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
-        
-        vec1_x = curr_wp[0] - prev_wp[0]
-        vec1_y = curr_wp[1] - prev_wp[1]
-        vec2_x = next_wp[0] - curr_wp[0]
-        vec2_y = next_wp[1] - curr_wp[1]
-        
-        # Ângulo entre os vetores
-        dot = vec1_x * vec2_x + vec1_y * vec2_y
-        mag1 = math.sqrt(vec1_x**2 + vec1_y**2)
-        mag2 = math.sqrt(vec2_x**2 + vec2_y**2)
-        if mag1 == 0 or mag2 == 0:
-            return 0.0
-        cos_angle = dot / (mag1 * mag2)
-        cos_angle = max(-1.0, min(1.0, cos_angle))
-        angle = math.acos(cos_angle)
-        return angle / math.pi
-
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
-        """ Calcula yaw alvo com look-ahead para próximo waypoint """
+        """ 
+        ==================================================================================
+        Calcula o yaw desejado do drone com uma pequena antecipação para o próximo waypoint.
+        
+        Quando o drone está distante do waypoint atual, o yaw aponta para o alvo atual. Quando
+        se aproxima do waypoint e ainda existe um próximo alvo, a função mistura gradualmente
+        a direção do waypoint atual com a direção do próximo waypoint. Isso reduz mudanças
+        instantâneas de orientação no momento da troca de waypoint.
+        
+        A correção angular usa atan2(sin(erro), cos(erro)) para normalizar o erro no intervalo
+        [-pi, pi], evitando saltos bruscos quando o ângulo cruza a descontinuidade de -pi/pi.
+        
+        Fontes:
+        [Python math.atan2] https://docs.python.org/3/library/math.html#math.atan2
+        [PX4 VehicleLocalPosition - heading] https://docs.px4.io/main/en/msg_docs/VehicleLocalPosition
+        ==================================================================================
+        """
+        
         distancia_atual = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
         
         # Se próximo waypoint existe e estamos próximos do atual, mira no próximo
@@ -338,7 +464,27 @@ class DroneOffboardNode(Node):
         os._exit(0)
 
     def desenhar_telemetria_geometria(self, frame_original, H, largura_out=640, altura_out=480):
-        """ Desenha a moldura de corte estabilizada sobre a imagem real do sensor """
+        """
+        ==================================================================================
+        Desenha, sobre a imagem original da câmera, a região que será utilizada pela imagem
+        estabilizada após a transformação de perspectiva.
+        
+        A função recebe a homografia H usada no warpPerspective, calcula H inversa e projeta
+        os cantos da imagem estabilizada de saída de volta para o frame original. Em seguida,
+        usa funções de desenho do OpenCV para mostrar a área válida de zoom/recorte sobre a
+        imagem real da câmera.
+        
+        Esse recurso não interfere no controle do drone; ele serve para depuração visual da
+        estabilização eletrônica, permitindo verificar quais pixels da imagem original estão
+        sendo aproveitados após o warping.
+        
+        Fontes:
+        [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
+        [OpenCV Drawing Functions] https://docs.opencv.org/4.x/d6/d6e/group__imgproc__draw.html
+        [OpenCV perspectiveTransform] https://docs.opencv.org/4.x/d2/de8/group__core__array.html
+        ==================================================================================
+        """
+        
         # Criamos uma cópia da imagem original para servir de fundo
         canvas = cv2.resize(frame_original, (0, 0), fx=1, fy=1)
         cantos_saida = np.array([
@@ -361,24 +507,33 @@ class DroneOffboardNode(Node):
         
         return canvas
 
-    # ==================================================================================
-    # O image_callback é chamado exatamente a cada novo frame (quadro) que a câmera do Gazebo gera e publica no tópico.
-    # No modelo x500_mono_cam, são 30 imagens por segundo, portanto o image_callback será chamado 30 vezes por segundo.
-    # Como a parte de Visão Computacional vai rodar dentro desse callback, o algoritmo precisa ser executado e finalizado em menos de 0.033 segundos (30 FPS).
-    #
-    # --- METODOLOGIA: GIMBAL VIRTUAL E ESTABILIZAÇÃO ELETRÔNICA ---
-    # Para anular a inclinação física do drone, simulamos um Gimbal mecânico através
-    # de Transformação de Perspectiva (Homografia). A matemática opera nos seguintes passos:
-    # 1. Puxa os dados de Atitude do IMU (Roll e Pitch).
-    # 2. Gera Matrizes de Rotação 3D (Rx e Rz) aplicando força na direção contrária ao movimento.
-    # 3. Calcula a Homografia: H = K_zoom * R * K_inv, que achata a imagem num plano reto.
-    #
-    # As Fontes:
-    # [ROS/cv_bridge] https://github.com/ros-perception/vision_opencv/tree/humble/cv_bridge
-    # [OpenCV Homografia] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
-    # [OpenCV Camera Matriz] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
-    # ==================================================================================
     def image_callback(self, msg):
+        """
+        ==================================================================================
+        Processa cada frame recebido da câmera simulada e aplica estabilização eletrônica
+        baseada na atitude do drone.
+        
+        A imagem ROS é convertida para matriz OpenCV por meio do cv_bridge. Em seguida, os
+        ângulos atuais de pitch e roll, obtidos do VehicleAttitude, são usados para montar
+        matrizes de rotação 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
+        houvesse um gimbal virtual compensando a inclinação física do drone.
+        
+        A função exibe três janelas principais: a imagem original com a geometria do warping,
+        a imagem estabilizada e a máscara alpha que indica quais pixels de saída ainda possuem
+        correspondência válida na imagem de entrada.
+        
+        Importante: esta estabilização reduz a tremedeira visual da câmera, mas não corrige a
+        dinâmica física do voo. A redução do chacoalho do drone é tratada na navegação por
+        waypoints, especialmente pela frenagem por curvatura e limitação de aceleração lateral.
+        
+        Fontes:
+        [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+        [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
+        [OpenCV Camera Calibration] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+        [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        ==================================================================================
+        """
+        
         resolucao_largura = msg.width
         resolucao_altura = msg.height
         # formato_ros = msg.encoding
@@ -449,18 +604,28 @@ class DroneOffboardNode(Node):
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
 
-    # =========================================================================================
-    # O attitude_callback é acionado de forma assíncrona e em altíssima frequência (geralmente
-    # entre 50Hz e 250Hz) sempre que o PX4 atualiza os dados do IMU/Giroscópio.
-    # 
-    # A função recebe a orientação espacial absoluta do drone em formato de Quaternions (w, x, y, z)
-    # e aplica a conversão geométrica para extrair os ângulos de Euler (Roll e Pitch) em radianos.
-    #
-    # As Fontes:
-    # https://github.com/PX4/px4_msgs/blob/main/msg/VehicleAttitude.msg
-    # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
-    # =========================================================================================
     def attitude_callback(self, msg):
+        """
+        =========================================================================================
+        Recebe a atitude estimada do drone e converte a orientação de quaternion para ângulos
+        de Euler roll e pitch.
+        
+        O PX4 publica VehicleAttitude com quaternion no formato q(w, x, y, z), seguindo a
+        convenção de Hamilton. A mensagem representa a rotação do corpo do drone no referencial
+        FRD para o referencial NED. O script extrai apenas roll e pitch porque esses ângulos
+        são usados para compensar a inclinação da câmera no gimbal virtual de image_callback().
+        
+        A conversão implementada segue as fórmulas usuais de quaternion para Euler, com trava
+        de segurança no pitch quando o valor de asin ultrapassa o intervalo [-1, 1] por erro
+        numérico. O yaw operacional usado na navegação vem do campo heading da posição local.
+        
+        Fontes:
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [MAVLink ATTITUDE_QUATERNION] https://mavlink.io/en/messages/common.html#ATTITUDE_QUATERNION
+        [Conversão Quaternion-Euler] https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        =========================================================================================
+        """
+        
         w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
         
         # Fórmula de conversão para Roll
