@@ -97,13 +97,13 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [
-            [54.0, -24.0, -1.5],
-            [48.0, -32.0, -2.0],
-            [48.0, -40.0, -2.0],
-            [48.0, -48.0, -2.0],
-            [36.0, -33.0, -2.0],
-            [40.0, -56.0, -2.0],
-            [28.0, -33.0, -2.0],
+            [54.0, -24.0, -1.75],
+            [48.0, -32.0, -1.75],
+            [48.0, -40.0, -1.75],
+            [48.0, -48.0, -1.75],
+            [36.0, -33.0, -1.75],
+            [44.0, -58.0, -1.75],
+            [28.0, -33.0, -1.75],
             [12.0, -12.0, -3.5],
             [0.0, 0.0, -5.0]
         ]
@@ -116,16 +116,13 @@ class DroneOffboardNode(Node):
         self.missao_concluida = False
         self.encerrando = False
         
-        self.velocidade_maxima = 12.0  # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 1.5   # Raio de aceitação para mudar de waypoint
+        self.velocidade_maxima = 12.0               # Velocidade do vetor m/s
+        self.raio_de_aceitacao = 4.5                # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
-        self.velocidade_curva_minima = 2.5
-        self.angulo_curva_forte = math.radians(35)
+        self.angulo_curva_forte = math.radians(45)
 
         self.max_lateral_acceleration = 8.0
-        self.velocity_smooth_alpha = 0.2
-        self.yaw_smooth_alpha = 0.2
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -303,8 +300,8 @@ class DroneOffboardNode(Node):
                 )
 
                 velocidade_segura_curva = max(
-                    self.velocidade_curva_minima,
-                    min(velocidade_segura_curva, 5.0)
+                    self.raio_de_aceitacao,
+                    min(velocidade_segura_curva, 6.0)
                 )
 
                 # Quanto mais perto do waypoint, mais reduz a velocidade
@@ -327,7 +324,7 @@ class DroneOffboardNode(Node):
                 dist_inicio_frenagem = velocidade_maxima_atual * 1.2
             else:
                 dist_inicio_frenagem = velocidade_maxima_atual * 0.6
-            velocidade_minima = velocidade_maxima_atual * 0.05
+            velocidade_minima = velocidade_maxima_atual * 0.1
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = velocidade_maxima_atual
@@ -453,12 +450,12 @@ class DroneOffboardNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def comando_exit(self):
-        self.get_logger().info("Encerrando a missão... Iniciando pouso!")
+        self.get_logger().info("Encerrando a missão em 5s... Iniciando pouso!")
         
         # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(4)
+        time.sleep(5)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
