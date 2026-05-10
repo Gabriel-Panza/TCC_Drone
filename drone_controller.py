@@ -92,20 +92,24 @@ class DroneOffboardNode(Node):
         self.velocity_smooth_alpha = 0.3
         self.yaw_smooth_alpha = 0.3
 
+        self.prev_gray_avoidance = None
+        self.prev_points_avoidance = None
+        self.obstacle_risk = 0.0
+        self.avoid_lateral_body = 0.0
+        self.avoid_brake = 0.0
+        self.avoid_side_memory = 1.0
+        self.avoidance_smooth_alpha = 0.25
+        self.avoidance_max_lateral_speed = 3.0
+        self.avoidance_max_brake = 0.7
+
         self.start_x = None
         self.start_y = None
         self.start_z = None
 
         self.waypoints_relativos = [
-            [54.0, -24.0, -1.75],
-            [48.0, -32.0, -1.75],
-            [48.0, -40.0, -1.75],
-            [48.0, -48.0, -1.75],
-            [36.0, -33.0, -1.75],
-            [44.0, -58.0, -1.75],
-            [28.0, -33.0, -1.75],
-            [12.0, -12.0, -3.5],
-            [0.0, 0.0, -5.0]
+            [-25.0, 25.0, -1.75],
+            [-50.0, 70.0, -1.75],
+            [0.0, 0.0, -1.75]
         ]
         
         self.lista_alvos_absolutos = []
@@ -350,6 +354,24 @@ class DroneOffboardNode(Node):
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
 
+        # --- EVASAO REATIVA POR VISAO ---
+        if self.obstacle_risk > 0.04:
+            brake_scale = max(0.25, 1.0 - self.avoid_brake)
+            vx *= brake_scale
+            vy *= brake_scale
+
+            # avoid_lateral_body > 0 significa desvio para a direita do drone.
+            right_x = -math.sin(self.current_yaw)
+            right_y = math.cos(self.current_yaw)
+            vx += right_x * self.avoid_lateral_body
+            vy += right_y * self.avoid_lateral_body
+
+            velocidade_cmd = math.sqrt(vx**2 + vy**2)
+            if velocidade_cmd > velocidade_maxima_atual:
+                escala = velocidade_maxima_atual / velocidade_cmd
+                vx *= escala
+                vy *= escala
+
         # --- LIMITAÇÃO DE ACELERAÇÃO LATERAL ---
         accel_x = (vx - self.smooth_vx) / (self.dt * 4)
         accel_y = (vy - self.smooth_vy) / (self.dt * 4)
@@ -504,6 +526,174 @@ class DroneOffboardNode(Node):
         
         return canvas
 
+    def detectar_pontos_evasao(self, gray, valid_mask):
+        """
+        Detecta pontos em bordas/cantos dentro da regiao valida da imagem estabilizada.
+
+        A ideia vem de VO semi-denso/edge-based: nao reconstruimos a cena inteira,
+        apenas rastreamos pontos visuais bons o suficiente para estimar risco local.
+        """
+
+        altura, largura = gray.shape
+        roi_mask = np.zeros_like(valid_mask)
+        roi_mask[int(altura * 0.18):int(altura * 0.90), int(largura * 0.08):int(largura * 0.92)] = 255
+        roi_mask = cv2.bitwise_and(roi_mask, valid_mask)
+
+        edges = cv2.Canny(gray, 60, 160)
+        feature_mask = cv2.bitwise_and(cv2.dilate(edges, None, iterations=1), roi_mask)
+        if cv2.countNonZero(feature_mask) < 150:
+            feature_mask = roi_mask
+
+        return cv2.goodFeaturesToTrack(
+            gray,
+            maxCorners=180,
+            qualityLevel=0.01,
+            minDistance=8,
+            blockSize=7,
+            mask=feature_mask
+        )
+
+    def suavizar_comando_evasao(self, risk, lateral_body, brake):
+        """Aplica filtro passa-baixa para evitar comandos bruscos vindos da visao."""
+
+        alpha = self.avoidance_smooth_alpha
+        self.obstacle_risk += alpha * (risk - self.obstacle_risk)
+        self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
+        self.avoid_brake += alpha * (brake - self.avoid_brake)
+
+        if abs(self.avoid_lateral_body) > 0.05:
+            self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
+
+    def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
+        """
+        Estima risco de colisao por fluxo optico e profundidade inversa relativa.
+
+        Com camera monocular, a escala absoluta e ambigua. Por isso usamos o
+        principio de profundidade inversa: durante o movimento, pontos mais
+        proximos tendem a produzir fluxo radial maior na imagem. O resultado
+        alimenta um campo repulsivo simples, nao um mapa 3D completo.
+        """
+
+        frame_bgr = imagem_estabilizada[:, :, :3]
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        valid_mask = (mascara_alpha > 0).astype(np.uint8) * 255
+        valid_mask = cv2.erode(valid_mask, None, iterations=1)
+
+        debug = frame_bgr.copy()
+        altura, largura = gray.shape
+        cx, cy = largura * 0.5, altura * 0.5
+        cv2.rectangle(
+            debug,
+            (int(largura * 0.08), int(altura * 0.18)),
+            (int(largura * 0.92), int(altura * 0.90)),
+            (255, 180, 0),
+            1
+        )
+
+        if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            return debug
+
+        next_points, status, _ = cv2.calcOpticalFlowPyrLK(
+            self.prev_gray_avoidance,
+            gray,
+            self.prev_points_avoidance,
+            None,
+            winSize=(21, 21),
+            maxLevel=3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03)
+        )
+
+        if next_points is None or status is None:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            return debug
+
+        old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
+        new = next_points[status.flatten() == 1].reshape(-1, 2)
+
+        dentro = (
+            (new[:, 0] >= 0) & (new[:, 0] < largura) &
+            (new[:, 1] >= 0) & (new[:, 1] < altura)
+        )
+        old = old[dentro]
+        new = new[dentro]
+
+        if len(new) < 12:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            return debug
+
+        valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
+        old = old[valid_pixels]
+        new = new[valid_pixels]
+
+        flow = new - old
+        radial = new - np.array([[cx, cy]])
+        radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
+        radial_unit = radial / radial_norm[:, None]
+        radial_flow = np.sum(flow * radial_unit, axis=1)
+
+        central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
+        central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.65), 1.0)
+        central_weight = np.clip(central_x * central_y, 0.0, 1.0)
+
+        speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
+        speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
+
+        # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
+        inverse_depth_score = np.clip((radial_flow - 0.25) / 8.0, 0.0, 1.0)
+        point_risk = inverse_depth_score * central_weight
+        point_risk *= speed_factor
+
+        active = point_risk > 0.03
+        if np.count_nonzero(active) < 8:
+            risk = 0.0
+            lateral_body = 0.0
+        else:
+            active_risk = point_risk[active]
+            active_points = new[active]
+            risk = float(np.clip(np.percentile(active_risk, 80) * 1.8, 0.0, 1.0))
+
+            left = float(np.sum(active_risk[active_points[:, 0] < cx]))
+            right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
+            balance = (right - left) / (right + left + 1e-6)
+
+            if abs(balance) < 0.15:
+                side = self.avoid_side_memory
+            else:
+                side = -math.copysign(1.0, balance)
+
+            lateral_body = side * self.avoidance_max_lateral_speed * risk
+
+            for p0, p1, r in zip(old[active], active_points, active_risk):
+                color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
+                cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
+
+        brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
+        self.suavizar_comando_evasao(risk, lateral_body, brake)
+
+        self.prev_gray_avoidance = gray
+        if len(new) < 80:
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+        else:
+            self.prev_points_avoidance = new.reshape(-1, 1, 2).astype(np.float32)
+
+        cv2.putText(
+            debug,
+            f"risco={self.obstacle_risk:.2f} lateral={self.avoid_lateral_body:.2f} freio={self.avoid_brake:.2f}",
+            (12, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 255, 255),
+            1
+        )
+        return debug
+
     def image_callback(self, msg):
         """
         ==================================================================================
@@ -591,12 +781,14 @@ class DroneOffboardNode(Node):
                 imagem_estabilizada = cv_image
                 mascara_alpha = cv_image[:, :, 3]
             
-            # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
+            # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
+            debug_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
             cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
+            cv2.imshow("Evasao Reativa (Fluxo Optico)", debug_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
