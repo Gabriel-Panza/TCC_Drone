@@ -89,8 +89,8 @@ class DroneOffboardNode(Node):
         self.smooth_yaw = 0.0
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
-        self.velocity_smooth_alpha = 0.25
-        self.yaw_smooth_alpha = 0.3
+        self.velocity_smooth_alpha = 0.3
+        self.yaw_smooth_alpha = 0.55
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
@@ -98,16 +98,11 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 0.8
-        self.avoidance_smooth_alpha = 0.25
         self.avoidance_max_brake = 0.3
-        self.raio_finalizacao = 2.5
-        self.raio_desativa_evasao_final = 7.5
+        self.raio_finalizacao = 2.0
+        self.raio_desativa_evasao_final = 10.0
         self.evasao_visual_ativa = True
-        self.janelas_opencv_configuradas = False
-        self.janela_geometria = "Visao do Drone Original com a Geometria do Warping"
-        self.janela_mascara = "Mascara Alpha (Branco = Pixel Valido)"
-        self.janela_evasao = "Deteccao Reativa (Fluxo Optico)"
-        self.max_lateral_acceleration = 6.5
+        self.max_lateral_acceleration = 7.5
 
         self.start_x = None
         self.start_y = None
@@ -116,6 +111,7 @@ class DroneOffboardNode(Node):
         self.waypoints_relativos = [
             [-25.0, 25.0, -1.75],
             [-50.0, 70.0, -1.75],
+            [-25.0, 25.0, -1.75],
             [0.0, 0.0, -1.75]
         ]
         
@@ -131,7 +127,7 @@ class DroneOffboardNode(Node):
         self.raio_de_aceitacao = 5.0                # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
-        self.angulo_curva_forte = math.radians(35)
+        self.angulo_curva_forte = math.radians(30)
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -371,8 +367,8 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body = 0.0
             self.avoid_brake = 0.0
 
-        if evasao_habilitada and self.obstacle_risk > 0.04:
-            brake_scale = max(0.70, 1.0 - self.avoid_brake)
+        if evasao_habilitada and self.obstacle_risk > 0.07:
+            brake_scale = max(0.7, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
 
@@ -407,7 +403,7 @@ class DroneOffboardNode(Node):
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.8 if abs(erro_yaw) > 0.8 else 1.2)  # Aumentado para resposta mais rápida
+        yaw_gain = self.yaw_smooth_alpha * (0.75 if abs(erro_yaw) > 0.75 else 1.2)  # Aumentado para resposta mais rápida
         self.smooth_yaw += (erro_yaw * yaw_gain)
 
         msg = TrajectorySetpoint()
@@ -542,32 +538,6 @@ class DroneOffboardNode(Node):
         
         return canvas
 
-    def configurar_janelas_opencv(self):
-        """
-        Organiza as janelas do OpenCV em mosaico para gravacao/monitoramento.
-
-        Layout conservador para caber em telas 16:9 com area util menor que 1920x1080:
-        - janela principal grande no lado esquerdo;
-        - mascara e deteccao empilhadas no lado direito.
-        """
-
-        if self.janelas_opencv_configuradas:
-            return
-
-        layout = {
-            self.janela_geometria: (10, 20, 1020, 760),
-            self.janela_mascara: (1060, 20, 620, 360),
-            self.janela_evasao: (1060, 420, 620, 360),
-        }
-
-        for nome, (x, y, largura, altura) in layout.items():
-            cv2.namedWindow(nome, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(nome, largura, altura)
-            cv2.moveWindow(nome, x, y)
-            cv2.setWindowProperty(nome, cv2.WND_PROP_TOPMOST, 1)
-
-        self.janelas_opencv_configuradas = True
-
     def detectar_pontos_evasao(self, gray, valid_mask):
         """
         Detecta pontos em bordas/cantos dentro da regiao valida da imagem estabilizada.
@@ -598,7 +568,7 @@ class DroneOffboardNode(Node):
     def suavizar_comando_evasao(self, risk, lateral_body, brake):
         """Aplica filtro passa-baixa para evitar comandos bruscos vindos da visao."""
 
-        alpha = self.avoidance_smooth_alpha
+        alpha = self.velocity_smooth_alpha
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
         self.avoid_brake += alpha * (brake - self.avoid_brake)
@@ -699,7 +669,7 @@ class DroneOffboardNode(Node):
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 80) * 1.8, 0.0, 1.0))
+            risk = float(np.clip(np.percentile(active_risk, 75) * 1.75, 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
@@ -731,7 +701,7 @@ class DroneOffboardNode(Node):
             (12, 24),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
-            (0, 255, 255),
+            (0, 0, 255),
             1
         )
         return debug
@@ -830,23 +800,12 @@ class DroneOffboardNode(Node):
                 self.prev_gray_avoidance = None
                 self.prev_points_avoidance = None
                 visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
-                cv2.putText(
-                    visao_da_evasao,
-                    "EVASAO DESATIVADA NO WAYPOINT FINAL",
-                    (12, 24),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.55,
-                    (0, 255, 255),
-                    1
-                )
             
-            self.configurar_janelas_opencv()
-
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
-            cv2.imshow(self.janela_geometria, img_geometria)
+            cv2.imshow("Visao do Drone Original com a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            cv2.imshow(self.janela_mascara, mascara_alpha)
-            cv2.imshow(self.janela_evasao, visao_da_evasao)
+            #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
+            cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
