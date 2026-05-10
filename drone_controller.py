@@ -98,7 +98,7 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 1.0
-        self.avoidance_smooth_alpha = 0.25
+        self.avoidance_smooth_alpha = 0.3
         self.avoidance_max_lateral_speed = 3.0
         self.avoidance_max_brake = 0.7
 
@@ -121,7 +121,7 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0               # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 4.5                # Raio de aceitação para mudar de waypoint
+        self.raio_de_aceitacao = 4.0                # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
         self.angulo_curva_forte = math.radians(45)
