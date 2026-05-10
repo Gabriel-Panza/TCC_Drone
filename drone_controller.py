@@ -98,15 +98,9 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 1.0
-        self.avoid_side_lock_count = 0
-        self.avoid_side_lock_frames = 10
-        self.avoidance_smooth_alpha = 0.65
-        self.avoidance_max_lateral_speed = 6.0
-        self.avoidance_max_brake = 0.35
-        self.avoidance_trigger_risk = 0.22
-        self.close_object_min_width_ratio = 0.08
-        self.close_object_min_height_ratio = 0.25
-        self.close_object_min_area_ratio = 0.025
+        self.avoidance_smooth_alpha = 0.3
+        self.avoidance_max_lateral_speed = 3.0
+        self.avoidance_max_brake = 0.3
         self.raio_finalizacao = 1.5
         self.raio_desativa_evasao_final = 4.0
         self.max_lateral_acceleration = 8.0
@@ -367,8 +361,8 @@ class DroneOffboardNode(Node):
             not (is_ultimo_wp and distancia < self.raio_desativa_evasao_final)
         )
 
-        if evasao_habilitada and self.obstacle_risk > self.avoidance_trigger_risk:
-            brake_scale = max(0.55, 1.0 - self.avoid_brake)
+        if evasao_habilitada and self.obstacle_risk > 0.04:
+            brake_scale = max(0.70, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
 
@@ -568,13 +562,6 @@ class DroneOffboardNode(Node):
     def suavizar_comando_evasao(self, risk, lateral_body, brake):
         """Aplica filtro passa-baixa para evitar comandos bruscos vindos da visao."""
 
-        if risk <= 0.0:
-            self.obstacle_risk *= 0.25
-            self.avoid_lateral_body = 0.0
-            self.avoid_brake = 0.0
-            self.avoid_side_lock_count = max(0, self.avoid_side_lock_count - 1)
-            return
-
         alpha = self.avoidance_smooth_alpha
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
@@ -582,150 +569,6 @@ class DroneOffboardNode(Node):
 
         if abs(self.avoid_lateral_body) > 0.05:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
-
-    def escolher_lado_evasao(self, preferred_side, risk):
-        """
-        Mantem o mesmo lado por alguns frames para evitar zigue-zague nervoso.
-        """
-
-        if risk < self.avoidance_trigger_risk:
-            self.avoid_side_lock_count = max(0, self.avoid_side_lock_count - 1)
-            return preferred_side
-
-        if self.avoid_side_lock_count > 0:
-            self.avoid_side_lock_count -= 1
-            return self.avoid_side_memory
-
-        self.avoid_side_memory = preferred_side
-        self.avoid_side_lock_count = self.avoid_side_lock_frames
-        return preferred_side
-
-    def calcular_risco_aparente_central(self, gray, valid_mask, debug):
-        """
-        Detecta obstaculo visual no corredor central mesmo quando o fluxo e pequeno.
-
-        Um obstaculo exatamente na direcao de voo pode ficar perto do foco de expansao,
-        onde o deslocamento optico ainda e baixo. Esse fallback usa densidade de bordas
-        no centro da imagem e escolhe o lado visualmente mais livre.
-        """
-
-        altura, largura = gray.shape
-        y1, y2 = int(altura * 0.18), int(altura * 0.90)
-        cx1, cx2 = int(largura * 0.34), int(largura * 0.66)
-        lx1, lx2 = int(largura * 0.08), int(largura * 0.42)
-        rx1, rx2 = int(largura * 0.58), int(largura * 0.92)
-
-        edges = cv2.Canny(gray, 55, 145)
-        edges = cv2.bitwise_and(cv2.dilate(edges, None, iterations=1), valid_mask)
-
-        def densidade(x1, x2):
-            roi_edges = edges[y1:y2, x1:x2]
-            roi_valid = valid_mask[y1:y2, x1:x2]
-            area = max(cv2.countNonZero(roi_valid), 1)
-            return cv2.countNonZero(roi_edges) / area
-
-        central_density = densidade(cx1, cx2)
-        left_density = densidade(lx1, lx2)
-        right_density = densidade(rx1, rx2)
-
-        risk = float(np.clip((central_density - 0.040) / 0.060, 0.0, 1.0))
-        if risk <= 0.0:
-            return 0.0, 0.0
-
-        if abs(left_density - right_density) < 0.006:
-            preferred_side = self.avoid_side_memory
-        else:
-            preferred_side = 1.0 if left_density > right_density else -1.0
-
-        side = preferred_side
-        lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
-        cv2.rectangle(debug, (cx1, y1), (cx2, y2), (0, 165, 255), 2)
-        cv2.putText(
-            debug,
-            f"centro={risk:.2f}",
-            (cx1, max(20, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 165, 255),
-            1
-        )
-
-        return risk, lateral_body
-
-    def detectar_objeto_proximo_central(self, gray, valid_mask, debug):
-        """
-        Libera evasao apenas quando ha um objeto grande no corredor frontal.
-
-        Esse portao evita reagir a arvores finas/longe ou textura densa da floresta.
-        Para contar como proximo, o componente precisa ocupar largura, altura e area
-        minimas na imagem estabilizada.
-        """
-
-        altura, largura = gray.shape
-        x1, x2 = int(largura * 0.28), int(largura * 0.72)
-        y1, y2 = int(altura * 0.16), int(altura * 0.92)
-
-        roi_gray = gray[y1:y2, x1:x2]
-        roi_valid = valid_mask[y1:y2, x1:x2]
-        if cv2.countNonZero(roi_valid) < 1000:
-            return False, 0.0, self.avoid_side_memory
-
-        blur = cv2.GaussianBlur(roi_gray, (5, 5), 0)
-        valid_values = blur[roi_valid > 0]
-        dark_limit = min(120.0, float(np.percentile(valid_values, 35)))
-        dark_mask = ((blur < dark_limit) & (roi_valid > 0)).astype(np.uint8) * 255
-
-        edges = cv2.Canny(roi_gray, 60, 150)
-        edges = cv2.bitwise_and(edges, roi_valid)
-
-        objeto_mask = cv2.bitwise_or(dark_mask, cv2.dilate(edges, None, iterations=1))
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 17))
-        objeto_mask = cv2.morphologyEx(objeto_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-        objeto_mask = cv2.morphologyEx(objeto_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
-
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(objeto_mask, 8)
-        roi_area = max((x2 - x1) * (y2 - y1), 1)
-
-        best_score = 0.0
-        best_side = self.avoid_side_memory
-        best_rect = None
-
-        for label in range(1, num_labels):
-            comp_x, comp_y, comp_w, comp_h, comp_area = stats[label]
-            width_ratio = comp_w / largura
-            height_ratio = comp_h / altura
-            area_ratio = comp_area / roi_area
-
-            if (
-                width_ratio < self.close_object_min_width_ratio or
-                height_ratio < self.close_object_min_height_ratio or
-                area_ratio < self.close_object_min_area_ratio
-            ):
-                continue
-
-            score = min(1.0, max(width_ratio / 0.18, height_ratio / 0.55, area_ratio / 0.12))
-            if score > best_score:
-                center_x = x1 + centroids[label][0]
-                best_score = score
-                best_side = 1.0 if center_x < (largura * 0.5) else -1.0
-                best_rect = (x1 + comp_x, y1 + comp_y, comp_w, comp_h)
-
-        if best_rect is not None:
-            bx, by, bw, bh = best_rect
-            cv2.rectangle(debug, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
-            cv2.putText(
-                debug,
-                f"objeto_proximo={best_score:.2f}",
-                (bx, max(20, by - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                1
-            )
-            return True, best_score, best_side
-
-        cv2.rectangle(debug, (x1, y1), (x2, y2), (80, 80, 80), 1)
-        return False, 0.0, self.avoid_side_memory
 
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
         """
@@ -752,8 +595,6 @@ class DroneOffboardNode(Node):
             (255, 180, 0),
             1
         )
-        apparent_risk, apparent_lateral = self.calcular_risco_aparente_central(gray, valid_mask, debug)
-        objeto_proximo, objeto_score, objeto_side = self.detectar_objeto_proximo_central(gray, valid_mask, debug)
 
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
@@ -798,13 +639,10 @@ class DroneOffboardNode(Node):
         new = new[valid_pixels]
 
         flow = new - old
-        # Remove movimento global da imagem. Em alta velocidade/yaw, a floresta inteira
-        # pode gerar fluxo alto; proximidade deve aparecer como expansao acima do fundo.
-        flow_rel = flow - np.median(flow, axis=0)
         radial = new - np.array([[cx, cy]])
         radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
         radial_unit = radial / radial_norm[:, None]
-        radial_flow = np.sum(flow_rel * radial_unit, axis=1)
+        radial_flow = np.sum(flow * radial_unit, axis=1)
 
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
         central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.65), 1.0)
@@ -813,56 +651,34 @@ class DroneOffboardNode(Node):
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        # Proxy de profundidade inversa: expansao radial acima do movimento de fundo.
-        background_expansion = max(0.0, float(np.percentile(radial_flow, 65)))
-        excess_radial = radial_flow - background_expansion
-        inverse_depth_score = np.clip((excess_radial - 0.65) / 2.2, 0.0, 1.0)
+        # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
+        inverse_depth_score = np.clip((radial_flow - 0.25) / 8.0, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
-        active = point_risk > 0.12
+        active = point_risk > 0.03
         if np.count_nonzero(active) < 8:
             risk = 0.0
             lateral_body = 0.0
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 85) * 2.4, 0.0, 1.0))
+            risk = float(np.clip(np.percentile(active_risk, 80) * 1.8, 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
             balance = (right - left) / (right + left + 1e-6)
 
             if abs(balance) < 0.15:
-                preferred_side = self.avoid_side_memory
+                side = self.avoid_side_memory
             else:
-                preferred_side = -math.copysign(1.0, balance)
+                side = -math.copysign(1.0, balance)
 
-            side = self.escolher_lado_evasao(preferred_side, risk)
-            lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
+            lateral_body = side * self.avoidance_max_lateral_speed * risk
 
             for p0, p1, r in zip(old[active], active_points, active_risk):
                 color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
                 cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
-
-        if not objeto_proximo:
-            risk = 0.0
-            lateral_body = 0.0
-        elif risk > self.avoidance_trigger_risk:
-            if objeto_score > risk:
-                risk = objeto_score
-                side = self.escolher_lado_evasao(objeto_side, risk)
-                lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
-
-            # Bordas centrais ajudam a escolher o lado, mas nao ativam desvio sozinhas.
-            if apparent_risk > 0.15 and abs(apparent_lateral) > abs(lateral_body):
-                side = self.escolher_lado_evasao(math.copysign(1.0, apparent_lateral), risk)
-                risk = max(risk, min(1.0, apparent_risk * 0.35))
-                lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
-        else:
-            risk = objeto_score
-            side = self.escolher_lado_evasao(objeto_side, risk)
-            lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
 
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
         self.suavizar_comando_evasao(risk, lateral_body, brake)
@@ -972,13 +788,13 @@ class DroneOffboardNode(Node):
                 mascara_alpha = cv_image[:, :, 3]
             
             # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
-            visao_de_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+            debug_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
-            #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            cv2.imshow("Detecção Reativa (Fluxo Optico)", visao_de_evasao)
+            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
+            cv2.imshow("Evasao Reativa (Fluxo Optico)", debug_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
