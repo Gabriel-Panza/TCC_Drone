@@ -282,6 +282,7 @@ class DroneOffboardNode(Node):
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
         pos_z = target_z - self.current_z
+        distancia_horizontal = math.sqrt(pos_x**2 + pos_y**2)
         distancia = math.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
         
         vx, vy = 0.0, 0.0
@@ -289,6 +290,7 @@ class DroneOffboardNode(Node):
             self.smooth_yaw = self.current_yaw
         
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
+        distancia_navegacao = distancia_horizontal if is_ultimo_wp else distancia
         distancia_corte = self.raio_finalizacao if is_ultimo_wp else self.raio_de_aceitacao
 
         # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
@@ -322,17 +324,17 @@ class DroneOffboardNode(Node):
                 )
 
         # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
-        if distancia > distancia_corte:
+        if distancia_navegacao > distancia_corte:
             if is_ultimo_wp:
                 dist_inicio_frenagem = velocidade_maxima_atual * 1.2
             else:
                 dist_inicio_frenagem = velocidade_maxima_atual * 0.6
             velocidade_minima = velocidade_maxima_atual * 0.1
             
-            if distancia > dist_inicio_frenagem:
+            if distancia_navegacao > dist_inicio_frenagem:
                 velocidade_dinamica = velocidade_maxima_atual
             else:
-                proporcao = (distancia - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
+                proporcao = (distancia_navegacao - distancia_corte) / (dist_inicio_frenagem - distancia_corte)
                 proporcao = proporcao ** 2.0
                 
                 if is_ultimo_wp:
@@ -341,8 +343,9 @@ class DroneOffboardNode(Node):
                 velocidade_dinamica = velocidade_minima + (velocidade_maxima_atual - velocidade_minima) * proporcao
 
             # Normalização do vetor de velocidade
-            vx = (pos_x / distancia) * velocidade_dinamica
-            vy = (pos_y / distancia) * velocidade_dinamica
+            if distancia_navegacao > 0.01:
+                vx = (pos_x / distancia_navegacao) * velocidade_dinamica
+                vy = (pos_y / distancia_navegacao) * velocidade_dinamica
             
         else:
             if not is_ultimo_wp:
@@ -356,7 +359,7 @@ class DroneOffboardNode(Node):
         # --- EVASAO REATIVA POR VISAO ---
         evasao_habilitada = (
             not self.missao_concluida and
-            not (is_ultimo_wp and distancia <= self.raio_de_aceitacao)
+            not (is_ultimo_wp and distancia_horizontal <= self.raio_de_aceitacao)
         )
 
         if evasao_habilitada and self.obstacle_risk > 0.04:
