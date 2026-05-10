@@ -98,11 +98,9 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 1.0
-        self.avoidance_smooth_alpha = 0.3
-        self.avoidance_max_lateral_speed = 3.0
+        self.avoidance_smooth_alpha = 0.25
         self.avoidance_max_brake = 0.3
-        self.raio_finalizacao = 1.5
-        self.raio_desativa_evasao_final = 4.0
+        self.raio_finalizacao = 2.5
         self.max_lateral_acceleration = 8.0
 
         self.start_x = None
@@ -358,7 +356,7 @@ class DroneOffboardNode(Node):
         # --- EVASAO REATIVA POR VISAO ---
         evasao_habilitada = (
             not self.missao_concluida and
-            not (is_ultimo_wp and distancia < self.raio_desativa_evasao_final)
+            not (is_ultimo_wp and distancia <= self.raio_de_aceitacao)
         )
 
         if evasao_habilitada and self.obstacle_risk > 0.04:
@@ -674,7 +672,7 @@ class DroneOffboardNode(Node):
             else:
                 side = -math.copysign(1.0, balance)
 
-            lateral_body = side * self.avoidance_max_lateral_speed * risk
+            lateral_body = side * self.max_lateral_acceleration * risk
 
             for p0, p1, r in zip(old[active], active_points, active_risk):
                 color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
@@ -788,13 +786,13 @@ class DroneOffboardNode(Node):
                 mascara_alpha = cv_image[:, :, 3]
             
             # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
-            debug_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+            visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
-            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
-            cv2.imshow("Evasao Reativa (Fluxo Optico)", debug_evasao)
+            cv2.imshow("Detecção Reativa (Fluxo Optico)", visao_da_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
