@@ -97,13 +97,13 @@ class DroneOffboardNode(Node):
         self.obstacle_risk = 0.0
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
-        self.avoid_side_memory = 1.0
+        self.avoid_side_memory = 0.8
         self.avoidance_smooth_alpha = 0.25
         self.avoidance_max_brake = 0.3
         self.raio_finalizacao = 2.5
-        self.raio_desativa_evasao_final = 10.0
+        self.raio_desativa_evasao_final = 7.5
         self.evasao_visual_ativa = True
-        self.max_lateral_acceleration = 8.0
+        self.max_lateral_acceleration = 6.5
 
         self.start_x = None
         self.start_y = None
@@ -127,7 +127,7 @@ class DroneOffboardNode(Node):
         self.raio_de_aceitacao = 5.0                # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
-        self.angulo_curva_forte = math.radians(45)
+        self.angulo_curva_forte = math.radians(35)
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -484,12 +484,12 @@ class DroneOffboardNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def comando_exit(self):
-        self.get_logger().info("Encerrando a missão em 2s... Iniciando pouso!")
+        self.get_logger().info("Encerrando a missão em 2.5s... Iniciando pouso!")
         
         # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(2)
+        time.sleep(2.5)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
