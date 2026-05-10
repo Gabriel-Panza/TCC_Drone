@@ -98,9 +98,12 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 1.0
+        self.avoid_side_lock_count = 0
+        self.avoid_side_lock_frames = 10
         self.avoidance_smooth_alpha = 0.55
         self.avoidance_max_lateral_speed = 6.0
         self.avoidance_max_brake = 0.35
+        self.avoidance_trigger_risk = 0.08
         self.raio_finalizacao = 1.5
         self.raio_desativa_evasao_final = 4.0
         self.max_lateral_acceleration = 8.0
@@ -361,7 +364,7 @@ class DroneOffboardNode(Node):
             not (is_ultimo_wp and distancia < self.raio_desativa_evasao_final)
         )
 
-        if evasao_habilitada and self.obstacle_risk > 0.02:
+        if evasao_habilitada and self.obstacle_risk > self.avoidance_trigger_risk:
             brake_scale = max(0.55, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
@@ -570,6 +573,23 @@ class DroneOffboardNode(Node):
         if abs(self.avoid_lateral_body) > 0.05:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
+    def escolher_lado_evasao(self, preferred_side, risk):
+        """
+        Mantem o mesmo lado por alguns frames para evitar zigue-zague nervoso.
+        """
+
+        if risk < self.avoidance_trigger_risk:
+            self.avoid_side_lock_count = max(0, self.avoid_side_lock_count - 1)
+            return preferred_side
+
+        if self.avoid_side_lock_count > 0:
+            self.avoid_side_lock_count -= 1
+            return self.avoid_side_memory
+
+        self.avoid_side_memory = preferred_side
+        self.avoid_side_lock_count = self.avoid_side_lock_frames
+        return preferred_side
+
     def calcular_risco_aparente_central(self, gray, valid_mask, debug):
         """
         Detecta obstaculo visual no corredor central mesmo quando o fluxo e pequeno.
@@ -598,16 +618,17 @@ class DroneOffboardNode(Node):
         left_density = densidade(lx1, lx2)
         right_density = densidade(rx1, rx2)
 
-        risk = float(np.clip((central_density - 0.018) / 0.075, 0.0, 1.0))
+        risk = float(np.clip((central_density - 0.040) / 0.060, 0.0, 1.0))
         if risk <= 0.0:
             return 0.0, 0.0
 
         if abs(left_density - right_density) < 0.006:
-            side = self.avoid_side_memory
+            preferred_side = self.avoid_side_memory
         else:
-            side = 1.0 if left_density > right_density else -1.0
+            preferred_side = 1.0 if left_density > right_density else -1.0
 
-        lateral_body = side * max(1.2, self.avoidance_max_lateral_speed * risk)
+        side = self.escolher_lado_evasao(preferred_side, risk)
+        lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
         cv2.rectangle(debug, (cx1, y1), (cx2, y2), (0, 165, 255), 2)
         cv2.putText(
             debug,
@@ -707,29 +728,30 @@ class DroneOffboardNode(Node):
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
         # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
-        inverse_depth_score = np.clip((radial_flow - 0.10) / 5.0, 0.0, 1.0)
+        inverse_depth_score = np.clip((radial_flow - 0.35) / 4.5, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
-        active = point_risk > 0.015
-        if np.count_nonzero(active) < 5:
+        active = point_risk > 0.04
+        if np.count_nonzero(active) < 6:
             risk = 0.0
             lateral_body = 0.0
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 80) * 2.4, 0.0, 1.0))
+            risk = float(np.clip(np.percentile(active_risk, 80) * 2.8, 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
             balance = (right - left) / (right + left + 1e-6)
 
             if abs(balance) < 0.15:
-                side = self.avoid_side_memory
+                preferred_side = self.avoid_side_memory
             else:
-                side = -math.copysign(1.0, balance)
+                preferred_side = -math.copysign(1.0, balance)
 
-            lateral_body = side * max(1.2, self.avoidance_max_lateral_speed * risk)
+            side = self.escolher_lado_evasao(preferred_side, risk)
+            lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
 
             for p0, p1, r in zip(old[active], active_points, active_risk):
                 color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
@@ -847,13 +869,13 @@ class DroneOffboardNode(Node):
                 mascara_alpha = cv_image[:, :, 3]
             
             # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
-            debug_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+            visao_de_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
-            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            cv2.imshow("Detecção Reativa (Fluxo Optico)", visao_de_evasao)
             cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
-            cv2.imshow("Evasao Reativa (Fluxo Optico)", debug_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
