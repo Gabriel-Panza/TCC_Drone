@@ -103,6 +103,10 @@ class DroneOffboardNode(Node):
         self.raio_finalizacao = 2.5
         self.raio_desativa_evasao_final = 7.5
         self.evasao_visual_ativa = True
+        self.janelas_opencv_configuradas = False
+        self.janela_geometria = "Visao do Drone Original com a Geometria do Warping"
+        self.janela_mascara = "Mascara Alpha (Branco = Pixel Valido)"
+        self.janela_evasao = "Deteccao Reativa (Fluxo Optico)"
         self.max_lateral_acceleration = 6.5
 
         self.start_x = None
@@ -538,6 +542,31 @@ class DroneOffboardNode(Node):
         
         return canvas
 
+    def configurar_janelas_opencv(self):
+        """
+        Organiza as janelas do OpenCV em mosaico para gravacao/monitoramento.
+
+        Layout pensado para monitor 1920x1080:
+        - janela principal grande no lado esquerdo;
+        - mascara e deteccao empilhadas no lado direito.
+        """
+
+        if self.janelas_opencv_configuradas:
+            return
+
+        layout = {
+            self.janela_geometria: (0, 0, 1280, 960),
+            self.janela_mascara: (1280, 0, 640, 480),
+            self.janela_evasao: (1280, 500, 640, 480),
+        }
+
+        for nome, (x, y, largura, altura) in layout.items():
+            cv2.namedWindow(nome, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(nome, largura, altura)
+            cv2.moveWindow(nome, x, y)
+
+        self.janelas_opencv_configuradas = True
+
     def detectar_pontos_evasao(self, gray, valid_mask):
         """
         Detecta pontos em bordas/cantos dentro da regiao valida da imagem estabilizada.
@@ -810,11 +839,13 @@ class DroneOffboardNode(Node):
                     1
                 )
             
+            self.configurar_janelas_opencv()
+
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
-            cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
+            cv2.imshow(self.janela_geometria, img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
-            cv2.imshow("Detecção Reativa (Fluxo Optico)", visao_da_evasao)
+            cv2.imshow(self.janela_mascara, mascara_alpha)
+            cv2.imshow(self.janela_evasao, visao_da_evasao)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
