@@ -546,7 +546,7 @@ class DroneOffboardNode(Node):
         """
         Organiza as janelas do OpenCV em mosaico para gravacao/monitoramento.
 
-        Layout pensado para monitor 1920x1080:
+        Layout conservador para caber em telas 16:9 com area util menor que 1920x1080:
         - janela principal grande no lado esquerdo;
         - mascara e deteccao empilhadas no lado direito.
         """
@@ -555,15 +555,16 @@ class DroneOffboardNode(Node):
             return
 
         layout = {
-            self.janela_geometria: (0, 0, 1280, 960),
-            self.janela_mascara: (1280, 0, 640, 480),
-            self.janela_evasao: (1280, 500, 640, 480),
+            self.janela_geometria: (10, 20, 1020, 760),
+            self.janela_mascara: (1060, 20, 620, 360),
+            self.janela_evasao: (1060, 420, 620, 360),
         }
 
         for nome, (x, y, largura, altura) in layout.items():
             cv2.namedWindow(nome, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(nome, largura, altura)
             cv2.moveWindow(nome, x, y)
+            cv2.setWindowProperty(nome, cv2.WND_PROP_TOPMOST, 1)
 
         self.janelas_opencv_configuradas = True
 
