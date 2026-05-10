@@ -5,8 +5,7 @@ import math
 import cv2
 from cv_bridge import CvBridge
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import QoSProfile, qos_profile_sensor_data, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
 
@@ -123,8 +122,8 @@ class DroneOffboardNode(Node):
         self.missao_concluida = False
         self.encerrando = False
         
-        self.velocidade_maxima = 12.0               # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 5.0                # Raio de aceitação para mudar de waypoint
+        self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
+        self.raio_de_aceitacao = 5.0     # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
         self.angulo_curva_forte = math.radians(30)
@@ -178,7 +177,7 @@ class DroneOffboardNode(Node):
         gerar os setpoints de velocidade, posição vertical e yaw. Quando a missão termina,
         uma thread separada executa o procedimento de encerramento para não bloquear o timer.
         
-        A Fonte: 
+        Fontes:
         [PX4 ROS 2 Offboard Control Example] https://docs.px4.io/main/en/ros2/offboard_control
         [PX4 OffboardControlMode] https://docs.px4.io/main/en/msg_docs/OffboardControlMode
         [ROS 2 Node Timers] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
@@ -269,6 +268,9 @@ class DroneOffboardNode(Node):
         pelo eixo z, e velocity = [vx, vy, NaN], usando velocidade horizontal como comando
         principal. No PX4, valores NaN indicam campos não comandados; valores não-NaN de
         velocidade podem atuar como feedforward ou setpoint conforme a combinação enviada.
+
+        Os comandos laterais de evasão são aplicados no referencial do corpo do drone:
+        avoid_lateral_body positivo desloca o drone para a direita.
         
         Fontes:
         [PX4 Offboard Mode - TrajectorySetpoint] https://docs.px4.io/main/en/flight_modes/offboard
@@ -280,7 +282,6 @@ class DroneOffboardNode(Node):
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
-        # Calcula a distância Euclidiana até o alvo
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
         pos_z = target_z - self.current_z
@@ -293,7 +294,7 @@ class DroneOffboardNode(Node):
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
         distancia_corte = self.raio_finalizacao if is_ultimo_wp else self.raio_de_aceitacao
 
-        # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
+        # ---- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ----
         velocidade_maxima_atual = self.velocidade_maxima
 
         if not is_ultimo_wp:
@@ -309,13 +310,11 @@ class DroneOffboardNode(Node):
                     min(velocidade_segura_curva, 6.0)
                 )
 
-                # Quanto mais perto do waypoint, mais reduz a velocidade
                 t = (distancia - self.raio_de_aceitacao) / (
                     self.zona_frenagem_curva - self.raio_de_aceitacao
                 )
                 t = max(0.0, min(1.0, t))
 
-                # Smoothstep: transição suave, sem queda brusca de velocidade
                 t = t * t * (3.0 - 2.0 * t)
 
                 velocidade_maxima_atual = (
@@ -323,7 +322,7 @@ class DroneOffboardNode(Node):
                     (self.velocidade_maxima - velocidade_segura_curva) * t
                 )
 
-        # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
+        # ---- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ----
         if distancia > distancia_corte:
             if is_ultimo_wp:
                 dist_inicio_frenagem = velocidade_maxima_atual * 1.2
@@ -342,7 +341,6 @@ class DroneOffboardNode(Node):
 
                 velocidade_dinamica = velocidade_minima + (velocidade_maxima_atual - velocidade_minima) * proporcao
 
-            # Normalização do vetor de velocidade
             vx = (pos_x / distancia) * velocidade_dinamica
             vy = (pos_y / distancia) * velocidade_dinamica
             
@@ -355,7 +353,7 @@ class DroneOffboardNode(Node):
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
 
-        # --- EVASAO REATIVA POR VISAO ---
+        # ---- EVASAO REATIVA POR VISAO ----
         evasao_habilitada = (
             not self.missao_concluida and
             not (is_ultimo_wp and distancia <= self.raio_desativa_evasao_final)
@@ -372,7 +370,6 @@ class DroneOffboardNode(Node):
             vx *= brake_scale
             vy *= brake_scale
 
-            # avoid_lateral_body > 0 significa desvio para a direita do drone.
             right_x = -math.sin(self.current_yaw)
             right_y = math.cos(self.current_yaw)
             vx += right_x * self.avoid_lateral_body
@@ -384,7 +381,7 @@ class DroneOffboardNode(Node):
                 vx *= escala
                 vy *= escala
 
-        # --- LIMITAÇÃO DE ACELERAÇÃO LATERAL ---
+        # ---- LIMITAÇÃO DE ACELERAÇÃO LATERAL ----
         accel_x = (vx - self.smooth_vx) / (self.dt * 4)
         accel_y = (vy - self.smooth_vy) / (self.dt * 4)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
@@ -393,17 +390,17 @@ class DroneOffboardNode(Node):
             vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
             vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
 
-        # --- FILTRAGEM DE VELOCIDADE ---
+        # ---- FILTRAGEM DE VELOCIDADE ----
         self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
         self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
-        # --- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ---
+        # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
         if self.smooth_yaw is None or self.smooth_yaw == 0.0:
             self.smooth_yaw = self.current_yaw
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.75 if abs(erro_yaw) > 0.75 else 1.2)  # Aumentado para resposta mais rápida
+        yaw_gain = self.yaw_smooth_alpha * (0.75 if abs(erro_yaw) > 0.75 else 1.2)
         self.smooth_yaw += (erro_yaw * yaw_gain)
 
         msg = TrajectorySetpoint()
@@ -437,7 +434,6 @@ class DroneOffboardNode(Node):
         
         distancia_atual = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
         
-        # Se próximo waypoint existe e estamos próximos do atual, mira no próximo
         if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 4.0:
             next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
             yaw_next = math.atan2(next_wp[1] - self.current_y, next_wp[0] - self.current_x)
@@ -449,6 +445,17 @@ class DroneOffboardNode(Node):
             return math.atan2(target_y - self.current_y, target_x - self.current_x)
 
     def publish_offboard_control_mode(self):
+        """
+        Publica o modo de controle Offboard usado pelo PX4 nesta missão.
+
+        A combinação atual habilita setpoints de posição e velocidade, mantendo aceleração,
+        atitude e body rate desabilitados.
+
+        Fontes:
+        [PX4 OffboardControlMode] https://docs.px4.io/main/en/msg_docs/OffboardControlMode
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        """
+
         msg = OffboardControlMode()
         msg.position = True
         msg.velocity = True
@@ -459,18 +466,53 @@ class DroneOffboardNode(Node):
         self.offboard_control_mode_publisher.publish(msg)
 
     def arm(self):
+        """
+        Envia o comando MAVLink/PX4 para armar o drone.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [MAVLink MAV_CMD_COMPONENT_ARM_DISARM] https://mavlink.io/en/messages/common.html#MAV_CMD_COMPONENT_ARM_DISARM
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
         self.get_logger().info('Rotores ligados.')
 
     def engage_offboard_mode(self):
+        """
+        Solicita ao PX4 a entrada no modo Offboard antes do envio contínuo dos setpoints.
+
+        Fontes:
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        [MAVLink MAV_CMD_DO_SET_MODE] https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_MODE
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
         self.get_logger().info('Modo Feedforward (Posição + Velocidade) Ativado.')
 
     def force_disarm(self):
+        """
+        Envia o comando de desarme forçado usado no encerramento da missão.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [MAVLink MAV_CMD_COMPONENT_ARM_DISARM] https://mavlink.io/en/messages/common.html#MAV_CMD_COMPONENT_ARM_DISARM
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=0.0, param2=21196.0)
         self.get_logger().info('CORTANDO MOTORES...')
 
     def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
+        """
+        Monta e publica uma mensagem VehicleCommand para o PX4.
+
+        Os campos de sistema/componente seguem o padrão do exemplo Offboard em ROS 2,
+        com from_external=True para indicar origem externa ao autopiloto.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [PX4 ROS 2 Offboard Control] https://docs.px4.io/main/en/ros2/offboard_control
+        """
+
         msg = VehicleCommand()
         msg.command = command
         msg.param1 = float(param1)
@@ -484,9 +526,19 @@ class DroneOffboardNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def comando_exit(self):
+        """
+        Executa o encerramento da missão fora do timer principal.
+
+        O waypoint final é ajustado para o nível do chão, aguarda-se uma breve estabilização
+        e então é enviado o desarme forçado antes de finalizar o processo.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [Python threading] https://docs.python.org/3/library/threading.html
+        """
+
         self.get_logger().info("Encerrando a missão em 2.5s... Iniciando pouso!")
         
-        # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
         time.sleep(2.5)
@@ -516,13 +568,11 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
-        # Criamos uma cópia da imagem original para servir de fundo
         canvas = cv2.resize(frame_original, (0, 0), fx=1, fy=1)
         cantos_saida = np.array([
             [0, 0], [largura_out, 0], [largura_out, altura_out], [0, altura_out]
         ], dtype='float32').reshape(-1, 1, 2)
 
-        # Aplicamos a Homografia para saber onde esses pontos de 640x480 "moram" dentro da imagem original de 1280x960
         H_inv = np.linalg.inv(H)
         cantos_na_origem = cv2.perspectiveTransform(cantos_saida, H_inv).reshape(-1, 2)
 
@@ -544,6 +594,11 @@ class DroneOffboardNode(Node):
 
         A ideia vem de VO semi-denso/edge-based: nao reconstruimos a cena inteira,
         apenas rastreamos pontos visuais bons o suficiente para estimar risco local.
+
+        Fontes:
+        [OpenCV goodFeaturesToTrack] https://docs.opencv.org/4.x/dd/d1a/group__imgproc__feature.html
+        [OpenCV Canny] https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.html
+        [Artigo] Realtime Edge-Based Visual Odometry for a Monocular Camera
         """
 
         altura, largura = gray.shape
@@ -566,7 +621,16 @@ class DroneOffboardNode(Node):
         )
 
     def suavizar_comando_evasao(self, risk, lateral_body, brake):
-        """Aplica filtro passa-baixa para evitar comandos bruscos vindos da visao."""
+        """
+        Aplica filtro passa-baixa aos comandos reativos gerados pela visao.
+
+        A suavizacao reduz oscilacoes entre frames consecutivos sem alterar a direcao
+        geral estimada pela evasao visual.
+
+        Fontes:
+        [OpenCV Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        """
 
         alpha = self.velocity_smooth_alpha
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
@@ -584,6 +648,12 @@ class DroneOffboardNode(Node):
         principio de profundidade inversa: durante o movimento, pontos mais
         proximos tendem a produzir fluxo radial maior na imagem. O resultado
         alimenta um campo repulsivo simples, nao um mapa 3D completo.
+
+        Fontes:
+        [OpenCV Lucas-Kanade Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [Artigo] Monocular Event-Based Vision for Obstacle Avoidance with a Quadrotor
+        [Artigo] Towards Real-Time Monocular Depth Estimation for Robotics: A Survey
+        [Artigo] Outdoor Monocular Depth Estimation: A Research Review
         """
 
         frame_bgr = imagem_estabilizada[:, :, :3]
@@ -657,7 +727,6 @@ class DroneOffboardNode(Node):
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
         inverse_depth_score = np.clip((radial_flow - 0.25) / 8.0, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
@@ -717,9 +786,9 @@ class DroneOffboardNode(Node):
         matrizes de rotação 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
         houvesse um gimbal virtual compensando a inclinação física do drone.
         
-        A função exibe três janelas principais: a imagem original com a geometria do warping,
-        a imagem estabilizada e a máscara alpha que indica quais pixels de saída ainda possuem
-        correspondência válida na imagem de entrada.
+        A função também atualiza as janelas de depuração visual usadas durante os testes:
+        a imagem original com a geometria do warping e a visualização da evasão reativa.
+        O waitKey(1) é mantido para permitir que o OpenCV atualize as janelas a cada frame.
         
         Importante: esta estabilização reduz a tremedeira visual da câmera, mas não corrige a
         dinâmica física do voo. A redução do chacoalho do drone é tratada na navegação por
@@ -741,23 +810,20 @@ class DroneOffboardNode(Node):
         # Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
         
         try:
-            # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F') * 255
             cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
-            # --- ESTABILIZAÇÃO DA IMAGEM (IMU) ---
+            # ---- ESTABILIZAÇÃO DA IMAGEM (IMU) ----
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
                 theta_x = self.current_pitch 
                 theta_z = self.current_roll  
                 
-                # Matriz de rotação em X (Compensa o nariz subindo/descendo)
                 Rx = np.array([
                     [1, 0, 0],
                     [0, math.cos(theta_x), -math.sin(theta_x)],
                     [0, math.sin(theta_x), math.cos(theta_x)]
                 ])
                 
-                # Matriz de rotação em Z (Compensa a inclinação lateral)
                 Rz = np.array([
                     [math.cos(theta_z), -math.sin(theta_z), 0],
                     [math.sin(theta_z), math.cos(theta_z), 0],
@@ -774,10 +840,8 @@ class DroneOffboardNode(Node):
                 ])
                 K_inv = np.linalg.inv(self.K)
 
-                # Calcula a Homografia
                 H = K_zoom @ R @ K_inv 
                 
-                # Gerar o Plot da visualização compensada em tempo real
                 img_geometria = self.desenhar_telemetria_geometria(cv_image, H)
 
                 imagem_estabilizada = cv2.warpPerspective(
@@ -793,7 +857,7 @@ class DroneOffboardNode(Node):
                 imagem_estabilizada = cv_image
                 mascara_alpha = cv_image[:, :, 3]
             
-            # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
+            # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
             if self.evasao_visual_ativa:
                 visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
             else:
@@ -804,8 +868,8 @@ class DroneOffboardNode(Node):
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visao do Drone Original com a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
+            #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
@@ -834,14 +898,12 @@ class DroneOffboardNode(Node):
         
         w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
         
-        # Fórmula de conversão para Roll
         sinr_cosp = 2.0 * (w * x + y * z)
         cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
         self.current_roll = math.atan2(sinr_cosp, cosr_cosp)
 
-        # Fórmula de conversão para Pitch
         sinp = 2.0 * (w * y - z * x)
         if abs(sinp) >= 1:
-            self.current_pitch = math.copysign(math.pi / 2.0, sinp) # Trava em 90 graus
+            self.current_pitch = math.copysign(math.pi / 2.0, sinp)
         else:
             self.current_pitch = math.asin(sinp)
