@@ -719,10 +719,13 @@ class DroneOffboardNode(Node):
         new = new[valid_pixels]
 
         flow = new - old
+        # Remove movimento global da imagem. Em alta velocidade/yaw, a floresta inteira
+        # pode gerar fluxo alto; proximidade deve aparecer como expansao acima do fundo.
+        flow_rel = flow - np.median(flow, axis=0)
         radial = new - np.array([[cx, cy]])
         radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
         radial_unit = radial / radial_norm[:, None]
-        radial_flow = np.sum(flow * radial_unit, axis=1)
+        radial_flow = np.sum(flow_rel * radial_unit, axis=1)
 
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
         central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.65), 1.0)
@@ -731,8 +734,10 @@ class DroneOffboardNode(Node):
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
-        inverse_depth_score = np.clip((radial_flow - 1.25) / 3.0, 0.0, 1.0)
+        # Proxy de profundidade inversa: expansao radial acima do movimento de fundo.
+        background_expansion = max(0.0, float(np.percentile(radial_flow, 65)))
+        excess_radial = radial_flow - background_expansion
+        inverse_depth_score = np.clip((excess_radial - 0.65) / 2.2, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
