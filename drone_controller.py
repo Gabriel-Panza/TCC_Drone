@@ -100,7 +100,9 @@ class DroneOffboardNode(Node):
         self.avoid_side_memory = 1.0
         self.avoidance_smooth_alpha = 0.3
         self.avoidance_max_lateral_speed = 3.0
-        self.avoidance_max_brake = 0.7
+        self.avoidance_max_brake = 0.25
+        self.raio_finalizacao = 1.2
+        self.raio_desativa_evasao_final = 4.0
 
         self.start_x = None
         self.start_y = None
@@ -290,7 +292,7 @@ class DroneOffboardNode(Node):
             self.smooth_yaw = self.current_yaw
         
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
-        distancia_corte = 0.3 if is_ultimo_wp else self.raio_de_aceitacao
+        distancia_corte = self.raio_finalizacao if is_ultimo_wp else self.raio_de_aceitacao
 
         # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
         velocidade_maxima_atual = self.velocidade_maxima
@@ -355,8 +357,13 @@ class DroneOffboardNode(Node):
                     self.missao_concluida = True
 
         # --- EVASAO REATIVA POR VISAO ---
-        if self.obstacle_risk > 0.04:
-            brake_scale = max(0.25, 1.0 - self.avoid_brake)
+        evasao_habilitada = (
+            not self.missao_concluida and
+            not (is_ultimo_wp and distancia < self.raio_desativa_evasao_final)
+        )
+
+        if evasao_habilitada and self.obstacle_risk > 0.04:
+            brake_scale = max(0.70, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
 
@@ -472,12 +479,12 @@ class DroneOffboardNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def comando_exit(self):
-        self.get_logger().info("Encerrando a missão em 5s... Iniciando pouso!")
+        self.get_logger().info("Encerrando a missão em 2s... Iniciando pouso!")
         
         # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(5)
+        time.sleep(2)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
