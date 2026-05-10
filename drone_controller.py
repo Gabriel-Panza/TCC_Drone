@@ -104,6 +104,9 @@ class DroneOffboardNode(Node):
         self.avoidance_max_lateral_speed = 6.0
         self.avoidance_max_brake = 0.35
         self.avoidance_trigger_risk = 0.22
+        self.close_object_min_width_ratio = 0.08
+        self.close_object_min_height_ratio = 0.25
+        self.close_object_min_area_ratio = 0.025
         self.raio_finalizacao = 1.5
         self.raio_desativa_evasao_final = 4.0
         self.max_lateral_acceleration = 8.0
@@ -649,6 +652,81 @@ class DroneOffboardNode(Node):
 
         return risk, lateral_body
 
+    def detectar_objeto_proximo_central(self, gray, valid_mask, debug):
+        """
+        Libera evasao apenas quando ha um objeto grande no corredor frontal.
+
+        Esse portao evita reagir a arvores finas/longe ou textura densa da floresta.
+        Para contar como proximo, o componente precisa ocupar largura, altura e area
+        minimas na imagem estabilizada.
+        """
+
+        altura, largura = gray.shape
+        x1, x2 = int(largura * 0.28), int(largura * 0.72)
+        y1, y2 = int(altura * 0.16), int(altura * 0.92)
+
+        roi_gray = gray[y1:y2, x1:x2]
+        roi_valid = valid_mask[y1:y2, x1:x2]
+        if cv2.countNonZero(roi_valid) < 1000:
+            return False, 0.0, self.avoid_side_memory
+
+        blur = cv2.GaussianBlur(roi_gray, (5, 5), 0)
+        valid_values = blur[roi_valid > 0]
+        dark_limit = min(120.0, float(np.percentile(valid_values, 35)))
+        dark_mask = ((blur < dark_limit) & (roi_valid > 0)).astype(np.uint8) * 255
+
+        edges = cv2.Canny(roi_gray, 60, 150)
+        edges = cv2.bitwise_and(edges, roi_valid)
+
+        objeto_mask = cv2.bitwise_or(dark_mask, cv2.dilate(edges, None, iterations=1))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 17))
+        objeto_mask = cv2.morphologyEx(objeto_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        objeto_mask = cv2.morphologyEx(objeto_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(objeto_mask, 8)
+        roi_area = max((x2 - x1) * (y2 - y1), 1)
+
+        best_score = 0.0
+        best_side = self.avoid_side_memory
+        best_rect = None
+
+        for label in range(1, num_labels):
+            comp_x, comp_y, comp_w, comp_h, comp_area = stats[label]
+            width_ratio = comp_w / largura
+            height_ratio = comp_h / altura
+            area_ratio = comp_area / roi_area
+
+            if (
+                width_ratio < self.close_object_min_width_ratio or
+                height_ratio < self.close_object_min_height_ratio or
+                area_ratio < self.close_object_min_area_ratio
+            ):
+                continue
+
+            score = min(1.0, max(width_ratio / 0.18, height_ratio / 0.55, area_ratio / 0.12))
+            if score > best_score:
+                center_x = x1 + centroids[label][0]
+                best_score = score
+                best_side = 1.0 if center_x < (largura * 0.5) else -1.0
+                best_rect = (x1 + comp_x, y1 + comp_y, comp_w, comp_h)
+
+        if best_rect is not None:
+            bx, by, bw, bh = best_rect
+            cv2.rectangle(debug, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+            cv2.putText(
+                debug,
+                f"objeto_proximo={best_score:.2f}",
+                (bx, max(20, by - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                1
+            )
+            return True, best_score, best_side
+
+        cv2.rectangle(debug, (x1, y1), (x2, y2), (80, 80, 80), 1)
+        return False, 0.0, self.avoid_side_memory
+
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
         """
         Estima risco de colisao por fluxo optico e profundidade inversa relativa.
@@ -675,6 +753,7 @@ class DroneOffboardNode(Node):
             1
         )
         apparent_risk, apparent_lateral = self.calcular_risco_aparente_central(gray, valid_mask, debug)
+        objeto_proximo, objeto_score, objeto_side = self.detectar_objeto_proximo_central(gray, valid_mask, debug)
 
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
@@ -766,15 +845,24 @@ class DroneOffboardNode(Node):
                 color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
                 cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
 
-        if risk > self.avoidance_trigger_risk:
+        if not objeto_proximo:
+            risk = 0.0
+            lateral_body = 0.0
+        elif risk > self.avoidance_trigger_risk:
+            if objeto_score > risk:
+                risk = objeto_score
+                side = self.escolher_lado_evasao(objeto_side, risk)
+                lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
+
             # Bordas centrais ajudam a escolher o lado, mas nao ativam desvio sozinhas.
             if apparent_risk > 0.15 and abs(apparent_lateral) > abs(lateral_body):
                 side = self.escolher_lado_evasao(math.copysign(1.0, apparent_lateral), risk)
                 risk = max(risk, min(1.0, apparent_risk * 0.35))
                 lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
         else:
-            risk = 0.0
-            lateral_body = 0.0
+            risk = objeto_score
+            side = self.escolher_lado_evasao(objeto_side, risk)
+            lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
 
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
         self.suavizar_comando_evasao(risk, lateral_body, brake)
