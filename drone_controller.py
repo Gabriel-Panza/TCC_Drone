@@ -627,7 +627,7 @@ class DroneOffboardNode(Node):
         else:
             preferred_side = 1.0 if left_density > right_density else -1.0
 
-        side = self.escolher_lado_evasao(preferred_side, risk)
+        side = preferred_side
         lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
         cv2.rectangle(debug, (cx1, y1), (cx2, y2), (0, 165, 255), 2)
         cv2.putText(
@@ -672,8 +672,7 @@ class DroneOffboardNode(Node):
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            brake = min(self.avoidance_max_brake, apparent_risk * self.avoidance_max_brake)
-            self.suavizar_comando_evasao(apparent_risk, apparent_lateral, brake)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
             return debug
 
         next_points, status, _ = cv2.calcOpticalFlowPyrLK(
@@ -689,8 +688,7 @@ class DroneOffboardNode(Node):
         if next_points is None or status is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            brake = min(self.avoidance_max_brake, apparent_risk * self.avoidance_max_brake)
-            self.suavizar_comando_evasao(apparent_risk, apparent_lateral, brake)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
             return debug
 
         old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
@@ -706,8 +704,7 @@ class DroneOffboardNode(Node):
         if len(new) < 12:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            brake = min(self.avoidance_max_brake, apparent_risk * self.avoidance_max_brake)
-            self.suavizar_comando_evasao(apparent_risk, apparent_lateral, brake)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
             return debug
 
         valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
@@ -757,9 +754,15 @@ class DroneOffboardNode(Node):
                 color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
                 cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
 
-        if apparent_risk > risk or abs(apparent_lateral) > abs(lateral_body):
-            risk = max(risk, apparent_risk)
-            lateral_body = apparent_lateral if abs(apparent_lateral) > abs(lateral_body) else lateral_body
+        if risk > self.avoidance_trigger_risk:
+            # Bordas centrais ajudam a escolher o lado, mas nao ativam desvio sozinhas.
+            if apparent_risk > 0.15 and abs(apparent_lateral) > abs(lateral_body):
+                side = self.escolher_lado_evasao(math.copysign(1.0, apparent_lateral), risk)
+                risk = max(risk, min(1.0, apparent_risk * 0.35))
+                lateral_body = side * max(2.2, self.avoidance_max_lateral_speed * risk)
+        else:
+            risk = 0.0
+            lateral_body = 0.0
 
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
         self.suavizar_comando_evasao(risk, lateral_body, brake)
