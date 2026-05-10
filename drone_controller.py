@@ -101,6 +101,8 @@ class DroneOffboardNode(Node):
         self.avoidance_smooth_alpha = 0.25
         self.avoidance_max_brake = 0.3
         self.raio_finalizacao = 2.5
+        self.raio_desativa_evasao_final = 10.0
+        self.evasao_visual_ativa = True
         self.max_lateral_acceleration = 8.0
 
         self.start_x = None
@@ -356,8 +358,14 @@ class DroneOffboardNode(Node):
         # --- EVASAO REATIVA POR VISAO ---
         evasao_habilitada = (
             not self.missao_concluida and
-            not (is_ultimo_wp and distancia <= self.raio_de_aceitacao)
+            not (is_ultimo_wp and distancia <= self.raio_desativa_evasao_final)
         )
+        self.evasao_visual_ativa = evasao_habilitada
+
+        if not evasao_habilitada:
+            self.obstacle_risk = 0.0
+            self.avoid_lateral_body = 0.0
+            self.avoid_brake = 0.0
 
         if evasao_habilitada and self.obstacle_risk > 0.04:
             brake_scale = max(0.70, 1.0 - self.avoid_brake)
@@ -786,7 +794,21 @@ class DroneOffboardNode(Node):
                 mascara_alpha = cv_image[:, :, 3]
             
             # --- VISAO COMPUTACIONAL PARA DESVIO REATIVO ---
-            visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+            if self.evasao_visual_ativa:
+                visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+            else:
+                self.prev_gray_avoidance = None
+                self.prev_points_avoidance = None
+                visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
+                cv2.putText(
+                    visao_da_evasao,
+                    "EVASAO DESATIVADA NO WAYPOINT FINAL",
+                    (12, 24),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (0, 255, 255),
+                    1
+                )
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
