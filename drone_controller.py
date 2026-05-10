@@ -103,7 +103,7 @@ class DroneOffboardNode(Node):
         self.avoidance_smooth_alpha = 0.65
         self.avoidance_max_lateral_speed = 6.0
         self.avoidance_max_brake = 0.35
-        self.avoidance_trigger_risk = 0.07
+        self.avoidance_trigger_risk = 0.22
         self.raio_finalizacao = 1.5
         self.raio_desativa_evasao_final = 4.0
         self.max_lateral_acceleration = 8.0
@@ -565,6 +565,13 @@ class DroneOffboardNode(Node):
     def suavizar_comando_evasao(self, risk, lateral_body, brake):
         """Aplica filtro passa-baixa para evitar comandos bruscos vindos da visao."""
 
+        if risk <= 0.0:
+            self.obstacle_risk *= 0.25
+            self.avoid_lateral_body = 0.0
+            self.avoid_brake = 0.0
+            self.avoid_side_lock_count = max(0, self.avoid_side_lock_count - 1)
+            return
+
         alpha = self.avoidance_smooth_alpha
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
@@ -725,18 +732,18 @@ class DroneOffboardNode(Node):
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
         # Proxy de profundidade inversa: fluxo radial positivo e centralizado.
-        inverse_depth_score = np.clip((radial_flow - 0.35) / 4.5, 0.0, 1.0)
+        inverse_depth_score = np.clip((radial_flow - 1.25) / 3.0, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
-        active = point_risk > 0.04
-        if np.count_nonzero(active) < 6:
+        active = point_risk > 0.12
+        if np.count_nonzero(active) < 8:
             risk = 0.0
             lateral_body = 0.0
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 80) * 2.8, 0.0, 1.0))
+            risk = float(np.clip(np.percentile(active_risk, 85) * 2.4, 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
