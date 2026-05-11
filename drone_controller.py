@@ -537,11 +537,11 @@ class DroneOffboardNode(Node):
         [Python threading] https://docs.python.org/3/library/threading.html
         """
 
-        self.get_logger().info("Encerrando a missão em 2.5s... Iniciando pouso!")
+        self.get_logger().info("Encerrando a missão em 3s... Iniciando pouso!")
         
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(2.5)
+        time.sleep(3)
         self.force_disarm()
         time.sleep(1)
         os._exit(0)
