@@ -126,7 +126,7 @@ class DroneOffboardNode(Node):
         self.raio_de_aceitacao = 5.0     # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 6.0
-        self.angulo_curva_forte = math.radians(30)
+        self.angulo_curva_forte = math.radians(35)
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -603,7 +603,7 @@ class DroneOffboardNode(Node):
 
         altura, largura = gray.shape
         roi_mask = np.zeros_like(valid_mask)
-        roi_mask[int(altura * 0.18):int(altura * 0.90), int(largura * 0.08):int(largura * 0.92)] = 255
+        roi_mask[int(altura * 0.2):int(altura * 0.9), int(largura * 0.1):int(largura * 0.9)] = 255
         roi_mask = cv2.bitwise_and(roi_mask, valid_mask)
 
         edges = cv2.Canny(gray, 60, 160)
@@ -615,8 +615,8 @@ class DroneOffboardNode(Node):
             gray,
             maxCorners=180,
             qualityLevel=0.01,
-            minDistance=8,
-            blockSize=7,
+            minDistance=12,
+            blockSize=8,
             mask=feature_mask
         )
 
