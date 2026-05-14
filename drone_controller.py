@@ -752,7 +752,7 @@ class DroneOffboardNode(Node):
             lateral_body = side * self.max_lateral_acceleration * risk
 
             for p0, p1, r in zip(old[active], active_points, active_risk):
-                color = (0, 0, 255) if r > 0.25 else (0, 255, 255)
+                color = (0, 0, 255) if r > 0.5 else (0, 255, 255)
                 cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
 
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
