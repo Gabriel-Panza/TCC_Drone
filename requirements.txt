@@ -1,0 +1,11 @@
+# Uso sugerido em um WSL novo:
+#   python3 -m pip install -r requirements.txt
+
+numpy>=1.26,<2.0
+pandas>=2.2,<3.0
+plotly>=6.1,<7.0
+dash>=3.0,<4.0
+opencv-python>=4.9,<5.0
+nbformat>=5.10,<6.0
+ipykernel>=6.29,<7.0
+jupyterlab>=4.2,<5.0

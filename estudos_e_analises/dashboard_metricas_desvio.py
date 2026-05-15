@@ -221,13 +221,23 @@ def run_summary(df: pd.DataFrame) -> list[html.Div]:
 
 def apply_layout(fig: go.Figure, title: str, height: int = 420) -> go.Figure:
     fig.update_layout(
-        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=17)),
+        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=16)),
         template="plotly_white",
         paper_bgcolor=COLORS["panel"],
         plot_bgcolor=COLORS["panel"],
         height=height,
-        margin=dict(l=48, r=28, t=58, b=46),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=48, r=28, t=72, b=46),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=0.99,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=10),
+            bgcolor="rgba(255, 255, 255, 0.82)",
+            bordercolor="rgba(213, 221, 227, 0.72)",
+            borderwidth=1,
+        ),
         font=dict(family="Segoe UI, Arial, sans-serif", color=COLORS["ink"]),
         hovermode="closest",
     )
