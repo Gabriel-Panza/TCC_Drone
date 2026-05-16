@@ -1,13 +1,21 @@
 import os
 import time
+import csv
 import numpy as np
 import math
 import cv2
+from pathlib import Path
+from datetime import datetime
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, qos_profile_sensor_data, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
+
+try:
+    from px4_msgs.msg import SensorCombined
+except ImportError:
+    SensorCombined = None
 
 class DroneOffboardNode(Node):
     """
@@ -18,6 +26,8 @@ class DroneOffboardNode(Node):
     O nó publica mensagens de controle Offboard para o PX4, envia setpoints de trajetória
     pelo tópico /fmu/in/trajectory_setpoint, envia comandos de veículo pelo tópico
     /fmu/in/vehicle_command e recebe posição local, atitude e imagem da câmera simulada.
+    Opcionalmente, também recebe o mapa de profundidade renderizado pelo Gazebo apenas como
+    ground truth sintético para treino/validação, sem usá-lo como entrada da evasão visual.
     
     Também são configurados parâmetros de voo adaptativo, como velocidade máxima,
     raio de aceitação reduzido, zona de frenagem por curvatura, aceleração lateral máxima
@@ -30,6 +40,7 @@ class DroneOffboardNode(Node):
     [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
     [ROS 2 QoS] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
     [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+    [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
     ======================================================================================
     """
     
@@ -56,11 +67,66 @@ class DroneOffboardNode(Node):
         # Inicializa a ponte de conversão ROS -> OpenCV
         self.bridge = CvBridge()
 
+        self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
+        self.depth_gt_max_age_s = float(self.declare_parameter('ground_truth_depth_max_age_s', 0.08).value)
+        self.save_ground_truth_dataset = bool(self.declare_parameter('save_ground_truth_dataset', False).value)
+        self.ground_truth_dataset_dir = str(
+            self.declare_parameter(
+                'ground_truth_dataset_dir',
+                os.path.expanduser('~/TCC_Drone/datasets/depth_ground_truth')
+            ).value
+        )
+        self.ground_truth_save_every_n = max(
+            1,
+            int(self.declare_parameter('ground_truth_save_every_n', 5).value)
+        )
+        self.use_imu_raw = bool(self.declare_parameter('use_imu_raw', True).value)
+        self.imu_raw_topic = str(self.declare_parameter('imu_raw_topic', '/fmu/out/sensor_combined').value)
+
+        self.latest_depth_gt = None
+        self.latest_depth_gt_stamp_s = None
+        self.latest_depth_gt_encoding = ''
+        self.depth_gt_frames = 0
+        self.rgb_frames_seen = 0
+        self.depth_pairs_saved = 0
+        self.depth_gt_csv_file = None
+        self.depth_gt_csv_writer = None
+        self.depth_gt_rgb_dir = None
+        self.depth_gt_depth_dir = None
+        self.depth_gt_shape_warned = False
+
+        self.current_gyro_rad_s = np.zeros(3, dtype=float)
+        self.current_accel_m_s2 = np.zeros(3, dtype=float)
+        self.last_imu_timestamp_s = None
+
         self.camera_sub = self.create_subscription(
             Image, 
             '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image',
             self.image_callback, 
             qos_profile_sensor_data)
+
+        if self.depth_gt_topic:
+            self.depth_gt_sub = self.create_subscription(
+                Image,
+                self.depth_gt_topic,
+                self.depth_ground_truth_callback,
+                qos_profile_sensor_data)
+            self.get_logger().info(
+                f'Ground truth de profundidade habilitado em {self.depth_gt_topic}. '
+                'A navegacao continua usando somente a camera monocular RGB.'
+            )
+        else:
+            self.depth_gt_sub = None
+
+        if self.use_imu_raw and SensorCombined is not None:
+            self.imu_raw_sub = self.create_subscription(
+                SensorCombined,
+                self.imu_raw_topic,
+                self.imu_raw_callback,
+                qos_profile_sensor_data)
+            self.get_logger().info(f'IMU bruto habilitado em {self.imu_raw_topic}.')
+        else:
+            self.imu_raw_sub = None
         
         # --- MATRIZ INTRÍNSECA DA CÂMERA (K) ---
         fov_rad = 1.74
@@ -546,6 +612,304 @@ class DroneOffboardNode(Node):
         time.sleep(1)
         os._exit(0)
 
+    def image_timestamp_s(self, msg):
+        """
+        ==================================================================================
+        Retorna o timestamp ROS de uma mensagem de imagem em segundos.
+
+        A funcao usa preferencialmente o campo header.stamp preenchido pelo ROS/Gazebo
+        Bridge. Quando esse campo nao esta disponivel, ou vem zerado, usa o relogio local
+        do no como fallback para permitir sincronizacao aproximada em testes de bancada.
+
+        Esse timestamp e usado para parear a imagem RGB monocular com o mapa de profundidade
+        sintetico do Gazebo. O pareamento serve apenas para montar dataset e visualizacao de
+        ground truth; a evasao reativa continua usando a imagem monocular estabilizada.
+
+        Fontes:
+        [sensor_msgs/Image] https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
+        [ROS 2 Clock] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Time.html
+        ==================================================================================
+        """
+
+        stamp = getattr(getattr(msg, 'header', None), 'stamp', None)
+        if stamp is not None and (stamp.sec != 0 or stamp.nanosec != 0):
+            return stamp.sec + stamp.nanosec * 1e-9
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def converter_depth_gt_para_metros(self, msg):
+        """
+        ==================================================================================
+        Converte a imagem de profundidade do Gazebo para matriz float32 em metros.
+
+        O Gazebo/bridge pode entregar o depth como float, normalmente ja em metros, ou como
+        uint16, frequentemente em milimetros. A funcao normaliza esses formatos para uma
+        matriz NumPy float32, remove valores nao finitos e preserva zeros como pixels sem
+        profundidade valida.
+
+        O resultado e tratado como ground truth sintetico do simulador. Ele pode ser salvo
+        junto da imagem RGB para treino offline, mas nao e usado diretamente pela logica de
+        navegacao ou pela evasao visual em tempo real.
+
+        Fontes:
+        [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
+        [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+        [NumPy astype] https://numpy.org/doc/stable/reference/generated/numpy.ndarray.astype.html
+        ==================================================================================
+        """
+
+        depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        depth = np.asarray(depth)
+
+        if depth.ndim == 3:
+            depth = depth[:, :, 0]
+
+        if depth.dtype == np.uint16:
+            depth_m = depth.astype(np.float32) / 1000.0
+        else:
+            depth_m = depth.astype(np.float32)
+
+        depth_m[~np.isfinite(depth_m)] = 0.0
+        return depth_m
+
+    def depth_ground_truth_callback(self, msg):
+        """
+        ==================================================================================
+        Recebe e armazena o ultimo mapa de profundidade sintetico publicado pelo Gazebo.
+
+        A funcao converte a mensagem ROS Image para profundidade em metros, guarda o
+        timestamp correspondente e registra estatisticas basicas no primeiro frame recebido.
+        A sincronizacao efetiva com o RGB acontece em image_callback(), mantendo a imagem
+        monocular como referencia principal de cada amostra do dataset.
+
+        Importante: este callback nao injeta profundidade no controlador. O depth existe
+        apenas como ground truth externo para validacao, treinamento supervisionado e
+        depuracao visual do que o simulador renderizou.
+
+        Fontes:
+        [Gazebo DepthCameraSensor] https://gazebosim.org/api/sensors/7/classgz_1_1sensors_1_1DepthCameraSensor.html
+        [ROS 2 QoS sensor data] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
+        [NumPy min] https://numpy.org/doc/stable/reference/generated/numpy.min.html
+        ==================================================================================
+        """
+
+        try:
+            self.latest_depth_gt = self.converter_depth_gt_para_metros(msg)
+            self.latest_depth_gt_stamp_s = self.image_timestamp_s(msg)
+            self.latest_depth_gt_encoding = msg.encoding
+            self.depth_gt_frames += 1
+
+            if self.depth_gt_frames == 1:
+                valid = self.latest_depth_gt[self.latest_depth_gt > 0.0]
+                if valid.size > 0:
+                    self.get_logger().info(
+                        f'Primeiro depth GT recebido: {self.latest_depth_gt.shape}, '
+                        f'encoding={msg.encoding}, min={float(np.min(valid)):.2f}m, '
+                        f'max={float(np.max(valid)):.2f}m.'
+                    )
+                else:
+                    self.get_logger().info(
+                        f'Primeiro depth GT recebido: {self.latest_depth_gt.shape}, '
+                        f'encoding={msg.encoding}, sem pixels validos positivos.'
+                    )
+        except Exception as e:
+            self.get_logger().error(f'Erro ao converter ground truth de profundidade: {e}')
+
+    def imu_raw_callback(self, msg):
+        """
+        ==================================================================================
+        Guarda as leituras brutas de giroscopio e acelerometro publicadas pelo PX4.
+
+        A mensagem SensorCombined fornece velocidade angular em rad/s e aceleracao linear
+        em m/s^2. Esses valores ficam disponiveis para analise, compensacao visual futura e
+        registro no dataset de ground truth, junto da imagem RGB monocular e do depth
+        sintetico do Gazebo.
+
+        A implementacao atual nao usa diretamente o acelerometro nem o giroscopio para
+        alterar a navegacao. A estabilizacao visual continua baseada na atitude estimada
+        recebida por VehicleAttitude.
+
+        Fontes:
+        [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        ==================================================================================
+        """
+
+        self.current_gyro_rad_s = np.array(getattr(msg, 'gyro_rad', [0.0, 0.0, 0.0]), dtype=float)
+        self.current_accel_m_s2 = np.array(getattr(msg, 'accelerometer_m_s2', [0.0, 0.0, 0.0]), dtype=float)
+        self.last_imu_timestamp_s = getattr(msg, 'timestamp', 0) / 1_000_000.0
+
+    def obter_depth_gt_sincronizado(self, rgb_msg):
+        """
+        ==================================================================================
+        Retorna o mapa de profundidade ground truth mais proximo do frame RGB atual.
+
+        A funcao compara o timestamp da imagem monocular com o timestamp do ultimo depth
+        recebido. Se a diferenca absoluta for maior que depth_gt_max_age_s, o depth e
+        descartado para evitar salvar pares desalinhados temporalmente.
+
+        O retorno inclui o depth em metros, o timestamp do RGB e a diferenca temporal entre
+        RGB e depth. Quando nao existe par confiavel, retorna None no lugar do mapa de
+        profundidade.
+
+        Fontes:
+        [ROS 2 Time] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Time.html
+        [sensor_msgs/Image] https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
+        ==================================================================================
+        """
+
+        if self.latest_depth_gt is None or self.latest_depth_gt_stamp_s is None:
+            return None, None, None
+
+        rgb_stamp_s = self.image_timestamp_s(rgb_msg)
+        depth_age_s = abs(rgb_stamp_s - self.latest_depth_gt_stamp_s)
+
+        if depth_age_s > self.depth_gt_max_age_s:
+            return None, rgb_stamp_s, depth_age_s
+
+        return self.latest_depth_gt, rgb_stamp_s, depth_age_s
+
+    def preparar_dataset_ground_truth(self):
+        """
+        ==================================================================================
+        Prepara a estrutura de pastas e metadados do dataset de ground truth.
+
+        Cada execucao cria uma pasta run_<data_hora> dentro de ground_truth_dataset_dir,
+        separando imagens RGB monoculares em rgb/, mapas de profundidade em depth_m/ e
+        metadados em metadata.csv. O CSV armazena timestamps, caminhos dos arquivos,
+        pose aproximada, atitude, IMU bruta e estatisticas do depth.
+
+        Essa estrutura foi pensada para treino offline: a entrada do modelo e a imagem
+        monocular, enquanto o depth do Gazebo funciona como alvo supervisionado.
+
+        Fontes:
+        [Python pathlib] https://docs.python.org/3/library/pathlib.html
+        [Python csv] https://docs.python.org/3/library/csv.html
+        [NumPy save] https://numpy.org/doc/stable/reference/generated/numpy.save.html
+        ==================================================================================
+        """
+
+        base_dir = Path(os.path.expanduser(self.ground_truth_dataset_dir))
+        run_dir = base_dir / datetime.now().strftime('run_%Y%m%d_%H%M%S')
+        self.depth_gt_rgb_dir = run_dir / 'rgb'
+        self.depth_gt_depth_dir = run_dir / 'depth_m'
+        self.depth_gt_rgb_dir.mkdir(parents=True, exist_ok=True)
+        self.depth_gt_depth_dir.mkdir(parents=True, exist_ok=True)
+
+        metadata_path = run_dir / 'metadata.csv'
+        self.depth_gt_csv_file = open(metadata_path, mode='w', newline='')
+        self.depth_gt_csv_writer = csv.writer(self.depth_gt_csv_file)
+        self.depth_gt_csv_writer.writerow([
+            'sample_id', 'rgb_timestamp_s', 'depth_timestamp_s', 'depth_age_s',
+            'rgb_path', 'depth_path',
+            'x', 'y', 'z', 'roll', 'pitch', 'yaw',
+            'gyro_x', 'gyro_y', 'gyro_z',
+            'accel_x', 'accel_y', 'accel_z',
+            'depth_min_m', 'depth_mean_m', 'depth_max_m'
+        ])
+        self.get_logger().info(f'Dataset de depth GT sendo salvo em: {run_dir}')
+
+    def salvar_par_ground_truth(self, rgb_bgr, depth_m, rgb_stamp_s, depth_age_s):
+        """
+        ==================================================================================
+        Salva um par supervisionado formado por RGB monocular e depth ground truth.
+
+        A funcao respeita save_ground_truth_dataset e ground_truth_save_every_n para evitar
+        gravacao excessiva em disco. O RGB e salvo em PNG, o mapa de profundidade em metros
+        e salvo como NPY float32, e os metadados da amostra sao adicionados ao CSV da
+        execucao atual.
+
+        O depth salvo nao e entrada do controlador. Ele representa o alvo sintetico que pode
+        treinar ou validar uma rede monocular de profundidade, risco de colisao ou analise de
+        fluxo compensado.
+
+        Fontes:
+        [OpenCV imwrite] https://docs.opencv.org/4.x/d4/da8/group__imgcodecs.html
+        [NumPy save] https://numpy.org/doc/stable/reference/generated/numpy.save.html
+        [Python csv] https://docs.python.org/3/library/csv.html
+        ==================================================================================
+        """
+
+        if not self.save_ground_truth_dataset:
+            return
+
+        if self.rgb_frames_seen % self.ground_truth_save_every_n != 0:
+            return
+
+        if self.depth_gt_csv_writer is None:
+            self.preparar_dataset_ground_truth()
+
+        self.depth_pairs_saved += 1
+        sample_id = f'{self.depth_pairs_saved:06d}'
+        rgb_path = self.depth_gt_rgb_dir / f'{sample_id}.png'
+        depth_path = self.depth_gt_depth_dir / f'{sample_id}.npy'
+
+        cv2.imwrite(str(rgb_path), rgb_bgr)
+        np.save(str(depth_path), depth_m.astype(np.float32))
+
+        valid = depth_m[np.isfinite(depth_m) & (depth_m > 0.0)]
+        if valid.size > 0:
+            depth_min = float(np.min(valid))
+            depth_mean = float(np.mean(valid))
+            depth_max = float(np.max(valid))
+        else:
+            depth_min = depth_mean = depth_max = float('nan')
+
+        self.depth_gt_csv_writer.writerow([
+            sample_id,
+            f'{rgb_stamp_s:.6f}',
+            f'{self.latest_depth_gt_stamp_s:.6f}',
+            f'{depth_age_s:.6f}',
+            str(rgb_path),
+            str(depth_path),
+            self.current_x if self.current_x is not None else float('nan'),
+            self.current_y if self.current_y is not None else float('nan'),
+            self.current_z if self.current_z is not None else float('nan'),
+            self.current_roll,
+            self.current_pitch,
+            self.current_yaw,
+            self.current_gyro_rad_s[0],
+            self.current_gyro_rad_s[1],
+            self.current_gyro_rad_s[2],
+            self.current_accel_m_s2[0],
+            self.current_accel_m_s2[1],
+            self.current_accel_m_s2[2],
+            depth_min,
+            depth_mean,
+            depth_max
+        ])
+        self.depth_gt_csv_file.flush()
+
+    def criar_visualizacao_depth_gt(self, depth_m):
+        """
+        ==================================================================================
+        Gera uma visualizacao colorida do mapa de profundidade ground truth.
+
+        A funcao usa apenas pixels positivos e finitos para calcular uma normalizacao robusta
+        entre os percentis 2 e 98. Em seguida, inverte a escala para destacar objetos proximos
+        e aplica o colormap TURBO do OpenCV.
+
+        A imagem resultante serve somente para inspecao em cv2.imshow(). Ela nao e salva como
+        label de treino e nao participa da evasao visual.
+
+        Fontes:
+        [OpenCV applyColorMap] https://docs.opencv.org/4.x/d3/d50/group__imgproc__colormap.html
+        [NumPy percentile] https://numpy.org/doc/stable/reference/generated/numpy.percentile.html
+        ==================================================================================
+        """
+
+        valid = np.isfinite(depth_m) & (depth_m > 0.0)
+        if np.count_nonzero(valid) == 0:
+            return np.zeros((*depth_m.shape[:2], 3), dtype=np.uint8)
+
+        p2, p98 = np.percentile(depth_m[valid], [2, 98])
+        if p98 <= p2:
+            p98 = p2 + 1.0
+
+        depth_norm = np.clip((depth_m - p2) / (p98 - p2), 0.0, 1.0)
+        depth_norm = ((1.0 - depth_norm) * 255).astype(np.uint8)
+        depth_norm[~valid] = 0
+        return cv2.applyColorMap(depth_norm, cv2.COLORMAP_TURBO)
+
     def desenhar_telemetria_geometria(self, frame_original, H, largura_out=640, altura_out=480):
         """
         ==================================================================================
@@ -778,27 +1142,33 @@ class DroneOffboardNode(Node):
     def image_callback(self, msg):
         """
         ==================================================================================
-        Processa cada frame recebido da câmera simulada e aplica estabilização eletrônica
-        baseada na atitude do drone.
-        
-        A imagem ROS é convertida para matriz OpenCV por meio do cv_bridge. Em seguida, os
-        ângulos atuais de pitch e roll, obtidos do VehicleAttitude, são usados para montar
-        matrizes de rotação 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
-        houvesse um gimbal virtual compensando a inclinação física do drone.
-        
-        A função também atualiza as janelas de depuração visual usadas durante os testes:
-        a imagem original com a geometria do warping e a visualização da evasão reativa.
-        O waitKey(1) é mantido para permitir que o OpenCV atualize as janelas a cada frame.
-        
-        Importante: esta estabilização reduz a tremedeira visual da câmera, mas não corrige a
-        dinâmica física do voo. A redução do chacoalho do drone é tratada na navegação por
-        waypoints, especialmente pela frenagem por curvatura e limitação de aceleração lateral.
+        Processa cada frame recebido da camera monocular simulada.
+
+        A imagem ROS e convertida para matriz OpenCV por meio do cv_bridge. Em seguida, os
+        angulos atuais de pitch e roll, obtidos do VehicleAttitude, sao usados para montar
+        matrizes de rotacao 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
+        houvesse um gimbal virtual compensando a inclinacao fisica do drone.
+
+        Quando um topico de ground truth de profundidade foi configurado, a funcao tenta
+        parear o frame RGB monocular com o ultimo depth sintetico do Gazebo. Esse depth pode
+        ser visualizado e salvo em dataset junto com pose, atitude e IMU bruta, mas nao entra
+        no calculo de evasao reativa.
+
+        A funcao tambem atualiza as janelas de depuracao visual usadas durante os testes:
+        a imagem original com a geometria do warping, a visualizacao da evasao reativa e,
+        quando disponivel, o mapa de profundidade ground truth colorizado. O waitKey(1) e
+        mantido para permitir que o OpenCV atualize as janelas a cada frame.
+
+        Importante: esta estabilizacao reduz a tremedeira visual da camera, mas nao corrige a
+        dinamica fisica do voo. A reducao do chacoalho do drone e tratada na navegacao por
+        waypoints, especialmente pela frenagem por curvatura e limitacao de aceleracao lateral.
         
         Fontes:
         [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
         [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
         [OpenCV Camera Calibration] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
         [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [Gazebo DepthCameraSensor] https://gazebosim.org/api/sensors/7/classgz_1_1sensors_1_1DepthCameraSensor.html
         ==================================================================================
         """
         
@@ -812,6 +1182,21 @@ class DroneOffboardNode(Node):
         try:
             cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F') * 255
             cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.rgb_frames_seen += 1
+
+            depth_gt, rgb_stamp_s, depth_age_s = self.obter_depth_gt_sincronizado(msg)
+            depth_gt_visual = None
+            if depth_gt is not None:
+                if depth_gt.shape[:2] != (resolucao_altura, resolucao_largura) and not self.depth_gt_shape_warned:
+                    self.get_logger().warning(
+                        f'Depth GT com resolucao {depth_gt.shape[:2]}, RGB com '
+                        f'{(resolucao_altura, resolucao_largura)}. Para treino pixel-a-pixel, '
+                        'configure o render de depth com a mesma resolucao/FOV da monocular.'
+                    )
+                    self.depth_gt_shape_warned = True
+
+                self.salvar_par_ground_truth(cv_image[:, :, :3], depth_gt, rgb_stamp_s, depth_age_s)
+                depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
             
             # ---- ESTABILIZAÇÃO DA IMAGEM (IMU) ----
             if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
@@ -869,6 +1254,8 @@ class DroneOffboardNode(Node):
             cv2.imshow("Visao do Drone Original com a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
+            if depth_gt_visual is not None:
+                cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
             #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
@@ -907,3 +1294,24 @@ class DroneOffboardNode(Node):
             self.current_pitch = math.copysign(math.pi / 2.0, sinp)
         else:
             self.current_pitch = math.asin(sinp)
+
+    def destroy_node(self):
+        """
+        ==================================================================================
+        Fecha recursos abertos pelo no antes de delegar a destruicao para a classe base.
+
+        Atualmente o recurso adicional e o arquivo CSV de metadados do dataset de ground
+        truth, aberto apenas quando save_ground_truth_dataset esta ativo e o primeiro par
+        RGB/depth e salvo. Fechar o arquivo garante que os metadados sejam gravados
+        corretamente ao encerrar o processo pelo fluxo normal do ROS 2.
+
+        Fontes:
+        [ROS 2 Node] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
+        [Python File Objects] https://docs.python.org/3/tutorial/inputoutput.html#reading-and-writing-files
+        ==================================================================================
+        """
+
+        if self.depth_gt_csv_file is not None:
+            self.depth_gt_csv_file.close()
+            self.depth_gt_csv_file = None
+        super().destroy_node()
