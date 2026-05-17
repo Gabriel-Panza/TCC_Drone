@@ -31,7 +31,7 @@ Este arquivo contém toda a matemática, física e comunicação com o PX4. Ele 
 
 ---
 
-## 💻 Como Executar a Simulação
+## Como Executar a Simulação
 
 Para executar o ecossistema completo, são necessários **3 terminais** rodando simultaneamente em um ambiente Linux (ou WSL).
 
