@@ -33,7 +33,7 @@ Este arquivo contém toda a matemática, física e comunicação com o PX4. Ele 
 
 ## 💻 Como Executar a Simulação
 
-Para executar o ecossistema completo, são necessários **4 terminais** rodando simultaneamente em um ambiente Linux (ou WSL2).
+Para executar o ecossistema completo, são necessários **3 terminais** rodando simultaneamente em um ambiente Linux (ou WSL).
 
 **Terminal 1: Iniciar o Simulador Gazebo + PX4**
 ```bash
@@ -41,21 +41,26 @@ cd ~/PX4-Autopilot
 PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
 ```
 
-**Terminal 2: Iniciar a Ponte DDS (Tradução PX4 <-> ROS 2)**
-```bash
-MicroXRCEAgent udp4 -p 8888
-```
-
-**Terminal 3: Iniciar a Ponte da Câmera (Gazebo <-> ROS 2)**
+**Terminal 2: O Agente Micro XRCE-DDS + A Ponte de Visão Computacional (ros_gz_bridge) + A Ponte do Ground Truth de Profundidade (ros_gz_bridge)**
 ```bash
 source /opt/ros/humble/setup.bash
-ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image
+
+MicroXRCEAgent udp4 -p 8888 &
+
+ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
+
+ros2 run ros_gz_bridge parameter_bridge /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
+
+wait
 ```
 
-**Terminal 4: Iniciar o Controle Autônomo (Cérebro do Drone)**
+**Terminal 3: O Nó de Controle ROS 2**
 ```bash
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
-source ~/ws_ros2/install/setup.bash
-python3 main.py
+source ~/TCC_Drone/ws_ros2/install/setup.bash
+python3 main.py --ros-args \
+  -p ground_truth_depth_topic:=/sim_depth_ground_truth \
+  -p save_ground_truth_dataset:=true \
+  -p ground_truth_save_every_n:=5
 ```
