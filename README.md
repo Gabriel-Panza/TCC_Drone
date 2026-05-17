@@ -57,5 +57,5 @@ wait
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
-python3 main.py
+PYTHONNOUSERSITE=1 python3 main.py
 ```
