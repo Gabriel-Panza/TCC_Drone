@@ -26,8 +26,10 @@ class DroneOffboardNode(Node):
     O nó publica mensagens de controle Offboard para o PX4, envia setpoints de trajetória
     pelo tópico /fmu/in/trajectory_setpoint, envia comandos de veículo pelo tópico
     /fmu/in/vehicle_command e recebe posição local, atitude e imagem da câmera simulada.
-    Opcionalmente, também recebe o mapa de profundidade renderizado pelo Gazebo apenas como
-    ground truth sintético para treino/validação, sem usá-lo como entrada da evasão visual.
+    A imagem monocular pode ser compensada por IMU/atitude para reduzir tilt, roll e pan
+    antes do fluxo optico. Opcionalmente, também recebe o mapa de profundidade renderizado
+    pelo Gazebo apenas como ground truth sintético para treino/validação, sem usá-lo como
+    entrada da evasão visual.
     
     Também são configurados parâmetros de voo adaptativo, como velocidade máxima,
     raio de aceitação reduzido, zona de frenagem por curvatura, aceleração lateral máxima
@@ -41,6 +43,7 @@ class DroneOffboardNode(Node):
     [ROS 2 QoS] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
     [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
     [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
+    [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
     ======================================================================================
     """
     
@@ -82,6 +85,18 @@ class DroneOffboardNode(Node):
         )
         self.use_imu_raw = bool(self.declare_parameter('use_imu_raw', True).value)
         self.imu_raw_topic = str(self.declare_parameter('imu_raw_topic', '/fmu/out/sensor_combined').value)
+        self.compensacao_imu_ativa = bool(self.declare_parameter('compensacao_imu_ativa', True).value)
+        self.compensar_tilt_roll = bool(self.declare_parameter('compensar_tilt_roll', True).value)
+        self.compensar_pan_yaw = bool(self.declare_parameter('compensar_pan_yaw', True).value)
+        self.stabilization_zoom = float(self.declare_parameter('stabilization_zoom', 1.25).value)
+        self.stabilization_output_width = int(self.declare_parameter('stabilization_output_width', 640).value)
+        self.stabilization_output_height = int(self.declare_parameter('stabilization_output_height', 480).value)
+        self.pan_gyro_weight = float(self.declare_parameter('pan_gyro_weight', 0.35).value)
+        self.pan_gyro_weight = max(0.0, min(1.0, self.pan_gyro_weight))
+        self.pan_yaw_gain = float(self.declare_parameter('pan_yaw_gain', 1.0).value)
+        self.pan_max_delta_rad = float(
+            self.declare_parameter('pan_max_delta_rad', math.radians(12.0)).value
+        )
 
         self.latest_depth_gt = None
         self.latest_depth_gt_stamp_s = None
@@ -98,6 +113,10 @@ class DroneOffboardNode(Node):
         self.current_gyro_rad_s = np.zeros(3, dtype=float)
         self.current_accel_m_s2 = np.zeros(3, dtype=float)
         self.last_imu_timestamp_s = None
+        self.prev_stabilization_stamp_s = None
+        self.prev_stabilization_yaw = None
+        self.last_pan_delta_rad = 0.0
+        self.last_pan_delta_source = 'none'
 
         self.camera_sub = self.create_subscription(
             Image, 
@@ -150,7 +169,8 @@ class DroneOffboardNode(Node):
         self.current_z = None
         self.current_roll = 0.0
         self.current_pitch = 0.0
-        self.current_yaw = 0.0        
+        self.current_yaw = 0.0
+        self.current_yaw_attitude = 0.0
         self.smooth_yaw = 0.0
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
@@ -720,17 +740,18 @@ class DroneOffboardNode(Node):
         Guarda as leituras brutas de giroscopio e acelerometro publicadas pelo PX4.
 
         A mensagem SensorCombined fornece velocidade angular em rad/s e aceleracao linear
-        em m/s^2. Esses valores ficam disponiveis para analise, compensacao visual futura e
-        registro no dataset de ground truth, junto da imagem RGB monocular e do depth
-        sintetico do Gazebo.
+        em m/s^2. O eixo z do giroscopio e usado como apoio de alta frequencia para estimar
+        o pan/yaw entre frames; o acelerometro fica registrado no dataset porque a correcao
+        de translacao da imagem depende da profundidade por pixel.
 
-        A implementacao atual nao usa diretamente o acelerometro nem o giroscopio para
-        alterar a navegacao. A estabilizacao visual continua baseada na atitude estimada
-        recebida por VehicleAttitude.
+        A implementacao atual nao usa o acelerometro para alterar a navegacao. A compensacao
+        visual combina atitude estimada por VehicleAttitude com o giroscopio, e a navegacao
+        continua recebendo apenas o fluxo residual calculado na imagem monocular.
 
         Fontes:
         [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
         [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
         ==================================================================================
         """
 
@@ -776,7 +797,7 @@ class DroneOffboardNode(Node):
         Cada execucao cria uma pasta run_<data_hora> dentro de ground_truth_dataset_dir,
         separando imagens RGB monoculares em rgb/, mapas de profundidade em depth_m/ e
         metadados em metadata.csv. O CSV armazena timestamps, caminhos dos arquivos,
-        pose aproximada, atitude, IMU bruta e estatisticas do depth.
+        pose aproximada, atitude, IMU bruta, delta de pan compensado e estatisticas do depth.
 
         Essa estrutura foi pensada para treino offline: a entrada do modelo e a imagem
         monocular, enquanto o depth do Gazebo funciona como alvo supervisionado.
@@ -804,6 +825,7 @@ class DroneOffboardNode(Node):
             'x', 'y', 'z', 'roll', 'pitch', 'yaw',
             'gyro_x', 'gyro_y', 'gyro_z',
             'accel_x', 'accel_y', 'accel_z',
+            'pan_comp_delta_rad', 'pan_comp_source',
             'depth_min_m', 'depth_mean_m', 'depth_max_m'
         ])
         self.get_logger().info(f'Dataset de depth GT sendo salvo em: {run_dir}')
@@ -816,7 +838,7 @@ class DroneOffboardNode(Node):
         A funcao respeita save_ground_truth_dataset e ground_truth_save_every_n para evitar
         gravacao excessiva em disco. O RGB e salvo em PNG, o mapa de profundidade em metros
         e salvo como NPY float32, e os metadados da amostra sao adicionados ao CSV da
-        execucao atual.
+        execucao atual, incluindo o delta de pan/yaw aplicado na compensacao visual.
 
         O depth salvo nao e entrada do controlador. Ele representa o alvo sintetico que pode
         treinar ou validar uma rede monocular de profundidade, risco de colisao ou analise de
@@ -873,6 +895,8 @@ class DroneOffboardNode(Node):
             self.current_accel_m_s2[0],
             self.current_accel_m_s2[1],
             self.current_accel_m_s2[2],
+            self.last_pan_delta_rad,
+            self.last_pan_delta_source,
             depth_min,
             depth_mean,
             depth_max
@@ -909,6 +933,206 @@ class DroneOffboardNode(Node):
         depth_norm = ((1.0 - depth_norm) * 255).astype(np.uint8)
         depth_norm[~valid] = 0
         return cv2.applyColorMap(depth_norm, cv2.COLORMAP_TURBO)
+
+    def normalizar_angulo_rad(self, angulo):
+        """
+        ==================================================================================
+        Normaliza um angulo em radianos para o intervalo [-pi, pi].
+
+        Essa normalizacao e usada no calculo do delta de yaw entre frames consecutivos.
+        Sem ela, pequenas passagens pela descontinuidade de -pi/pi poderiam ser vistas como
+        giros quase completos, gerando um warp incorreto na compensacao de pan.
+
+        Fontes:
+        [Python atan2] https://docs.python.org/3/library/math.html#math.atan2
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
+        ==================================================================================
+        """
+
+        return math.atan2(math.sin(angulo), math.cos(angulo))
+
+    def calcular_delta_pan_imu(self, frame_stamp_s):
+        """
+        ==================================================================================
+        Estima o delta de pan/yaw da camera entre frames para compensacao visual.
+
+        A funcao combina duas fontes inerciais: a diferenca de yaw estimada por
+        VehicleAttitude e a integracao curta do eixo z do giroscopio bruto. O peso do
+        giroscopio e controlado por pan_gyro_weight. O resultado e invertido antes de ser
+        aplicado na homografia, pois a imagem atual precisa ser projetada de volta para
+        reduzir o pan aparente entre frames consecutivos.
+
+        O acelerometro nao e subtraido diretamente da imagem porque a compensacao de
+        translacao depende da profundidade de cada pixel. Por isso, a translacao fica como
+        fluxo residual para a evasao/estimativa de profundidade, e o acelerometro e salvo no
+        dataset para o modelo futuro.
+
+        Fontes:
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
+        ==================================================================================
+        """
+
+        if not self.compensar_pan_yaw:
+            self.prev_stabilization_stamp_s = frame_stamp_s
+            self.prev_stabilization_yaw = self.current_yaw_attitude
+            self.last_pan_delta_rad = 0.0
+            self.last_pan_delta_source = 'disabled'
+            return 0.0, 'disabled'
+
+        attitude_delta = None
+        if self.prev_stabilization_yaw is not None:
+            attitude_delta = self.normalizar_angulo_rad(
+                self.current_yaw_attitude - self.prev_stabilization_yaw
+            )
+
+        gyro_delta = None
+        if self.prev_stabilization_stamp_s is not None:
+            dt = frame_stamp_s - self.prev_stabilization_stamp_s
+            if 0.0 < dt <= 0.25 and np.all(np.isfinite(self.current_gyro_rad_s)):
+                gyro_delta = float(self.current_gyro_rad_s[2]) * dt
+
+        if attitude_delta is not None and gyro_delta is not None:
+            yaw_delta = (
+                (1.0 - self.pan_gyro_weight) * attitude_delta +
+                self.pan_gyro_weight * gyro_delta
+            )
+            source = 'attitude+gyro'
+        elif attitude_delta is not None:
+            yaw_delta = attitude_delta
+            source = 'attitude'
+        elif gyro_delta is not None:
+            yaw_delta = gyro_delta
+            source = 'gyro'
+        else:
+            yaw_delta = 0.0
+            source = 'none'
+
+        yaw_delta = max(-self.pan_max_delta_rad, min(self.pan_max_delta_rad, yaw_delta))
+        pan_compensado = -yaw_delta * self.pan_yaw_gain
+
+        self.prev_stabilization_stamp_s = frame_stamp_s
+        self.prev_stabilization_yaw = self.current_yaw_attitude
+        self.last_pan_delta_rad = pan_compensado
+        self.last_pan_delta_source = source
+
+        return pan_compensado, source
+
+    def montar_homografia_compensacao_imu(self, msg):
+        """
+        ==================================================================================
+        Monta a homografia usada para estabilizar a imagem com base na IMU/atitude.
+
+        A parte absoluta da compensacao usa roll e pitch para reduzir tilt e inclinacao da
+        camera, preservando a ideia de gimbal virtual ja existente no projeto. A parte
+        incremental usa o delta de pan/yaw entre frames para remover o giro horizontal
+        aparente antes do calculo de fluxo optico.
+
+        A homografia segue a forma H = K_saida * R * K_entrada^-1, em que R representa a
+        rotacao 3D equivalente da camera. Esse modelo e adequado para compensar rotacao
+        pura da camera; translacoes continuam dependentes da profundidade da cena e sao
+        deixadas para o fluxo residual ou para o modelo de profundidade a ser treinado.
+
+        Fontes:
+        [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
+        [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        ==================================================================================
+        """
+
+        frame_stamp_s = self.image_timestamp_s(msg)
+        theta_x = self.current_pitch if self.compensar_tilt_roll else 0.0
+        theta_z = self.current_roll if self.compensar_tilt_roll else 0.0
+        theta_y, source = self.calcular_delta_pan_imu(frame_stamp_s)
+
+        Rx = np.array([
+            [1, 0, 0],
+            [0, math.cos(theta_x), -math.sin(theta_x)],
+            [0, math.sin(theta_x), math.cos(theta_x)]
+        ])
+
+        Ry = np.array([
+            [math.cos(theta_y), 0, math.sin(theta_y)],
+            [0, 1, 0],
+            [-math.sin(theta_y), 0, math.cos(theta_y)]
+        ])
+
+        Rz = np.array([
+            [math.cos(theta_z), -math.sin(theta_z), 0],
+            [math.sin(theta_z), math.cos(theta_z), 0],
+            [0, 0, 1]
+        ])
+
+        R = Rx @ Ry @ Rz
+
+        K_saida = np.array([
+            [self.K[0, 0] * self.stabilization_zoom, 0, self.stabilization_output_width * 0.5],
+            [0, self.K[1, 1] * self.stabilization_zoom, self.stabilization_output_height * 0.5],
+            [0, 0, 1]
+        ])
+
+        H = K_saida @ R @ np.linalg.inv(self.K)
+        return H, theta_y, source
+
+    def aplicar_compensacao_imu(self, cv_image, msg):
+        """
+        ==================================================================================
+        Aplica a compensacao visual por IMU/atitude antes da evasao por fluxo optico.
+
+        Quando compensacao_imu_ativa esta desligado, a funcao devolve a imagem original e
+        uma mascara alfa equivalente. Quando esta ligado, calcula a homografia de roll,
+        pitch e pan/yaw, desenha a geometria do recorte no frame original e gera a imagem
+        estabilizada por cv2.warpPerspective.
+
+        A imagem estabilizada e usada pelo Lucas-Kanade para reduzir fluxo causado por
+        ego-rotacao da camera. O fluxo que sobra tende a representar translacao, paralaxe e
+        objetos proximos, que sao exatamente os sinais uteis para estimativa de risco e para
+        o futuro treino supervisionado com depth ground truth do Gazebo.
+
+        Fontes:
+        [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [OpenCV Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        ==================================================================================
+        """
+
+        if not self.compensacao_imu_ativa:
+            self.last_pan_delta_rad = 0.0
+            self.last_pan_delta_source = 'disabled'
+            return cv_image, cv_image[:, :, 3], cv_image.copy()
+
+        H, pan_delta, pan_source = self.montar_homografia_compensacao_imu(msg)
+        img_geometria = self.desenhar_telemetria_geometria(
+            cv_image,
+            H,
+            self.stabilization_output_width,
+            self.stabilization_output_height
+        )
+
+        cv2.putText(
+            img_geometria,
+            f"IMU pan={pan_delta:.4f} rad ({pan_source})",
+            (12, 46),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 255),
+            1
+        )
+
+        imagem_estabilizada = cv2.warpPerspective(
+            cv_image,
+            H,
+            (self.stabilization_output_width, self.stabilization_output_height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0)
+        )
+        mascara_alpha = imagem_estabilizada[:, :, 3]
+        return imagem_estabilizada, mascara_alpha, img_geometria
 
     def desenhar_telemetria_geometria(self, frame_original, H, largura_out=640, altura_out=480):
         """
@@ -962,7 +1186,7 @@ class DroneOffboardNode(Node):
         Fontes:
         [OpenCV goodFeaturesToTrack] https://docs.opencv.org/4.x/dd/d1a/group__imgproc__feature.html
         [OpenCV Canny] https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.html
-        [Artigo] Realtime Edge-Based Visual Odometry for a Monocular Camera
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
         """
 
         altura, largura = gray.shape
@@ -1015,9 +1239,9 @@ class DroneOffboardNode(Node):
 
         Fontes:
         [OpenCV Lucas-Kanade Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
-        [Artigo] Monocular Event-Based Vision for Obstacle Avoidance with a Quadrotor
-        [Artigo] Towards Real-Time Monocular Depth Estimation for Robotics: A Survey
-        [Artigo] Outdoor Monocular Depth Estimation: A Research Review
+        [Artigo - Bhattacharya2024] https://doi.org/10.48550/arXiv.2411.03303
+        [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
+        [Artigo - Vyas2022] https://doi.org/10.48550/arXiv.2205.01399
         """
 
         frame_bgr = imagem_estabilizada[:, :, :3]
@@ -1144,10 +1368,11 @@ class DroneOffboardNode(Node):
         ==================================================================================
         Processa cada frame recebido da camera monocular simulada.
 
-        A imagem ROS e convertida para matriz OpenCV por meio do cv_bridge. Em seguida, os
-        angulos atuais de pitch e roll, obtidos do VehicleAttitude, sao usados para montar
-        matrizes de rotacao 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
-        houvesse um gimbal virtual compensando a inclinacao fisica do drone.
+        A imagem ROS e convertida para matriz OpenCV por meio do cv_bridge. Em seguida, a
+        compensacao visual por IMU/atitude usa pitch e roll absolutos para reduzir tilt/roll
+        e usa o delta de yaw/pan entre frames para reduzir o giro horizontal aparente. A
+        homografia H = K_saida * R * K_entrada^-1 projeta a imagem como se houvesse um gimbal
+        virtual antes do calculo de fluxo optico.
 
         Quando um topico de ground truth de profundidade foi configurado, a funcao tenta
         parear o frame RGB monocular com o ultimo depth sintetico do Gazebo. Esse depth pode
@@ -1159,9 +1384,9 @@ class DroneOffboardNode(Node):
         quando disponivel, o mapa de profundidade ground truth colorizado. O waitKey(1) e
         mantido para permitir que o OpenCV atualize as janelas a cada frame.
 
-        Importante: esta estabilizacao reduz a tremedeira visual da camera, mas nao corrige a
-        dinamica fisica do voo. A reducao do chacoalho do drone e tratada na navegacao por
-        waypoints, especialmente pela frenagem por curvatura e limitacao de aceleracao lateral.
+        Importante: esta compensacao reduz ego-rotacao visual, mas nao remove translacao da
+        camera, porque translacao exige profundidade por pixel. A profundidade do Gazebo fica
+        como ground truth para validacao/dataset e para o treino futuro do modelo.
         
         Fontes:
         [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
@@ -1169,6 +1394,7 @@ class DroneOffboardNode(Node):
         [OpenCV Camera Calibration] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
         [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
         [Gazebo DepthCameraSensor] https://gazebosim.org/api/sensors/7/classgz_1_1sensors_1_1DepthCameraSensor.html
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
         ==================================================================================
         """
         
@@ -1198,50 +1424,12 @@ class DroneOffboardNode(Node):
                 self.salvar_par_ground_truth(cv_image[:, :, :3], depth_gt, rgb_stamp_s, depth_age_s)
                 depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
             
-            # ---- ESTABILIZAÇÃO DA IMAGEM (IMU) ----
-            if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
-                theta_x = self.current_pitch 
-                theta_z = self.current_roll  
-                
-                Rx = np.array([
-                    [1, 0, 0],
-                    [0, math.cos(theta_x), -math.sin(theta_x)],
-                    [0, math.sin(theta_x), math.cos(theta_x)]
-                ])
-                
-                Rz = np.array([
-                    [math.cos(theta_z), -math.sin(theta_z), 0],
-                    [math.sin(theta_z), math.cos(theta_z), 0],
-                    [0, 0, 1]
-                ])
-                R = Rx @ Rz 
-                
-                zoom = 1.25
-                
-                K_zoom = np.array([
-                    [self.K[0,0] * zoom, 0, 320.0],
-                    [0, self.K[1,1] * zoom, 240.0],
-                    [0, 0, 1]
-                ])
-                K_inv = np.linalg.inv(self.K)
+            # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
+            imagem_estabilizada, mascara_alpha, img_geometria = self.aplicar_compensacao_imu(
+                cv_image,
+                msg
+            )
 
-                H = K_zoom @ R @ K_inv 
-                
-                img_geometria = self.desenhar_telemetria_geometria(cv_image, H)
-
-                imagem_estabilizada = cv2.warpPerspective(
-                    cv_image, 
-                    H, 
-                    (640, 480), 
-                    flags=cv2.INTER_LINEAR, 
-                    borderMode=cv2.BORDER_CONSTANT,
-                    borderValue=(0, 0, 0, 0)
-                )
-                mascara_alpha = imagem_estabilizada[:, :, 3]
-            else:
-                imagem_estabilizada = cv_image
-                mascara_alpha = cv_image[:, :, 3]
-            
             # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
             if self.evasao_visual_ativa:
                 visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
@@ -1265,21 +1453,23 @@ class DroneOffboardNode(Node):
         """
         =========================================================================================
         Recebe a atitude estimada do drone e converte a orientação de quaternion para ângulos
-        de Euler roll e pitch.
+        de Euler roll, pitch e yaw.
         
         O PX4 publica VehicleAttitude com quaternion no formato q(w, x, y, z), seguindo a
         convenção de Hamilton. A mensagem representa a rotação do corpo do drone no referencial
-        FRD para o referencial NED. O script extrai apenas roll e pitch porque esses ângulos
-        são usados para compensar a inclinação da câmera no gimbal virtual de image_callback().
+        FRD para o referencial NED. O script extrai roll e pitch para compensar tilt/roll da
+        camera e tambem extrai yaw para estimar o pan entre frames consecutivos.
         
         A conversão implementada segue as fórmulas usuais de quaternion para Euler, com trava
         de segurança no pitch quando o valor de asin ultrapassa o intervalo [-1, 1] por erro
-        numérico. O yaw operacional usado na navegação vem do campo heading da posição local.
+        numérico. O yaw operacional usado na navegação continua vindo do campo heading da
+        posição local; o yaw desta mensagem e reservado para compensacao visual.
         
         Fontes:
         [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
         [MAVLink ATTITUDE_QUATERNION] https://mavlink.io/en/messages/common.html#ATTITUDE_QUATERNION
         [Conversão Quaternion-Euler] https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
         =========================================================================================
         """
         
@@ -1294,6 +1484,10 @@ class DroneOffboardNode(Node):
             self.current_pitch = math.copysign(math.pi / 2.0, sinp)
         else:
             self.current_pitch = math.asin(sinp)
+
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        self.current_yaw_attitude = math.atan2(siny_cosp, cosy_cosp)
 
     def destroy_node(self):
         """
