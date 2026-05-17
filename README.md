@@ -41,15 +41,13 @@ cd ~/PX4-Autopilot
 PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
 ```
 
-**Terminal 2: O Agente Micro XRCE-DDS + A Ponte de Visão Computacional (ros_gz_bridge) + A Ponte do Ground Truth de Profundidade (ros_gz_bridge)**
+**Terminal 2: O Agente Micro XRCE-DDS + A Ponte de Visão Computacional (ros_gz_bridge)**
 ```bash
 source /opt/ros/humble/setup.bash
 
 MicroXRCEAgent udp4 -p 8888 &
 
 ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
-
-ros2 run ros_gz_bridge parameter_bridge /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
 
 wait
 ```
