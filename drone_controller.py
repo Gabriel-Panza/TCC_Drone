@@ -220,7 +220,7 @@ class DroneOffboardNode(Node):
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 10.0
         self.evasao_visual_ativa = True
-        self.max_lateral_acceleration = 7.0
+        self.max_lateral_acceleration = 7.5
 
         self.start_x = None
         self.start_y = None
@@ -519,7 +519,7 @@ class DroneOffboardNode(Node):
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.75 if abs(erro_yaw) > 0.75 else 1.2)
+        yaw_gain = self.yaw_smooth_alpha * (0.7 if abs(erro_yaw) > 0.7 else 1.2)
         self.smooth_yaw += (erro_yaw * yaw_gain)
 
         msg = TrajectorySetpoint()
@@ -553,10 +553,10 @@ class DroneOffboardNode(Node):
         
         distancia_atual = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
         
-        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 4.0:
+        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 5.0:
             next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
             yaw_next = math.atan2(next_wp[1] - self.current_y, next_wp[0] - self.current_x)
-            blend_factor = max(0.0, (4.0 - distancia_atual) / 4.0)
+            blend_factor = max(0.0, (5.0 - distancia_atual) / 5.0)
             yaw_base = math.atan2(target_y - self.current_y, target_x - self.current_x)
             erro = math.atan2(math.sin(yaw_next - yaw_base), math.cos(yaw_next - yaw_base))
             return yaw_base + erro * blend_factor
@@ -1576,7 +1576,7 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
         self.avoid_brake += alpha * (brake - self.avoid_brake)
 
-        if abs(self.avoid_lateral_body) > 0.05:
+        if abs(self.avoid_lateral_body) > 0.01:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
@@ -1662,24 +1662,24 @@ class DroneOffboardNode(Node):
         radial_flow = np.sum(flow * radial_unit, axis=1)
 
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
-        central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.65), 1.0)
+        central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.5), 1.0)
         central_weight = np.clip(central_x * central_y, 0.0, 1.0)
 
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        inverse_depth_score = np.clip((radial_flow - 0.3) / 7.5, 0.0, 1.0)
+        inverse_depth_score = np.clip((radial_flow - 0.1) / 10, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
-        active = point_risk > 0.03
-        if np.count_nonzero(active) < 7:
+        active = point_risk > 0.01
+        if np.count_nonzero(active) < 10:
             risk = 0.0
             lateral_body = 0.0
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 75) * 1.75, 0.0, 1.0))
+            risk = float(np.clip(np.percentile(active_risk, 50) * 1.5, 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
