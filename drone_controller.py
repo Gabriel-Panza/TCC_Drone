@@ -208,19 +208,19 @@ class DroneOffboardNode(Node):
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
         self.velocity_smooth_alpha = 0.3
-        self.yaw_smooth_alpha = 0.6
+        self.yaw_smooth_alpha = 0.7
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
         self.obstacle_risk = 0.0
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
-        self.avoid_side_memory = 0.9
+        self.avoid_side_memory = 0.8
         self.avoidance_max_brake = 0.3
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 10.0
         self.evasao_visual_ativa = True
-        self.max_lateral_acceleration = 7.5
+        self.max_lateral_acceleration = 7.0
 
         self.start_x = None
         self.start_y = None
@@ -242,9 +242,9 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 5.0     # Raio de aceitação para mudar de waypoint
+        self.raio_de_aceitacao = 3.5     # Raio de aceitação para mudar de waypoint
         
-        self.zona_frenagem_curva = 6.5
+        self.zona_frenagem_curva = 7.0
         self.angulo_curva_forte = math.radians(35)
 
         self.dt = 0.04  # (25Hz)
@@ -484,7 +484,7 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body = 0.0
             self.avoid_brake = 0.0
 
-        if evasao_habilitada and self.obstacle_risk > 0.07:
+        if evasao_habilitada and self.obstacle_risk > 0.05:
             brake_scale = max(0.7, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
@@ -1668,12 +1668,12 @@ class DroneOffboardNode(Node):
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        inverse_depth_score = np.clip((radial_flow - 0.25) / 8.0, 0.0, 1.0)
+        inverse_depth_score = np.clip((radial_flow - 0.3) / 7.5, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight
         point_risk *= speed_factor
 
         active = point_risk > 0.03
-        if np.count_nonzero(active) < 8:
+        if np.count_nonzero(active) < 7:
             risk = 0.0
             lateral_body = 0.0
         else:
@@ -1815,7 +1815,7 @@ class DroneOffboardNode(Node):
                 visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
-            cv2.imshow("Visao do Drone Original com a Geometria do Warping", img_geometria)
+            #cv2.imshow("Visao do Drone Original (Com tremor) + a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
             if depth_gt_visual is not None:

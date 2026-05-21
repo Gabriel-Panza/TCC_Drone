@@ -61,6 +61,5 @@ source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
 PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p ground_truth_depth_topic:=/sim_depth_ground_truth \
-  -p save_ground_truth_dataset:=true \
-  -p ground_truth_save_every_n:=5
+  -p save_ground_truth_dataset:=true
 ```
