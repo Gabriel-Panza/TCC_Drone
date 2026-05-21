@@ -1,6 +1,6 @@
 import os
 import time
-import csv
+import json
 import numpy as np
 import math
 import cv2
@@ -81,7 +81,34 @@ class DroneOffboardNode(Node):
         )
         self.ground_truth_save_every_n = max(
             1,
-            int(self.declare_parameter('ground_truth_save_every_n', 5).value)
+            int(self.declare_parameter('ground_truth_save_every_n', 1).value)
+        )
+        self.ground_truth_memmap_capacity = max(
+            16,
+            int(self.declare_parameter('ground_truth_memmap_capacity', 4096).value)
+        )
+        self.ground_truth_rgb_width = max(
+            16,
+            int(self.declare_parameter('ground_truth_rgb_width', 160).value)
+        )
+        self.ground_truth_rgb_height = max(
+            16,
+            int(self.declare_parameter('ground_truth_rgb_height', 120).value)
+        )
+        self.ground_truth_depth_width = max(
+            8,
+            int(self.declare_parameter('ground_truth_depth_width', 40).value)
+        )
+        self.ground_truth_depth_height = max(
+            8,
+            int(self.declare_parameter('ground_truth_depth_height', 30).value)
+        )
+        self.ground_truth_depth_max_m = float(
+            self.declare_parameter('ground_truth_depth_max_m', 50.0).value
+        )
+        self.ground_truth_max_flow_points = max(
+            16,
+            int(self.declare_parameter('ground_truth_max_flow_points', 180).value)
         )
         self.use_imu_raw = bool(self.declare_parameter('use_imu_raw', True).value)
         self.imu_raw_topic = str(self.declare_parameter('imu_raw_topic', '/fmu/out/sensor_combined').value)
@@ -103,11 +130,17 @@ class DroneOffboardNode(Node):
         self.latest_depth_gt_encoding = ''
         self.depth_gt_frames = 0
         self.rgb_frames_seen = 0
-        self.depth_pairs_saved = 0
-        self.depth_gt_csv_file = None
-        self.depth_gt_csv_writer = None
-        self.depth_gt_rgb_dir = None
-        self.depth_gt_depth_dir = None
+        self.visual_intervals_seen = 0
+        self.depth_intervals_saved = 0
+        self.depth_gt_run_dir = None
+        self.depth_gt_manifest_path = None
+        self.depth_gt_intervals = None
+        self.depth_gt_image_delta = None
+        self.depth_gt_depth_delta = None
+        self.depth_gt_depth_mask = None
+        self.depth_gt_flow_vectors = None
+        self.depth_gt_capacity_warned = False
+        self.prev_depth_interval_ref = None
         self.depth_gt_shape_warned = False
 
         self.current_gyro_rad_s = np.zeros(3, dtype=float)
@@ -789,119 +822,437 @@ class DroneOffboardNode(Node):
 
         return self.latest_depth_gt, rgb_stamp_s, depth_age_s
 
+    def dtype_intervalos_ground_truth(self):
+        """
+        Retorna o schema numerico salvo no memmap de intervalos visuais.
+
+        Os campos representam variacoes entre duas atualizacoes consecutivas da
+        logica de optical flow. Valores absolutos de pose/atitude nao sao gravados.
+        """
+
+        return np.dtype([
+            ('sample_id', 'i4'),
+            ('dt_s', 'f4'),
+            ('depth_age_s', 'f4'),
+            ('depth_dt_s', 'f4'),
+            ('delta_x_m', 'f4'),
+            ('delta_y_m', 'f4'),
+            ('delta_z_m', 'f4'),
+            ('delta_roll_rad', 'f4'),
+            ('delta_pitch_rad', 'f4'),
+            ('delta_yaw_heading_rad', 'f4'),
+            ('delta_yaw_attitude_rad', 'f4'),
+            ('delta_gyro_x_rad_s', 'f4'),
+            ('delta_gyro_y_rad_s', 'f4'),
+            ('delta_gyro_z_rad_s', 'f4'),
+            ('gyro_x_integral_rad', 'f4'),
+            ('gyro_y_integral_rad', 'f4'),
+            ('gyro_z_integral_rad', 'f4'),
+            ('delta_accel_x_m_s2', 'f4'),
+            ('delta_accel_y_m_s2', 'f4'),
+            ('delta_accel_z_m_s2', 'f4'),
+            ('delta_smooth_vx_m_s', 'f4'),
+            ('delta_smooth_vy_m_s', 'f4'),
+            ('delta_obstacle_risk', 'f4'),
+            ('delta_avoid_lateral_body', 'f4'),
+            ('delta_avoid_brake', 'f4'),
+            ('pan_comp_delta_rad', 'f4'),
+            ('flow_valid_points', 'i4'),
+            ('flow_active_points', 'i4'),
+            ('flow_track_retention_pct', 'f4'),
+            ('flow_mean_x_px', 'f4'),
+            ('flow_mean_y_px', 'f4'),
+            ('flow_mag_mean_px', 'f4'),
+            ('flow_mag_p90_px', 'f4'),
+            ('radial_flow_mean_px', 'f4'),
+            ('radial_flow_p90_px', 'f4'),
+            ('point_risk_mean_delta_basis', 'f4'),
+            ('point_risk_p75_delta_basis', 'f4'),
+            ('delta_depth_min_m', 'f4'),
+            ('delta_depth_mean_m', 'f4'),
+            ('delta_depth_p10_m', 'f4'),
+            ('delta_depth_p50_m', 'f4'),
+            ('delta_depth_p90_m', 'f4'),
+            ('delta_depth_close_2m_pp', 'f4'),
+            ('delta_depth_close_5m_pp', 'f4'),
+            ('delta_depth_close_10m_pp', 'f4'),
+            ('delta_valid_px_pct', 'f4'),
+        ])
+
     def preparar_dataset_ground_truth(self):
         """
-        ==================================================================================
-        Prepara a estrutura de pastas e metadados do dataset de ground truth.
+        Prepara os memmaps do dataset sincronizado por intervalo visual.
 
-        Cada execucao cria uma pasta run_<data_hora> dentro de ground_truth_dataset_dir,
-        separando imagens RGB monoculares em rgb/, mapas de profundidade em depth_m/ e
-        metadados em metadata.csv. O CSV armazena timestamps, caminhos dos arquivos,
-        pose aproximada, atitude, IMU bruta, delta de pan compensado e estatisticas do depth.
-
-        Essa estrutura foi pensada para treino offline: a entrada do modelo e a imagem
-        monocular, enquanto o depth do Gazebo funciona como alvo supervisionado.
-
-        Fontes:
-        [Python pathlib] https://docs.python.org/3/library/pathlib.html
-        [Python csv] https://docs.python.org/3/library/csv.html
-        [NumPy save] https://numpy.org/doc/stable/reference/generated/numpy.save.html
-        ==================================================================================
+        Cada linha valida representa o mesmo intervalo usado pelo optical flow que desenha
+        as flechas de proximidade. O dataset salva deltas de estado, deltas de depth,
+        diferenca de imagem estabilizada e vetores de flow relativos ao centro da imagem.
         """
 
         base_dir = Path(os.path.expanduser(self.ground_truth_dataset_dir))
-        run_dir = base_dir / datetime.now().strftime('run_%Y%m%d_%H%M%S')
-        self.depth_gt_rgb_dir = run_dir / 'rgb'
-        self.depth_gt_depth_dir = run_dir / 'depth_m'
-        self.depth_gt_rgb_dir.mkdir(parents=True, exist_ok=True)
-        self.depth_gt_depth_dir.mkdir(parents=True, exist_ok=True)
+        self.depth_gt_run_dir = base_dir / datetime.now().strftime('run_%Y%m%d_%H%M%S')
+        self.depth_gt_run_dir.mkdir(parents=True, exist_ok=True)
+        self.depth_gt_manifest_path = self.depth_gt_run_dir / 'manifest.json'
 
-        metadata_path = run_dir / 'metadata.csv'
-        self.depth_gt_csv_file = open(metadata_path, mode='w', newline='')
-        self.depth_gt_csv_writer = csv.writer(self.depth_gt_csv_file)
-        self.depth_gt_csv_writer.writerow([
-            'sample_id', 'rgb_timestamp_s', 'depth_timestamp_s', 'depth_age_s',
-            'rgb_path', 'depth_path',
-            'x', 'y', 'z', 'roll', 'pitch', 'yaw',
-            'gyro_x', 'gyro_y', 'gyro_z',
-            'accel_x', 'accel_y', 'accel_z',
-            'pan_comp_delta_rad', 'pan_comp_source',
-            'depth_min_m', 'depth_mean_m', 'depth_max_m'
-        ])
-        self.get_logger().info(f'Dataset de depth GT sendo salvo em: {run_dir}')
+        capacidade = self.ground_truth_memmap_capacity
+        rgb_shape = (
+            capacidade,
+            self.ground_truth_rgb_height,
+            self.ground_truth_rgb_width,
+            3,
+        )
+        depth_shape = (
+            capacidade,
+            self.ground_truth_depth_height,
+            self.ground_truth_depth_width,
+        )
+        flow_shape = (capacidade, self.ground_truth_max_flow_points, 6)
 
-    def salvar_par_ground_truth(self, rgb_bgr, depth_m, rgb_stamp_s, depth_age_s):
+        self.depth_gt_intervals = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'intervals.npy',
+            mode='w+',
+            dtype=self.dtype_intervalos_ground_truth(),
+            shape=(capacidade,),
+        )
+        self.depth_gt_image_delta = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'image_delta_bgr.npy',
+            mode='w+',
+            dtype=np.int16,
+            shape=rgb_shape,
+        )
+        self.depth_gt_depth_delta = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'depth_delta_log.npy',
+            mode='w+',
+            dtype=np.float32,
+            shape=depth_shape,
+        )
+        self.depth_gt_depth_mask = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'depth_delta_mask.npy',
+            mode='w+',
+            dtype=np.uint8,
+            shape=depth_shape,
+        )
+        self.depth_gt_flow_vectors = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'flow_vectors.npy',
+            mode='w+',
+            dtype=np.float32,
+            shape=flow_shape,
+        )
+
+        self.atualizar_manifesto_depth_gt()
+        self.get_logger().info(
+            f'Dataset de intervalos depth/flow sendo salvo em memmap: {self.depth_gt_run_dir}'
+        )
+
+    def atualizar_manifesto_depth_gt(self):
+        """Atualiza o manifesto que descreve os memmaps validos da run."""
+
+        if self.depth_gt_manifest_path is None:
+            return
+
+        manifesto = {
+            'schema_version': 'depth_interval_memmap_v1',
+            'description': (
+                'Cada amostra representa a variacao entre duas atualizacoes consecutivas '
+                'da logica de proximidade visual por optical flow.'
+            ),
+            'num_samples': int(self.depth_intervals_saved),
+            'capacity': int(self.ground_truth_memmap_capacity),
+            'save_every_n_visual_intervals': int(self.ground_truth_save_every_n),
+            'rgb_delta_shape': [
+                int(self.ground_truth_rgb_height),
+                int(self.ground_truth_rgb_width),
+                3,
+            ],
+            'depth_delta_shape': [
+                int(self.ground_truth_depth_height),
+                int(self.ground_truth_depth_width),
+            ],
+            'depth_max_m': float(self.ground_truth_depth_max_m),
+            'max_flow_points': int(self.ground_truth_max_flow_points),
+            'arrays': {
+                'intervals': 'intervals.npy',
+                'image_delta_bgr': 'image_delta_bgr.npy',
+                'depth_delta_log': 'depth_delta_log.npy',
+                'depth_delta_mask': 'depth_delta_mask.npy',
+                'flow_vectors': 'flow_vectors.npy',
+            },
+            'flow_vector_columns': [
+                'x_center_norm',
+                'y_center_norm',
+                'flow_x_px',
+                'flow_y_px',
+                'radial_flow_px',
+                'point_risk_delta_basis',
+            ],
+            'interval_fields': list(self.dtype_intervalos_ground_truth().names),
+        }
+
+        with open(self.depth_gt_manifest_path, mode='w', encoding='utf-8') as fp:
+            json.dump(manifesto, fp, indent=2)
+
+    def capturar_estado_intervalo(self, frame_stamp_s, depth_age_s):
+        """Captura o estado atual apenas para calcular deltas antes do salvamento."""
+
+        def numero(valor):
+            return float(valor) if valor is not None else float('nan')
+
+        return {
+            'frame_stamp_s': numero(frame_stamp_s),
+            'depth_stamp_s': numero(self.latest_depth_gt_stamp_s),
+            'depth_age_s': numero(depth_age_s),
+            'x': numero(self.current_x),
+            'y': numero(self.current_y),
+            'z': numero(self.current_z),
+            'roll': float(self.current_roll),
+            'pitch': float(self.current_pitch),
+            'yaw_heading': float(self.current_yaw),
+            'yaw_attitude': float(self.current_yaw_attitude),
+            'gyro': np.asarray(self.current_gyro_rad_s, dtype=float).copy(),
+            'accel': np.asarray(self.current_accel_m_s2, dtype=float).copy(),
+            'smooth_vx': float(self.smooth_vx),
+            'smooth_vy': float(self.smooth_vy),
+            'obstacle_risk': float(self.obstacle_risk),
+            'avoid_lateral_body': float(self.avoid_lateral_body),
+            'avoid_brake': float(self.avoid_brake),
+            'pan_comp_delta_rad': float(self.last_pan_delta_rad),
+        }
+
+    def metricas_depth_memmap(self, depth_m):
+        """Calcula metricas internas de depth usadas somente para gravar variacoes."""
+
+        valid_mask = np.isfinite(depth_m) & (depth_m > 0.0)
+        valores = np.asarray(depth_m[valid_mask], dtype=float)
+        if valores.size == 0:
+            return {
+                'min': float('nan'),
+                'mean': float('nan'),
+                'p10': float('nan'),
+                'p50': float('nan'),
+                'p90': float('nan'),
+                'close_2': float('nan'),
+                'close_5': float('nan'),
+                'close_10': float('nan'),
+                'valid_pct': 0.0,
+            }
+
+        return {
+            'min': float(np.min(valores)),
+            'mean': float(np.mean(valores)),
+            'p10': float(np.percentile(valores, 10)),
+            'p50': float(np.percentile(valores, 50)),
+            'p90': float(np.percentile(valores, 90)),
+            'close_2': float((valores < 2.0).mean() * 100.0),
+            'close_5': float((valores < 5.0).mean() * 100.0),
+            'close_10': float((valores < 10.0).mean() * 100.0),
+            'valid_pct': float(valid_mask.mean() * 100.0),
+        }
+
+    def preparar_delta_imagem_memmap(self, prev_bgr, curr_bgr):
+        """Reduz a imagem estabilizada e salva apenas a diferenca entre frames."""
+
+        tamanho = (self.ground_truth_rgb_width, self.ground_truth_rgb_height)
+        prev_small = cv2.resize(prev_bgr, tamanho, interpolation=cv2.INTER_AREA).astype(np.int16)
+        curr_small = cv2.resize(curr_bgr, tamanho, interpolation=cv2.INTER_AREA).astype(np.int16)
+        return curr_small - prev_small
+
+    def preparar_delta_depth_memmap(self, prev_depth_m, curr_depth_m):
+        """Gera o alvo dense como delta de log-depth e mascara valida do intervalo."""
+
+        tamanho = (self.ground_truth_depth_width, self.ground_truth_depth_height)
+        prev_valid = np.isfinite(prev_depth_m) & (prev_depth_m > 0.0)
+        curr_valid = np.isfinite(curr_depth_m) & (curr_depth_m > 0.0)
+
+        prev_clip = np.where(
+            prev_valid,
+            np.clip(prev_depth_m, 0.1, self.ground_truth_depth_max_m),
+            self.ground_truth_depth_max_m,
+        ).astype(np.float32)
+        curr_clip = np.where(
+            curr_valid,
+            np.clip(curr_depth_m, 0.1, self.ground_truth_depth_max_m),
+            self.ground_truth_depth_max_m,
+        ).astype(np.float32)
+
+        prev_small = cv2.resize(prev_clip, tamanho, interpolation=cv2.INTER_AREA)
+        curr_small = cv2.resize(curr_clip, tamanho, interpolation=cv2.INTER_AREA)
+        prev_mask = cv2.resize(prev_valid.astype(np.float32), tamanho, interpolation=cv2.INTER_AREA) > 0.5
+        curr_mask = cv2.resize(curr_valid.astype(np.float32), tamanho, interpolation=cv2.INTER_AREA) > 0.5
+
+        mask = (prev_mask & curr_mask).astype(np.uint8)
+        delta_log = (np.log1p(curr_small) - np.log1p(prev_small)).astype(np.float32)
+        delta_log[mask == 0] = 0.0
+        return delta_log, mask
+
+    def preparar_vetores_flow_memmap(self, flow_interval, largura, altura):
+        """Prepara vetores de flow com coordenadas relativas ao centro da imagem."""
+
+        matriz = np.zeros((self.ground_truth_max_flow_points, 6), dtype=np.float32)
+        if flow_interval is None:
+            return matriz
+
+        new = np.asarray(flow_interval.get('new_points', []), dtype=np.float32)
+        flow = np.asarray(flow_interval.get('flow', []), dtype=np.float32)
+        radial_flow = np.asarray(flow_interval.get('radial_flow', []), dtype=np.float32)
+        point_risk = np.asarray(flow_interval.get('point_risk', []), dtype=np.float32)
+        n = min(len(new), len(flow), len(radial_flow), len(point_risk), self.ground_truth_max_flow_points)
+        if n <= 0:
+            return matriz
+
+        centro = np.array([largura * 0.5, altura * 0.5], dtype=np.float32)
+        escala = np.array([max(largura * 0.5, 1.0), max(altura * 0.5, 1.0)], dtype=np.float32)
+        rel = (new[:n] - centro) / escala
+        matriz[:n, 0:2] = rel
+        matriz[:n, 2:4] = flow[:n]
+        matriz[:n, 4] = radial_flow[:n]
+        matriz[:n, 5] = point_risk[:n]
+        return matriz
+
+    def registrar_intervalo_ground_truth(self, imagem_estabilizada_bgr, depth_m, estado_atual, flow_interval):
         """
-        ==================================================================================
-        Salva um par supervisionado formado por RGB monocular e depth ground truth.
+        Salva uma amostra sincronizada com o intervalo usado pelo optical flow.
 
-        A funcao respeita save_ground_truth_dataset e ground_truth_save_every_n para evitar
-        gravacao excessiva em disco. O RGB e salvo em PNG, o mapa de profundidade em metros
-        e salvo como NPY float32, e os metadados da amostra sao adicionados ao CSV da
-        execucao atual, incluindo o delta de pan/yaw aplicado na compensacao visual.
-
-        O depth salvo nao e entrada do controlador. Ele representa o alvo sintetico que pode
-        treinar ou validar uma rede monocular de profundidade, risco de colisao ou analise de
-        fluxo compensado.
-
-        Fontes:
-        [OpenCV imwrite] https://docs.opencv.org/4.x/d4/da8/group__imgcodecs.html
-        [NumPy save] https://numpy.org/doc/stable/reference/generated/numpy.save.html
-        [Python csv] https://docs.python.org/3/library/csv.html
-        ==================================================================================
+        A funcao nunca grava pose/atitude absolutas: usa o estado anterior apenas em memoria
+        para calcular deltas e, em seguida, substitui a referencia pelo frame atual.
         """
 
         if not self.save_ground_truth_dataset:
             return
 
-        if self.rgb_frames_seen % self.ground_truth_save_every_n != 0:
+        referencia_atual = {
+            'imagem_bgr': imagem_estabilizada_bgr.copy(),
+            'depth_m': None if depth_m is None else np.asarray(depth_m, dtype=np.float32).copy(),
+            'estado': estado_atual,
+        }
+
+        referencia_anterior = self.prev_depth_interval_ref
+        self.prev_depth_interval_ref = referencia_atual
+
+        if referencia_anterior is None or flow_interval is None:
             return
 
-        if self.depth_gt_csv_writer is None:
+        self.visual_intervals_seen += 1
+        if self.visual_intervals_seen % self.ground_truth_save_every_n != 0:
+            return
+
+        if referencia_anterior['depth_m'] is None or referencia_atual['depth_m'] is None:
+            return
+
+        if self.depth_gt_intervals is None:
             self.preparar_dataset_ground_truth()
 
-        self.depth_pairs_saved += 1
-        sample_id = f'{self.depth_pairs_saved:06d}'
-        rgb_path = self.depth_gt_rgb_dir / f'{sample_id}.png'
-        depth_path = self.depth_gt_depth_dir / f'{sample_id}.npy'
+        if self.depth_intervals_saved >= self.ground_truth_memmap_capacity:
+            if not self.depth_gt_capacity_warned:
+                self.get_logger().warning(
+                    'Capacidade do memmap de depth/flow esgotada. '
+                    'Aumente ground_truth_memmap_capacity para runs maiores.'
+                )
+                self.depth_gt_capacity_warned = True
+            return
 
-        cv2.imwrite(str(rgb_path), rgb_bgr)
-        np.save(str(depth_path), depth_m.astype(np.float32))
+        idx = self.depth_intervals_saved
+        prev_estado = referencia_anterior['estado']
+        curr_estado = referencia_atual['estado']
+        prev_depth_metricas = self.metricas_depth_memmap(referencia_anterior['depth_m'])
+        curr_depth_metricas = self.metricas_depth_memmap(referencia_atual['depth_m'])
 
-        valid = depth_m[np.isfinite(depth_m) & (depth_m > 0.0)]
-        if valid.size > 0:
-            depth_min = float(np.min(valid))
-            depth_mean = float(np.mean(valid))
-            depth_max = float(np.max(valid))
+        dt_s = curr_estado['frame_stamp_s'] - prev_estado['frame_stamp_s']
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            dt_s = float('nan')
+
+        def delta(campo):
+            return float(curr_estado[campo] - prev_estado[campo])
+
+        def delta_angulo(campo):
+            return self.normalizar_angulo_rad(delta(campo))
+
+        def delta_depth(campo):
+            return float(curr_depth_metricas[campo] - prev_depth_metricas[campo])
+
+        flow = np.asarray(flow_interval.get('flow', []), dtype=float)
+        radial_flow = np.asarray(flow_interval.get('radial_flow', []), dtype=float)
+        point_risk = np.asarray(flow_interval.get('point_risk', []), dtype=float)
+        flow_mag = np.linalg.norm(flow, axis=1) if flow.size else np.array([], dtype=float)
+        prev_points_total = max(1, int(flow_interval.get('prev_points_total', 0)))
+        valid_points = int(flow_interval.get('valid_points', len(flow_mag)))
+        active_points = int(flow_interval.get('active_points', 0))
+
+        linha = np.zeros(1, dtype=self.dtype_intervalos_ground_truth())
+        linha['sample_id'][0] = idx + 1
+        linha['dt_s'][0] = dt_s
+        linha['depth_age_s'][0] = curr_estado['depth_age_s']
+        linha['depth_dt_s'][0] = curr_estado['depth_stamp_s'] - prev_estado['depth_stamp_s']
+        linha['delta_x_m'][0] = delta('x')
+        linha['delta_y_m'][0] = delta('y')
+        linha['delta_z_m'][0] = delta('z')
+        linha['delta_roll_rad'][0] = delta_angulo('roll')
+        linha['delta_pitch_rad'][0] = delta_angulo('pitch')
+        linha['delta_yaw_heading_rad'][0] = delta_angulo('yaw_heading')
+        linha['delta_yaw_attitude_rad'][0] = delta_angulo('yaw_attitude')
+        linha['delta_gyro_x_rad_s'][0] = curr_estado['gyro'][0] - prev_estado['gyro'][0]
+        linha['delta_gyro_y_rad_s'][0] = curr_estado['gyro'][1] - prev_estado['gyro'][1]
+        linha['delta_gyro_z_rad_s'][0] = curr_estado['gyro'][2] - prev_estado['gyro'][2]
+        if np.isfinite(dt_s):
+            linha['gyro_x_integral_rad'][0] = 0.5 * (curr_estado['gyro'][0] + prev_estado['gyro'][0]) * dt_s
+            linha['gyro_y_integral_rad'][0] = 0.5 * (curr_estado['gyro'][1] + prev_estado['gyro'][1]) * dt_s
+            linha['gyro_z_integral_rad'][0] = 0.5 * (curr_estado['gyro'][2] + prev_estado['gyro'][2]) * dt_s
         else:
-            depth_min = depth_mean = depth_max = float('nan')
+            linha['gyro_x_integral_rad'][0] = float('nan')
+            linha['gyro_y_integral_rad'][0] = float('nan')
+            linha['gyro_z_integral_rad'][0] = float('nan')
+        linha['delta_accel_x_m_s2'][0] = curr_estado['accel'][0] - prev_estado['accel'][0]
+        linha['delta_accel_y_m_s2'][0] = curr_estado['accel'][1] - prev_estado['accel'][1]
+        linha['delta_accel_z_m_s2'][0] = curr_estado['accel'][2] - prev_estado['accel'][2]
+        linha['delta_smooth_vx_m_s'][0] = delta('smooth_vx')
+        linha['delta_smooth_vy_m_s'][0] = delta('smooth_vy')
+        linha['delta_obstacle_risk'][0] = delta('obstacle_risk')
+        linha['delta_avoid_lateral_body'][0] = delta('avoid_lateral_body')
+        linha['delta_avoid_brake'][0] = delta('avoid_brake')
+        linha['pan_comp_delta_rad'][0] = curr_estado['pan_comp_delta_rad']
+        linha['flow_valid_points'][0] = valid_points
+        linha['flow_active_points'][0] = active_points
+        linha['flow_track_retention_pct'][0] = valid_points / prev_points_total * 100.0
+        linha['flow_mean_x_px'][0] = float(np.mean(flow[:, 0])) if len(flow_mag) else 0.0
+        linha['flow_mean_y_px'][0] = float(np.mean(flow[:, 1])) if len(flow_mag) else 0.0
+        linha['flow_mag_mean_px'][0] = float(np.mean(flow_mag)) if len(flow_mag) else 0.0
+        linha['flow_mag_p90_px'][0] = float(np.percentile(flow_mag, 90)) if len(flow_mag) else 0.0
+        linha['radial_flow_mean_px'][0] = float(np.mean(radial_flow)) if radial_flow.size else 0.0
+        linha['radial_flow_p90_px'][0] = float(np.percentile(radial_flow, 90)) if radial_flow.size else 0.0
+        linha['point_risk_mean_delta_basis'][0] = float(np.mean(point_risk)) if point_risk.size else 0.0
+        linha['point_risk_p75_delta_basis'][0] = float(np.percentile(point_risk, 75)) if point_risk.size else 0.0
+        linha['delta_depth_min_m'][0] = delta_depth('min')
+        linha['delta_depth_mean_m'][0] = delta_depth('mean')
+        linha['delta_depth_p10_m'][0] = delta_depth('p10')
+        linha['delta_depth_p50_m'][0] = delta_depth('p50')
+        linha['delta_depth_p90_m'][0] = delta_depth('p90')
+        linha['delta_depth_close_2m_pp'][0] = delta_depth('close_2')
+        linha['delta_depth_close_5m_pp'][0] = delta_depth('close_5')
+        linha['delta_depth_close_10m_pp'][0] = delta_depth('close_10')
+        linha['delta_valid_px_pct'][0] = delta_depth('valid_pct')
 
-        self.depth_gt_csv_writer.writerow([
-            sample_id,
-            f'{rgb_stamp_s:.6f}',
-            f'{self.latest_depth_gt_stamp_s:.6f}',
-            f'{depth_age_s:.6f}',
-            str(rgb_path),
-            str(depth_path),
-            self.current_x if self.current_x is not None else float('nan'),
-            self.current_y if self.current_y is not None else float('nan'),
-            self.current_z if self.current_z is not None else float('nan'),
-            self.current_roll,
-            self.current_pitch,
-            self.current_yaw,
-            self.current_gyro_rad_s[0],
-            self.current_gyro_rad_s[1],
-            self.current_gyro_rad_s[2],
-            self.current_accel_m_s2[0],
-            self.current_accel_m_s2[1],
-            self.current_accel_m_s2[2],
-            self.last_pan_delta_rad,
-            self.last_pan_delta_source,
-            depth_min,
-            depth_mean,
-            depth_max
-        ])
-        self.depth_gt_csv_file.flush()
+        delta_depth_log, depth_mask = self.preparar_delta_depth_memmap(
+            referencia_anterior['depth_m'],
+            referencia_atual['depth_m'],
+        )
+        self.depth_gt_intervals[idx] = linha[0]
+        self.depth_gt_image_delta[idx] = self.preparar_delta_imagem_memmap(
+            referencia_anterior['imagem_bgr'],
+            referencia_atual['imagem_bgr'],
+        )
+        self.depth_gt_depth_delta[idx] = delta_depth_log
+        self.depth_gt_depth_mask[idx] = depth_mask
+        self.depth_gt_flow_vectors[idx] = self.preparar_vetores_flow_memmap(
+            flow_interval,
+            imagem_estabilizada_bgr.shape[1],
+            imagem_estabilizada_bgr.shape[0],
+        )
+        self.depth_intervals_saved += 1
+
+        self.depth_gt_intervals.flush()
+        self.depth_gt_image_delta.flush()
+        self.depth_gt_depth_delta.flush()
+        self.depth_gt_depth_mask.flush()
+        self.depth_gt_flow_vectors.flush()
+        self.atualizar_manifesto_depth_gt()
 
     def criar_visualizacao_depth_gt(self, depth_m):
         """
@@ -1264,7 +1615,9 @@ class DroneOffboardNode(Node):
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
             self.suavizar_comando_evasao(0.0, 0.0, 0.0)
-            return debug
+            return debug, None
+
+        prev_points_total = int(len(self.prev_points_avoidance))
 
         next_points, status, _ = cv2.calcOpticalFlowPyrLK(
             self.prev_gray_avoidance,
@@ -1280,7 +1633,7 @@ class DroneOffboardNode(Node):
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
             self.suavizar_comando_evasao(0.0, 0.0, 0.0)
-            return debug
+            return debug, None
 
         old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
         new = next_points[status.flatten() == 1].reshape(-1, 2)
@@ -1296,7 +1649,7 @@ class DroneOffboardNode(Node):
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
             self.suavizar_comando_evasao(0.0, 0.0, 0.0)
-            return debug
+            return debug, None
 
         valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
         old = old[valid_pixels]
@@ -1346,6 +1699,17 @@ class DroneOffboardNode(Node):
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
         self.suavizar_comando_evasao(risk, lateral_body, brake)
 
+        flow_interval = {
+            'prev_points_total': prev_points_total,
+            'valid_points': int(len(new)),
+            'active_points': int(np.count_nonzero(active)),
+            'old_points': old.copy(),
+            'new_points': new.copy(),
+            'flow': flow.copy(),
+            'radial_flow': radial_flow.copy(),
+            'point_risk': point_risk.copy(),
+        }
+
         self.prev_gray_avoidance = gray
         if len(new) < 80:
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
@@ -1361,7 +1725,7 @@ class DroneOffboardNode(Node):
             (0, 0, 255),
             1
         )
-        return debug
+        return debug, flow_interval
 
     def image_callback(self, msg):
         """
@@ -1411,6 +1775,8 @@ class DroneOffboardNode(Node):
             self.rgb_frames_seen += 1
 
             depth_gt, rgb_stamp_s, depth_age_s = self.obter_depth_gt_sincronizado(msg)
+            if rgb_stamp_s is None:
+                rgb_stamp_s = self.image_timestamp_s(msg)
             depth_gt_visual = None
             if depth_gt is not None:
                 if depth_gt.shape[:2] != (resolucao_altura, resolucao_largura) and not self.depth_gt_shape_warned:
@@ -1421,7 +1787,6 @@ class DroneOffboardNode(Node):
                     )
                     self.depth_gt_shape_warned = True
 
-                self.salvar_par_ground_truth(cv_image[:, :, :3], depth_gt, rgb_stamp_s, depth_age_s)
                 depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
             
             # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
@@ -1429,13 +1794,24 @@ class DroneOffboardNode(Node):
                 cv_image,
                 msg
             )
+            estado_intervalo = self.capturar_estado_intervalo(rgb_stamp_s, depth_age_s)
 
             # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
             if self.evasao_visual_ativa:
-                visao_da_evasao = self.calcular_evasao_visual(imagem_estabilizada, mascara_alpha)
+                visao_da_evasao, flow_interval = self.calcular_evasao_visual(
+                    imagem_estabilizada,
+                    mascara_alpha
+                )
+                self.registrar_intervalo_ground_truth(
+                    imagem_estabilizada[:, :, :3],
+                    depth_gt,
+                    estado_intervalo,
+                    flow_interval
+                )
             else:
                 self.prev_gray_avoidance = None
                 self.prev_points_avoidance = None
+                self.prev_depth_interval_ref = None
                 visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
@@ -1494,10 +1870,9 @@ class DroneOffboardNode(Node):
         ==================================================================================
         Fecha recursos abertos pelo no antes de delegar a destruicao para a classe base.
 
-        Atualmente o recurso adicional e o arquivo CSV de metadados do dataset de ground
-        truth, aberto apenas quando save_ground_truth_dataset esta ativo e o primeiro par
-        RGB/depth e salvo. Fechar o arquivo garante que os metadados sejam gravados
-        corretamente ao encerrar o processo pelo fluxo normal do ROS 2.
+        Atualmente os recursos adicionais sao memmaps do dataset de intervalos depth/flow,
+        abertos apenas quando save_ground_truth_dataset esta ativo e a primeira amostra
+        sincronizada e salva. O flush garante que os buffers sejam descarregados.
 
         Fontes:
         [ROS 2 Node] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
@@ -1505,7 +1880,14 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
 
-        if self.depth_gt_csv_file is not None:
-            self.depth_gt_csv_file.close()
-            self.depth_gt_csv_file = None
+        for memmap_array in (
+            self.depth_gt_intervals,
+            self.depth_gt_image_delta,
+            self.depth_gt_depth_delta,
+            self.depth_gt_depth_mask,
+            self.depth_gt_flow_vectors,
+        ):
+            if memmap_array is not None:
+                memmap_array.flush()
+        self.atualizar_manifesto_depth_gt()
         super().destroy_node()
