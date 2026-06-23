@@ -124,9 +124,6 @@ class DroneOffboardNode(Node):
         self.pan_max_delta_rad = float(
             self.declare_parameter('pan_max_delta_rad', math.radians(12.0)).value
         )
-        self.yaw_follow_velocity_vector = bool(
-            self.declare_parameter('yaw_follow_velocity_vector', True).value
-        )
         self.yaw_velocity_min_m_s = max(
             0.05,
             float(self.declare_parameter('yaw_velocity_min_m_s', 0.35).value)
@@ -207,8 +204,6 @@ class DroneOffboardNode(Node):
         self.current_x = None
         self.current_y = None
         self.current_z = None
-        self.current_vx = 0.0
-        self.current_vy = 0.0
         self.current_roll = 0.0
         self.current_pitch = 0.0
         self.current_yaw = 0.0
@@ -293,8 +288,6 @@ class DroneOffboardNode(Node):
         self.current_x = msg.x
         self.current_y = msg.y
         self.current_z = msg.z
-        self.current_vx = float(getattr(msg, 'vx', 0.0))
-        self.current_vy = float(getattr(msg, 'vy', 0.0))
         self.current_yaw = msg.heading
 
     def timer_callback(self):
@@ -528,10 +521,9 @@ class DroneOffboardNode(Node):
         if self.smooth_yaw is None or self.smooth_yaw == 0.0:
             self.smooth_yaw = self.current_yaw
 
-        yaw_alvo = self.calcular_yaw_para_direcao_deslocamento(target_x, target_y)
+        yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.7 if abs(erro_yaw) > 0.7 else 1.2)
-        self.smooth_yaw += (erro_yaw * yaw_gain)
+        self.smooth_yaw += (erro_yaw ** 2)
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
@@ -573,32 +565,6 @@ class DroneOffboardNode(Node):
             return yaw_base + erro * blend_factor
         else:
             return math.atan2(target_y - self.current_y, target_x - self.current_x)
-
-    def calcular_yaw_para_direcao_deslocamento(self, target_x, target_y):
-        """
-        Calcula o yaw usado pela camera/nariz do drone durante a navegacao.
-
-        A rota continua sendo definida pelos waypoints, mas a direcao visual prioriza o
-        vetor horizontal de deslocamento. Isso evita que, em curvas, vento ou evasao
-        lateral, o drone continue olhando apenas para o waypoint enquanto se move em outra
-        direcao e deixa um obstaculo fora do centro da camera.
-        """
-
-        yaw_waypoint = self.calcular_yaw_com_look_ahead(target_x, target_y)
-
-        if not self.yaw_follow_velocity_vector:
-            return yaw_waypoint
-
-        if np.isfinite(self.current_vx) and np.isfinite(self.current_vy):
-            velocidade_medida = math.sqrt(self.current_vx**2 + self.current_vy**2)
-            if velocidade_medida >= self.yaw_velocity_min_m_s:
-                return math.atan2(self.current_vy, self.current_vx)
-
-        velocidade_comandada = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
-        if velocidade_comandada >= self.yaw_velocity_min_m_s:
-            return math.atan2(self.smooth_vy, self.smooth_vx)
-
-        return yaw_waypoint
 
     def publish_offboard_control_mode(self):
         """
