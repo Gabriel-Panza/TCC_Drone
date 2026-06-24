@@ -185,3 +185,4 @@ ws_ros2/
 
 datasets/
 logs/
+.sim_env/

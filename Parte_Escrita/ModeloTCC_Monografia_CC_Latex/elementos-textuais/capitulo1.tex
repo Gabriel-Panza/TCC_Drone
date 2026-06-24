@@ -1,0 +1,45 @@
+\chapter{Introdução} \label{cap:introducao}
+
+Veículos aéreos não tripulados, especialmente quadricópteros, vêm sendo utilizados em tarefas de inspeção, monitoramento, busca, mapeamento e navegação autônoma em áreas de difícil acesso. Em muitos desses cenários, o ambiente não é estruturado, a iluminação varia ao longo do percurso e a presença de obstáculos exige respostas rápidas do sistema de percepção e controle. Esse problema se torna ainda mais crítico em ambientes densos, como florestas, regiões com árvores, galhos, postes, construções e outros obstáculos próximos entre si, nos quais pequenos atrasos de percepção podem levar a colisões.
+
+A navegação autônoma em alta velocidade impõe uma restrição adicional: quanto maior a velocidade do drone, menor é o tempo disponível para perceber o obstáculo, estimar risco e corrigir a trajetória. Trabalhos recentes mostram que voos rápidos em ambientes complexos ainda representam um desafio relevante, pois abordagens tradicionais costumam separar percepção, mapeamento e planejamento em etapas sucessivas, o que pode aumentar a latência e acumular erros ao longo do processo \cite{Loquercio2021}. Em ambientes desconhecidos, a dificuldade também está ligada à incerteza sobre a região ainda não observada, o que afeta diretamente a escolha de trajetórias seguras \cite{BayesianLearning2015}.
+
+Nesse contexto, a visão computacional aparece como uma alternativa importante para fornecer percepção espacial com baixo custo, baixo peso e compatibilidade com plataformas embarcadas. Câmeras monoculares são atrativas para drones pequenos por não exigirem sensores adicionais de profundidade, como LiDAR ou câmeras RGB-D, mas também tornam o problema mais difícil, pois a profundidade precisa ser inferida a partir de pistas visuais, movimento aparente ou modelos aprendidos \cite{Vyas2022,Arampatzakis2024}. A literatura em estimativa de profundidade monocular e visão para robótica ressalta que o uso de uma única imagem ou sequência de imagens é um problema mal posto, principalmente em ambientes externos, onde textura, iluminação, oclusões e movimento da câmera dificultam a inferência de distância \cite{RealTimeMonocular2022}.
+
+O foco deste trabalho é estudar uma abordagem de percepção visual para navegação reativa de um drone em ambientes complexos, com ênfase na detecção de obstáculos em tempo real ou quase tempo real. A proposta parte da hipótese de que variações visuais entre frames consecutivos, combinadas com métricas de movimento e proximidade, podem fornecer sinais úteis para ajustar a navegação antes que o drone colida com obstáculos. Assim, a câmera monocular é tratada como o principal sensor de navegação, enquanto a profundidade obtida em simulação é usada como referência para análise, validação de métricas e estudo de modelos de aprendizado.
+
+Além das métricas visuais, o estudo considera o uso de modelos simples de aprendizado de máquina, como redes neurais multicamadas (MLPs), e modelos convolucionais (CNNs) como possíveis caminhos para relacionar variações visuais, fluxo óptico e mudanças de profundidade/proximidade. Nesta etapa do projeto, esses modelos não são tratados como solução final, mas como instrumentos de análise para investigar se os dados coletados carregam informação suficiente para antecipar variações relevantes no ambiente observado.
+
+\section{Motivação}
+
+A motivação principal deste trabalho está na necessidade de aproximar a percepção visual do ritmo real de decisão exigido por um drone em voo. Em ambientes densos, não basta detectar que existe um obstáculo em algum ponto da imagem; é necessário perceber se esse obstáculo representa risco para a direção atual de deslocamento e reagir em tempo compatível com a dinâmica do quadricóptero. Essa restrição torna o problema diferente de tarefas clássicas de detecção de objetos em imagens estáticas, pois o interesse está na relação entre movimento, proximidade e risco de colisão.
+
+Estudos sobre voo autônomo rápido apontam que métodos baseados em pipelines longos de reconstrução, mapeamento e planejamento podem se tornar limitados quando o objetivo é manter alta velocidade em ambientes com muitos obstáculos \cite{Loquercio2021}. Por outro lado, abordagens reativas e baseadas em aprendizado têm sido investigadas justamente por reduzirem a distância entre percepção e ação, mapeando sinais visuais diretamente para comandos, trajetórias ou estimativas de risco \cite{Bhattacharya2024}. Essa linha de pesquisa reforça a importância de estudar métricas visuais que sejam computacionalmente viáveis e que respondam rapidamente a mudanças no campo de visão do drone.
+
+Outro fator que motiva este trabalho é a limitação prática de sensores de profundidade em drones pequenos. Embora sensores dedicados possam fornecer medições diretas de distância, eles aumentam custo, peso, consumo de energia e complexidade de integração. A visão monocular, por outro lado, está presente em muitas plataformas e permite explorar técnicas de fluxo óptico, variação de textura, odometria visual e estimativa de profundidade por aprendizado \cite{Tarrio2015,RealTimeMonocular2022}. O desafio está em transformar essas informações em sinais úteis para navegação segura.
+
+\section{Objetivos}
+
+\subsection{Objetivo geral}
+
+Investigar uma abordagem de percepção visual para apoiar a navegação reativa de um drone em ambientes complexos e densos, com foco na detecção de obstáculos em tempo real ou quase tempo real, mantendo a possibilidade de voo em velocidades elevadas sem colisão.
+
+\subsection{Objetivos específicos}
+
+\begin{itemize}
+    \item Estudar métricas visuais capazes de representar movimento aparente, proximidade e variação de profundidade entre intervalos consecutivos de percepção.
+    \item Relacionar sinais extraídos de câmera monocular, fluxo visual e dados de navegação com alterações observadas na profundidade de referência.
+    \item Avaliar o uso de dados de profundidade simulada como base de análise, sem utilizá-los como entrada direta da navegação monocular.
+    \item Investigar modelos iniciais de aprendizado, como MLPs e CNNs, para compreender se as variações visuais registradas podem estimar mudanças de profundidade/proximidade.
+    \item Delimitar os desafios de percepção em cenários densos, especialmente quando há necessidade de reação rápida em trajetórias com obstáculos próximos.
+\end{itemize}
+
+\section{Escopo da Proposta}
+
+Este trabalho está concentrado na parte de visão computacional e percepção visual aplicada à navegação de drones. O objetivo não é propor, neste momento, uma solução completa e definitiva para controle ótimo, planejamento global ou reconstrução tridimensional do ambiente. O interesse central está em analisar como informações visuais extraídas frame a frame podem indicar aproximação de obstáculos e auxiliar decisões reativas de navegação.
+
+No escopo atual, a profundidade gerada em simulação é usada como dado de referência para estudo das métricas, permitindo comparar variações de imagem, fluxo e movimento com alterações na ocupação próxima do campo visual. Essa escolha evita depender de valores absolutos de posição ou de distância no espaço global e favorece uma análise baseada em deslocamentos e variações temporais, mais próxima do comportamento que se espera de um sistema genérico de percepção embarcada.
+
+\section{Organização do Texto}\label{Organizacao_do_texto}
+
+O restante deste trabalho está organizado da seguinte forma. O Capítulo~\ref{cap:fundamentacao_bibliografica} apresenta a fundamentação teórica e os trabalhos relacionados sobre navegação visual de drones, estimativa de profundidade monocular, fluxo óptico, voo em alta velocidade e aprendizado aplicado à percepção. Os capítulos seguintes ficam reservados para a descrição detalhada da abordagem, da implementação, dos experimentos e das análises, conforme o desenvolvimento do projeto avançar.

@@ -1,0 +1,252 @@
+\documentclass[article,a4paper,12pt,brazil,sumario=tradicional]{abntex2}
+\usepackage{titlesec}
+
+\setcounter{secnumdepth}{4}
+
+\titleformat{\paragraph}
+{\normalfont\normalsize}{\theparagraph}{1em}{}
+
+\usepackage{array}
+\usepackage{subfig}
+\usepackage[utf8]{inputenc}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+\usepackage[hyphenbreaks]{breakurl}
+\usepackage[alf,abnt-etal-text=it]{abntex2cite}
+\usepackage[brazil]{babel}
+\usepackage[space]{grffile}
+\graphicspath{ {./images/} }
+\setlength{\parindent}{3em}
+
+\newcolumntype{C}[1]{>{\centering\arraybackslash\hspace{0pt}}p{#1}}
+
+\setlrmarginsandblock{3cm}{3cm}{*}
+\setulmarginsandblock{3cm}{2cm}{*}
+\checkandfixthelayout
+
+\titleformat{\section}{\normalfont\normalsize\bfseries}{\thesection.}{1em}{\MakeUppercase}
+\titleformat{\subsection}{\normalfont\normalsize}{\thesubsection.}{1em}{\MakeUppercase}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection.}{1em}{}
+
+\renewenvironment{quotation}
+  {\small\list{}{\rightmargin=0cm \leftmargin=2cm}%
+   \item\relax}
+  {\endlist}
+  
+\hypersetup{%
+    pdfborder = {0 0 0}
+}
+
+% \title{ {\Large Título em português\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}\\\\
+% \vspace{.2} 
+% \textit{Título em inglês}\\}}
+
+% \date{ }
+\renewcommand{\imprimircapa}{%
+\begin{capa}%
+ \center
+  \ABNTEXchapterfont\large\imprimirinstituicao
+   \vfill
+    \ABNTEXchapterfont\large\imprimirautor
+    \vfill
+    \begin{center}
+    \ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo
+    \vfill
+    \end{center}
+    
+    \large\imprimirlocal
+    
+    \large\imprimirdata
+\end{capa}
+}
+\makeatletter
+\renewcommand{\folhaderostocontent}{
+    \begin{center}
+      {\abntex@ifnotempty{\imprimirinstituicao}{\imprimirinstituicao
+        \vspace*{\fill}}}
+        
+        {\imprimirautor}
+        \vspace*{\fill}\vspace*{\fill}
+        \begin{center}
+            \imprimirtitulo
+        \end{center}
+        \vspace*{\fill}
+        \abntex@ifnotempty{\imprimirpreambulo}{%
+            \hspace{.45\textwidth}
+            \begin{minipage}{.5\textwidth}
+                \SingleSpacing
+                \imprimirpreambulo
+            \end{minipage}%
+            \vspace*{\fill}
+        }%  
+        %{\abntex@ifnotempty{\imprimirinstituicao}{\imprimirinstituicao
+        %\vspace*{\fill}}}
+        
+        \vspace*{\fill}
+        {\large\imprimirlocal}
+        \par
+        {\large\imprimirdata}
+        \vspace*{1cm}
+    \end{center}
+}
+\makeatother
+
+\titulo{TÍTULO DO TRABALHO}
+\autor{Gabriel Justino Panza}
+\local{Niterói}
+\data{Ano de entrega}
+\orientador[Orientador: ]{Leandro Augusto Frata Fernandes}
+\coorientador[Coorientador: ]{Eduardo Charles Vasconcellos}
+\instituicao{%
+  UNIVERSIDADE FEDERAL FLUMINENSE
+  \par
+  INSTITUTO DE COMPUTAÇÃO
+  \par
+  DEPARTAMENTO DE CIÊNCIA DA COMPUTAÇÃO}
+\tipotrabalho{Trabalho de Conclusão de Curso}
+% O preambulo deve conter o tipo do trabalho, o objetivo, 
+% o nome da instituição e a área de concentração 
+\preambulo{Trabalho de Conclusão de Curso submetido ao Departamento de Ciência da Computação da Universidade Federal Fluminense como requisito parcial para a obtenção do título de Bacharel em Ciência da Computação.}
+
+\begin{document}
+
+%\imprimircapa
+
+\imprimirfolhaderosto*
+
+%\input{elementos-pretextuais/errata}
+\input{elementos-pretextuais/folha-aprovacao}
+\pagebreak
+\input{elementos-pretextuais/ficha-catalografica}
+
+\pagebreak
+\textual
+\begin{center}
+\Large {Título em português\\
+%\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
+\textit{Título em inglês}}
+\end{center}
+\vspace{.2cm} 
+
+\begin{flushright}
+Gabriel Justino Panza\footnote{Graduando do Curso de Ciência da Computação - UFF.} 
+
+Leandro Augusto Frata Fernandes\footnote{Orientador - Instituto de Computação - UFF.}
+
+Eduardo Charles Vasconcellos\footnote{Coorientador.}
+\end{flushright}
+
+\vspace{\onelineskip}
+
+\begin{center}
+    \textbf{Resumo}
+\end{center}
+
+\vspace{-.3cm}
+
+\noindent Apresentação concisa dos pontos relevantes de um documento. O resumo deve ressaltar o objetivo, o método, os resultados e as conclusões do documento. A ordem e a extensão destes itens dependem do tratamento que cada item recebe no documento original. O resumo deve ser composto de uma sequência de frases concisas, afirmativas e não de enumeração de tópicos. Recomenda-se o uso de parágrafo único. As palavras-chave devem figurar logo abaixo do resumo.
+
+\vspace{.4cm}
+ 
+\noindent
+\textbf{Palavras-chaves}: Assunto1; Assunto2; Assunto3. 
+ 
+\vspace{\onelineskip}
+
+\begin{center}
+    \textbf{Abstract}
+\end{center}
+
+\vspace{-.3cm}
+\begin{hyphenrules}{english}
+\noindent Concise presentation of relevant points in a document. The summary should highlight the purpose, method, results and conclusions of the document. The order and extent of these items depend on the treatment each item receives in the original document. The abstract should be composed of a sequence of concise, affirmative and non-topic phrases. It is recommended to use single paragraph. Keywords should appear just below the abstract.
+\end{hyphenrules}
+\vspace{.4cm}
+ 
+\noindent \textbf{Keywords}: Subject1; Subject2; Subject3.
+
+\vspace{.4cm}
+
+\noindent \textbf{Aprovado em:} dd/mm/aaaa.~~~\textbf{Versão Final em:} dd/mm/aaaa
+
+\section{Introdução}
+
+Veículos aéreos não tripulados, especialmente quadricópteros, têm sido utilizados em aplicações de inspeção, monitoramento, busca e navegação autônoma em regiões de difícil acesso. Em cenários complexos e densos, como florestas, áreas com árvores, galhos, postes, estruturas urbanas e obstáculos próximos entre si, a navegação autônoma depende de uma percepção rápida e confiável do ambiente. Quando o drone opera em velocidade elevada, essa exigência se torna ainda maior, pois o tempo disponível para detectar um obstáculo, estimar risco e corrigir a trajetória é reduzido.
+
+A literatura recente mostra que o voo autônomo rápido em ambientes complexos ainda é um problema desafiador. Em muitos sistemas tradicionais, a navegação é dividida em etapas sucessivas de percepção, mapeamento, planejamento e controle. Embora essa divisão seja útil para organizar o sistema, ela pode aumentar a latência e acumular erros, principalmente quando a aeronave precisa reagir rapidamente a obstáculos próximos \cite{Loquercio2021}. Em ambientes desconhecidos, também existe incerteza sobre regiões ainda não observadas, o que dificulta a escolha de trajetórias rápidas e seguras \cite{BayesianLearning2015}.
+
+Neste trabalho, o foco está na percepção visual para navegação reativa de drones. O objetivo é estudar como técnicas de visão computacional podem auxiliar a detecção de obstáculos em tempo real ou quase tempo real, mantendo a possibilidade de voo em velocidades elevadas. A proposta considera o uso de câmera monocular como principal fonte de percepção, por ser uma alternativa leve, de baixo custo e compatível com plataformas embarcadas. Ao mesmo tempo, essa escolha impõe desafios, pois a profundidade e a proximidade dos obstáculos precisam ser inferidas a partir de pistas visuais e variações temporais da imagem \cite{Vyas2022,RealTimeMonocular2022}.
+
+O problema tratado não se limita à detecção semântica de objetos. Em uma situação de voo, o mais importante é identificar se uma região da cena representa risco para a trajetória atual do drone. Assim, obstáculos de diferentes classes, formatos e texturas podem ser relevantes mesmo quando não são classificados explicitamente. Por isso, este estudo se concentra em métricas visuais de movimento, proximidade e variação entre frames consecutivos, explorando sinais como fluxo óptico e variações de profundidade de referência.
+
+Além das métricas de visão, também é considerada a investigação inicial de modelos de aprendizado de máquina. Redes neurais multicamadas (MLPs) podem ser usadas para avaliar se atributos tabulares extraídos dos intervalos visuais carregam informação suficiente para estimar variações de profundidade/proximidade. Redes convolucionais (CNNs), por sua vez, aparecem como uma possibilidade natural para explorar a estrutura espacial das imagens e mapas de variação. Nesta etapa, esses modelos são tratados como apoio ao estudo das métricas, e não como uma solução final já validada.
+
+\section{Fundamentação Teórica e Trabalhos Relacionados}
+
+\subsection{Navegação visual em drones}
+
+A navegação autônoma de quadricópteros exige a integração entre percepção, decisão e controle. Em ambientes complexos, a aeronave precisa interpretar rapidamente o que está à sua frente e ajustar sua trajetória antes que a colisão ocorra. Essa necessidade é ainda mais forte em voos rápidos, nos quais pequenas latências podem tornar uma manobra inviável.
+
+Trabalhos recentes investigam estratégias para reduzir a distância entre percepção e ação. Loquercio et al. propõem uma abordagem de voo rápido em ambientes naturais e artificiais complexos, treinada em simulação e baseada no mapeamento direto de observações sensoriais para trajetórias livres de colisão \cite{Loquercio2021}. O trabalho demonstra a relevância de reduzir a latência de pipelines tradicionais em cenários de alta velocidade. De forma complementar, Richter, Vega-Brown e Roy discutem navegação rápida e segura em ambientes desconhecidos, considerando a incerteza sobre regiões ainda não mapeadas \cite{BayesianLearning2015}.
+
+Em sistemas baseados em visão, a câmera fornece uma representação rica do ambiente, mas também introduz desafios como iluminação variável, borramento de movimento, oclusões e restrições de processamento. Revisões sobre detecção e rastreamento em imagens de VANTs destacam que altitude, ângulo de câmera, movimento e oclusão tornam a interpretação visual mais difícil do que em imagens estáticas convencionais \cite{Ramachandran2021}.
+
+\subsection{Visão monocular e profundidade}
+
+A câmera monocular é uma escolha atrativa para drones por reduzir custo, peso e consumo de energia. No entanto, estimar profundidade com apenas uma câmera é um problema mal posto, pois a imagem bidimensional não contém diretamente a distância métrica dos objetos. A profundidade precisa ser inferida por pistas de perspectiva, textura, tamanho relativo, sombreamento, movimento ou aprendizado a partir de dados \cite{Vyas2022,Arampatzakis2024}.
+
+Revisões sobre estimativa de profundidade monocular mostram avanços importantes com redes neurais profundas, especialmente em tarefas de inferência de profundidade a partir de uma única imagem \cite{RealTimeMonocular2022,Dhanushkodi2025}. Ainda assim, a aplicação em robótica exige atenção ao custo computacional, à generalização para ambientes externos e à robustez em situações de movimento. Em drones, uma predição visual precisa ser útil dentro do intervalo de decisão do sistema, não apenas precisa em uma análise offline.
+
+Também há trabalhos que tratam a profundidade estimada como uma variável incerta. Liu et al. argumentam que a profundidade monocular pode apresentar ambiguidades relevantes e propõem modelar distribuições sobre profundidade em vez de apenas valores pontuais \cite{Liu2023}. Essa perspectiva é importante para este projeto, pois reforça a análise de variações e tendências de proximidade, evitando depender exclusivamente de valores absolutos de distância.
+
+\subsection{Fluxo óptico e variação visual}
+
+O fluxo óptico representa o movimento aparente de pontos da imagem entre frames consecutivos. Para um drone em deslocamento, esse movimento aparente está relacionado à velocidade da câmera, à direção de movimento e à distância dos objetos observados. Obstáculos próximos tendem a produzir deslocamentos visuais maiores, o que permite extrair indícios de proximidade e risco.
+
+Trabalhos de odometria visual monocular exploram essas relações para estimar movimento e apoiar navegação. Tarrio e Pedre apresentam uma abordagem de odometria visual monocular em tempo real baseada em bordas, com aplicação em veículos aéreos não tripulados \cite{Tarrio2015}. Garcia et al. discutem o uso de câmera monocular e fusão sensorial para suporte à navegação de micro veículos aéreos \cite{Garcia2016}. Esses estudos reforçam que a informação temporal entre imagens pode ser usada para inferir movimento e estrutura do ambiente.
+
+Em aplicações embarcadas, a resolução e a frequência das imagens influenciam diretamente o custo computacional e a robustez. Godio et al. analisam os efeitos desses parâmetros em odometria visual-inercial para VANTs, mostrando que a configuração visual afeta tanto a precisão quanto o uso de CPU \cite{SimoneGodio2022}. Em voos rápidos, o borramento de movimento também é um fator importante, como discutido em estudos sobre odometria visual sensível a motion blur \cite{Peidong2021}.
+
+\subsection{Aprendizado aplicado à percepção e desvio de obstáculos}
+
+Modelos de aprendizado têm sido explorados para aproximar percepção visual e decisão em drones. Em voo rápido, Loquercio et al. mostram que políticas treinadas em simulação podem mapear observações sensoriais para trajetórias de forma mais direta do que pipelines tradicionais \cite{Loquercio2021}. Bhattacharya et al. investigam desvio de obstáculos com visão monocular baseada em eventos, mostrando que sensores visuais e modelos aprendidos podem apoiar navegação reativa em ambientes internos e externos \cite{Bhattacharya2024}.
+
+No contexto de profundidade, CNNs são frequentemente utilizadas por sua capacidade de extrair padrões espaciais diretamente das imagens \cite{Dhanushkodi2025}. Para este trabalho, elas são relevantes como alternativa para explorar mapas de variação visual ou imagens consecutivas. Já MLPs podem ser úteis como modelos iniciais sobre atributos resumidos, permitindo avaliar se métricas agregadas de fluxo, movimento e variação de imagem carregam sinal suficiente para estimar mudanças de proximidade.
+
+\subsection{Posicionamento da proposta}
+
+Os trabalhos relacionados indicam que a navegação segura de drones em ambientes densos depende de percepção rápida, representação adequada da proximidade e integração entre sinais visuais e ação. A proposta deste trabalho se posiciona nesse espaço ao estudar métricas visuais calculadas entre intervalos consecutivos, com foco em sinais de aproximação de obstáculos. A profundidade simulada é utilizada como referência de análise, enquanto a proposta de navegação permanece centrada em visão monocular e variações temporais da cena.
+
+\section{Conclusão}
+
+Parte final do artigo, na qual se apresentam as considerações correspondentes aos objetivos e/ou hipóteses.
+
+\newpage
+\bibliography{references}
+
+\newpage
+\renewcommand{\listfigurename}{APÊNDICE A - Lista de ilustrações}
+\listoffigures
+
+\newpage
+\renewcommand{\listtablename}{APÊNDICE B - Lista de tabelas}
+\listoftables
+
+\begin{appendices}
+\newpage
+\chapter* {APÊNDICE C}
+\noindent
+Os apêndices A e B devem conter a lista de ilustrações e tabelas, respectivamente. Os apêndices seguintes podem ser usados para apresentar textos elaborados pelo próprio autor, a fim de complementar a sua argumentação. Por exemplo, no caso de desenvolvimento de sistemas, podem constar nos apêndices os artefatos gerados da análise de sistemas, como protótipos de telas, casos de uso, diagramas UML, ou a lista de requisitos de negócio e de usuário.
+
+\newpage
+\chapter*{ANEXO A}
+\noindent
+Seção opcional. Anexos são os documentos de autoria externa, ou não elaborados pelo autor, que servem de fundamentação, comprovação ou ilustração.
+\end{appendices}
+
+\newpage
+\chapter*{Agradecimentos}
+\noindent
+Seção opcional. Oportunidade para o(s) autor(es) registrar(em) os agradecimentos, em especial, quando o artigo recebeu ajuda financeira de alguma instituição de fomento, ou represente o resultado de um trabalho colaborativo ou multidisciplinar, envolvendo áreas externas ao Instituto de Computação.
+
+\end{document}

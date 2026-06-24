@@ -1,0 +1,61 @@
+\chapter{Fundamentação Teórica e Trabalhos Relacionados}\label{cap:fundamentacao_bibliografica}
+
+Este capítulo reúne os conceitos e trabalhos que fundamentam a proposta deste projeto. A discussão está concentrada na percepção visual para drones, no uso de visão monocular em ambientes complexos, na estimativa de profundidade, no fluxo óptico e em abordagens de navegação rápida e reativa. O objetivo é delimitar o problema de pesquisa e situar a proposta dentro da literatura, sem apresentar ainda resultados ou conclusões experimentais.
+
+\section{Navegação autônoma de drones em ambientes complexos}
+
+Quadricópteros são plataformas ágeis, capazes de realizar manobras rápidas e operar em espaços de difícil acesso. Essa característica torna os drones úteis em aplicações como inspeção, monitoramento, busca e exploração de ambientes externos. Entretanto, essa mesma agilidade aumenta a exigência sobre os módulos de percepção e decisão, pois a aeronave precisa detectar obstáculos e reagir antes que a dinâmica do voo torne a colisão inevitável.
+
+Em ambientes densos, como florestas, galpões, regiões urbanas estreitas ou áreas com obstáculos irregulares, o drone precisa lidar com oclusões, objetos finos, mudanças bruscas de iluminação, texturas repetitivas e forte movimento aparente na imagem. Esses fatores dificultam tanto a detecção direta de obstáculos quanto a reconstrução estável do ambiente. A literatura sobre voo em alta velocidade destaca que o problema não é apenas perceber o cenário, mas perceber em tempo compatível com a ação \cite{Loquercio2021}.
+
+Abordagens clássicas costumam separar a navegação em etapas de percepção, mapeamento, planejamento e controle. Essa organização facilita o desenvolvimento modular, mas pode introduzir latência e acúmulo de erros, especialmente quando a cena muda rapidamente ou quando o drone se desloca em alta velocidade \cite{Loquercio2021}. Em ambientes desconhecidos, também existe incerteza sobre regiões ainda não observadas, o que pode tornar o planejamento conservador ou arriscado demais \cite{BayesianLearning2015}. Por isso, trabalhos recentes investigam estratégias capazes de aproximar a percepção da tomada de decisão, seja por políticas aprendidas, seja por métricas reativas de risco.
+
+\section{Visão computacional em VANTs}
+
+A visão computacional tem papel central em sistemas autônomos porque permite extrair informações do ambiente a partir de imagens. Em drones, essa percepção visual pode ser usada para detecção de objetos, rastreamento, localização, estimação de movimento, reconstrução do ambiente e prevenção de colisões. No entanto, imagens obtidas por VANTs apresentam desafios específicos, como variação de altitude, ângulo de câmera, movimento rápido, vibração, borramento, oclusões e restrições de processamento embarcado \cite{Ramachandran2021}.
+
+No contexto deste trabalho, o termo detecção de obstáculos é usado em sentido funcional: o objetivo não é necessariamente classificar semanticamente cada objeto da cena, mas identificar regiões que representam risco para a trajetória do drone. Isso aproxima o problema de tarefas de percepção de proximidade, fluxo visual e estimativa de profundidade. Em vez de reconhecer que um obstáculo pertence a uma classe específica, o sistema precisa estimar se a estrutura observada está próxima, se está entrando na direção de deslocamento e se exige correção de rota.
+
+Essa distinção é importante porque, em ambientes naturais, obstáculos relevantes podem ter formas variadas e difíceis de classificar, como galhos, troncos, folhas, fios, placas ou partes de construções. Uma abordagem exclusivamente baseada em classes pode ser insuficiente quando o risco está mais relacionado à geometria e à proximidade do que ao nome do objeto. Por isso, técnicas baseadas em movimento visual e profundidade monocular são relevantes para o escopo deste projeto.
+
+\section{Visão monocular e estimativa de profundidade}
+
+Câmeras monoculares são atrativas para drones por serem leves, baratas e fáceis de integrar. No entanto, estimar profundidade a partir de uma única câmera é um problema difícil, pois a imagem 2D perde diretamente a informação métrica da cena 3D. A profundidade precisa ser inferida por pistas como perspectiva, textura, tamanho relativo, sombreamento, movimento entre frames e conhecimento aprendido a partir de dados \cite{Vyas2022,Arampatzakis2024}.
+
+Revisões recentes sobre estimativa de profundidade monocular mostram que houve avanço significativo com o uso de redes neurais profundas, especialmente CNNs e arquiteturas modernas treinadas com grandes bases de dados \cite{RealTimeMonocular2022,Dhanushkodi2025}. Ainda assim, o problema permanece sensível ao domínio de aplicação. Modelos treinados em bases urbanas ou internas podem não generalizar diretamente para florestas, parques e ambientes densos, nos quais a textura, a iluminação e a distribuição de objetos são diferentes.
+
+Outro ponto importante é o custo computacional. Para robótica e drones, não basta que a estimativa de profundidade seja precisa; ela precisa ser rápida o suficiente para ser usada em um ciclo de percepção e controle. Dong et al. destacam a busca por estimativa de profundidade monocular em tempo real para robótica, mostrando que existe um compromisso entre qualidade da predição, robustez e viabilidade computacional \cite{RealTimeMonocular2022}. Esse compromisso é diretamente relacionado ao problema deste trabalho, pois o drone precisa reagir em intervalos curtos.
+
+A estimativa de profundidade por aprendizado também pode ser tratada como uma distribuição ou medida incerta, em vez de um único valor absoluto por pixel. Liu et al. discutem a importância de modelar incertezas em profundidade monocular, já que diferentes cenas podem produzir ambiguidades visuais semelhantes \cite{Liu2023}. Para o presente projeto, essa observação reforça a escolha de analisar variações temporais e sinais de proximidade, evitando depender apenas de valores absolutos de distância.
+
+\section{Fluxo óptico, movimento visual e proximidade}
+
+O fluxo óptico descreve o deslocamento aparente de pontos ou regiões da imagem entre frames consecutivos. Em um drone em movimento, esse deslocamento carrega informações sobre a relação entre movimento da câmera, estrutura da cena e proximidade dos objetos. Obstáculos próximos tendem a produzir movimentos aparentes maiores do que regiões distantes, especialmente quando o drone avança em direção a eles.
+
+Essa propriedade torna o fluxo visual útil para tarefas de navegação reativa. A análise de vetores de deslocamento pode indicar regiões de expansão, aproximação ou movimento lateral, oferecendo sinais de risco antes que um mapa completo do ambiente seja reconstruído. Trabalhos de odometria visual monocular exploram justamente a relação entre movimento da câmera e estrutura visual da cena para estimar deslocamento e apoiar navegação \cite{Tarrio2015,Garcia2016}.
+
+Em aplicações de drones, a frequência e a resolução da imagem também influenciam a robustez da percepção. Godio et al. analisam os efeitos de resolução e frequência em odometria visual-inercial para VANTs, mostrando que o custo computacional e a estabilidade do sistema dependem diretamente da configuração visual utilizada \cite{SimoneGodio2022}. Em voos rápidos, o borramento de movimento também se torna relevante, pois pode degradar a correspondência entre frames e afetar a qualidade da odometria ou do fluxo visual \cite{Peidong2021}.
+
+No escopo deste trabalho, o fluxo óptico é tratado como uma fonte de métricas temporais. Em vez de analisar apenas o valor absoluto de uma imagem isolada, o interesse está nas variações entre intervalos consecutivos, pois essas variações se aproximam mais da forma como o risco de colisão surge durante o deslocamento do drone.
+
+\section{Desvio reativo e voo em alta velocidade}
+
+A navegação em alta velocidade exige que o drone reduza o tempo entre perceber e agir. Trabalhos como o de Loquercio et al. investigam voo rápido em ambientes complexos por meio de políticas aprendidas que mapeiam observações sensoriais para trajetórias livres de colisão, buscando reduzir a latência de pipelines tradicionais \cite{Loquercio2021}. Esse tipo de abordagem mostra que a percepção visual precisa estar fortemente ligada à decisão de movimento quando o objetivo é atravessar ambientes densos com velocidade elevada.
+
+Também existem trabalhos que tratam a navegação segura em ambientes desconhecidos a partir da incerteza sobre colisões futuras. Richter, Vega-Brown e Roy propõem aprendizado bayesiano para navegação rápida e segura, destacando que prever a probabilidade de colisão em regiões ainda não observadas pode permitir velocidades maiores sem abandonar restrições de segurança \cite{BayesianLearning2015}. Embora essa abordagem esteja ligada a planejamento, ela reforça a importância de estimar risco de colisão e não apenas reconstruir o ambiente.
+
+Mais recentemente, sensores visuais alternativos, como câmeras de eventos, também têm sido explorados para desvio de obstáculos em quadricópteros. Bhattacharya et al. mostram que visão monocular baseada em eventos pode apoiar desvio reativo em ambientes internos e externos, aproveitando características como alta faixa dinâmica e menor borramento em movimento rápido \cite{Bhattacharya2024}. Mesmo que este projeto utilize câmera RGB monocular convencional, esse trabalho é relevante por reforçar a relação entre velocidade, percepção visual e reação a obstáculos.
+
+\section{Aprendizado de máquina para percepção visual}
+
+Modelos de aprendizado têm sido usados para estimar profundidade, prever movimento, detectar objetos e aprender políticas de navegação. Em visão monocular, CNNs se destacam por extrair padrões espaciais diretamente da imagem, sendo adequadas para tarefas de profundidade e interpretação de cena \cite{Dhanushkodi2025}. Em navegação autônoma, redes profundas também podem ser usadas para aproximar a relação entre observação visual e ação, como demonstrado em abordagens de voo rápido treinadas em simulação \cite{Loquercio2021}.
+
+Entretanto, modelos mais simples também têm valor em fases iniciais de investigação. Uma MLP aplicada a atributos tabulares, por exemplo, pode ajudar a avaliar se métricas resumidas de fluxo, comandos, movimento e variação visual carregam informação suficiente para estimar alterações de proximidade. Essa escolha não substitui arquiteturas convolucionais quando o objetivo é explorar a estrutura completa da imagem, mas permite uma análise inicial mais interpretável e computacionalmente mais simples.
+
+No contexto deste projeto, a comparação entre MLPs e CNNs é entendida como parte do estudo da representação dos dados. A MLP opera sobre atributos extraídos e resume o comportamento visual em variáveis numéricas, enquanto uma CNN pode explorar diretamente padrões espaciais da imagem ou dos mapas de variação. Essa diferença ajuda a investigar se o sinal relevante para proximidade está presente em métricas agregadas ou se depende de estruturas espaciais mais complexas.
+
+\section{Posicionamento deste trabalho}
+
+A literatura revisada indica que a navegação de drones em ambientes densos envolve uma combinação de percepção visual, restrições de tempo real, incerteza, dinâmica de voo e risco de colisão. Trabalhos sobre voo rápido mostram a importância de reduzir latência e aproximar percepção de ação \cite{Loquercio2021,Bhattacharya2024}. Estudos sobre profundidade monocular mostram o potencial e as limitações de inferir geometria com uma única câmera \cite{Vyas2022,RealTimeMonocular2022}. Trabalhos de odometria e fluxo visual reforçam que o movimento entre frames pode fornecer sinais úteis para navegação \cite{Tarrio2015,SimoneGodio2022}.
+
+Diante disso, este projeto se posiciona na interseção entre visão computacional monocular e navegação reativa de drones. A proposta busca estudar métricas de variação visual e proximidade que possam ser calculadas em intervalos curtos e relacionadas ao risco de colisão. A profundidade simulada é usada como referência para analisar essas métricas, enquanto a navegação permanece orientada por sinais visuais monoculares. Essa separação permite investigar o problema de forma controlada sem transformar a profundidade em um sensor obrigatório para a solução final.
