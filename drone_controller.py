@@ -505,13 +505,13 @@ class DroneOffboardNode(Node):
                 vy *= escala
 
         # ---- LIMITAÇÃO DE ACELERAÇÃO LATERAL ----
-        accel_x = (vx - self.smooth_vx) / (self.dt * 4)
-        accel_y = (vy - self.smooth_vy) / (self.dt * 4)
+        accel_x = (vx - self.smooth_vx) / (self.dt * 5)
+        accel_y = (vy - self.smooth_vy) / (self.dt * 5)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
-            vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
+            vx = self.smooth_vx + accel_x * scale * (self.dt * 3)
+            vy = self.smooth_vy + accel_y * scale * (self.dt * 3)
 
         # ---- FILTRAGEM DE VELOCIDADE ----
         self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
