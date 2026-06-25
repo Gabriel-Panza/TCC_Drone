@@ -208,11 +208,12 @@ class DroneOffboardNode(Node):
         self.current_pitch = 0.0
         self.current_yaw = 0.0
         self.current_yaw_attitude = 0.0
-        self.smooth_yaw = 0.0
+        self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
         self.velocity_smooth_alpha = 0.3
         self.yaw_smooth_alpha = 0.7
+        self.yaw_max_rate_rad_s = math.radians(45.0)
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
@@ -411,7 +412,7 @@ class DroneOffboardNode(Node):
         distancia = math.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
         
         vx, vy = 0.0, 0.0
-        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+        if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
         
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
@@ -518,12 +519,15 @@ class DroneOffboardNode(Node):
         self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
         # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
-        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+        if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
-        erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        self.smooth_yaw += (erro_yaw ** 2)
+        erro_yaw = self.normalizar_angulo_rad(yaw_alvo - self.smooth_yaw)
+        yaw_step = self.yaw_smooth_alpha * erro_yaw
+        max_yaw_step = self.yaw_max_rate_rad_s * self.dt
+        yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
+        self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
