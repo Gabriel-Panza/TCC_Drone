@@ -1617,6 +1617,17 @@ class DroneOffboardNode(Node):
             (255, 180, 0),
             1
         )
+        frontal_left = int(largura * 0.30)
+        frontal_right = int(largura * 0.70)
+        frontal_top = int(altura * 0.22)
+        frontal_bottom = int(altura * 0.82)
+        cv2.rectangle(
+            debug,
+            (frontal_left, frontal_top),
+            (frontal_right, frontal_bottom),
+            (0, 120, 255),
+            1
+        )
 
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
@@ -1671,13 +1682,19 @@ class DroneOffboardNode(Node):
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
         central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.5), 1.0)
         central_weight = np.clip(central_x * central_y, 0.0, 1.0)
+        frontal_mask = (
+            (new[:, 0] >= frontal_left) & (new[:, 0] <= frontal_right) &
+            (new[:, 1] >= frontal_top) & (new[:, 1] <= frontal_bottom)
+        )
+        frontal_weight = np.where(frontal_mask, 1.75, 1.0)
 
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
         inverse_depth_score = np.clip((radial_flow - 0.1) / 10, 0.0, 1.0)
-        point_risk = inverse_depth_score * central_weight
+        point_risk = inverse_depth_score * central_weight * frontal_weight
         point_risk *= speed_factor
+        point_risk = np.clip(point_risk, 0.0, 1.0)
 
         active = point_risk > 0.01
         if np.count_nonzero(active) < 10:
@@ -1686,7 +1703,13 @@ class DroneOffboardNode(Node):
         else:
             active_risk = point_risk[active]
             active_points = new[active]
-            risk = float(np.clip(np.percentile(active_risk, 50) * 1.5, 0.0, 1.0))
+            frontal_active = frontal_mask[active]
+            risk_global = float(np.percentile(active_risk, 80))
+            if np.count_nonzero(frontal_active) >= 4:
+                risk_frontal = float(np.percentile(active_risk[frontal_active], 85))
+            else:
+                risk_frontal = 0.0
+            risk = float(np.clip(max(risk_global * 1.35, risk_frontal * 1.65), 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
