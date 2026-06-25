@@ -211,9 +211,9 @@ class DroneOffboardNode(Node):
         self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
-        self.velocity_smooth_alpha = 0.3
-        self.yaw_smooth_alpha = 0.7
-        self.yaw_max_rate_rad_s = math.radians(45.0)
+        self.velocity_smooth_alpha = 0.35
+        self.yaw_smooth_alpha = 0.8
+        self.yaw_max_rate_rad_s = math.radians(35.0)
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
@@ -221,11 +221,11 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 0.8
-        self.avoidance_max_brake = 0.3
+        self.avoidance_max_brake = 0.35
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 10.0
         self.evasao_visual_ativa = True
-        self.max_lateral_acceleration = 7.5
+        self.max_lateral_acceleration = 8.0
 
         self.start_x = None
         self.start_y = None
