@@ -489,7 +489,7 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body = 0.0
             self.avoid_brake = 0.0
 
-        if evasao_habilitada and self.obstacle_risk > 0.05:
+        if evasao_habilitada and self.obstacle_risk > 0.07:
             brake_scale = max(0.7, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
@@ -506,13 +506,13 @@ class DroneOffboardNode(Node):
                 vy *= escala
 
         # ---- LIMITAÇÃO DE ACELERAÇÃO LATERAL ----
-        accel_x = (vx - self.smooth_vx) / (self.dt * 5)
-        accel_y = (vy - self.smooth_vy) / (self.dt * 5)
+        accel_x = (vx - self.smooth_vx) / (self.dt * 4)
+        accel_y = (vy - self.smooth_vy) / (self.dt * 4)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * (self.dt * 3)
-            vy = self.smooth_vy + accel_y * scale * (self.dt * 3)
+            vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
+            vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
 
         # ---- FILTRAGEM DE VELOCIDADE ----
         self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
@@ -1697,7 +1697,7 @@ class DroneOffboardNode(Node):
         point_risk = np.clip(point_risk, 0.0, 1.0)
 
         active = point_risk > 0.01
-        if np.count_nonzero(active) < 10:
+        if np.count_nonzero(active) < 7:
             risk = 0.0
             lateral_body = 0.0
         else:
@@ -1705,17 +1705,17 @@ class DroneOffboardNode(Node):
             active_points = new[active]
             frontal_active = frontal_mask[active]
             risk_global = float(np.percentile(active_risk, 80))
-            if np.count_nonzero(frontal_active) >= 4:
-                risk_frontal = float(np.percentile(active_risk[frontal_active], 85))
+            if np.count_nonzero(frontal_active) >= 3:
+                risk_frontal = float(np.percentile(active_risk[frontal_active], 75))
             else:
                 risk_frontal = 0.0
-            risk = float(np.clip(max(risk_global * 1.35, risk_frontal * 1.65), 0.0, 1.0))
+            risk = float(np.clip(max(risk_global * 1.25, risk_frontal * 1.75), 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
             balance = (right - left) / (right + left + 1e-6)
 
-            if abs(balance) < 0.15:
+            if abs(balance) < 0.1:
                 side = self.avoid_side_memory
             else:
                 side = -math.copysign(1.0, balance)
