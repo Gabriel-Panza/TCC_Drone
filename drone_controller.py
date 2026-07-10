@@ -215,10 +215,10 @@ class DroneOffboardNode(Node):
         self.yaw_smooth_alpha = 0.8
         self.yaw_max_rate_rad_s = math.radians(35.0)
         self.yaw_alignment_tolerance_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_tolerance_deg', 5.0).value)
+            float(self.declare_parameter('yaw_alignment_tolerance_deg', 15.0).value)
         )
         self.yaw_alignment_stop_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_stop_deg', 5.0).value)
+            float(self.declare_parameter('yaw_alignment_stop_deg', 45.0).value)
         )
         self.yaw_alignment_tolerance_rad = max(0.0, min(math.pi, self.yaw_alignment_tolerance_rad))
         self.yaw_alignment_stop_rad = max(
@@ -577,8 +577,9 @@ class DroneOffboardNode(Node):
         """
         Reduz a velocidade quando o drone ainda nao esta apontado para o vetor de movimento.
 
-        Abaixo da tolerancia o drone anda normal. Acima do limite de parada ele gira parado.
-        Entre os dois limites, uma rampa suave evita trancos enquanto o yaw termina de alinhar.
+        A tolerancia absorve pequenas oscilacoes de yaw durante o voo. Acima do limite de
+        parada ele gira parado; entre os dois limites, uma rampa suave evita trancos enquanto
+        o yaw termina de alinhar.
         """
 
         if erro_yaw_abs <= self.yaw_alignment_tolerance_rad:
