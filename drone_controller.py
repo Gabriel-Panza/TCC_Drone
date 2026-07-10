@@ -214,6 +214,17 @@ class DroneOffboardNode(Node):
         self.velocity_smooth_alpha = 0.35
         self.yaw_smooth_alpha = 0.8
         self.yaw_max_rate_rad_s = math.radians(35.0)
+        self.yaw_alignment_tolerance_rad = math.radians(
+            float(self.declare_parameter('yaw_alignment_tolerance_deg', 5.0).value)
+        )
+        self.yaw_alignment_stop_rad = math.radians(
+            float(self.declare_parameter('yaw_alignment_stop_deg', 5.0).value)
+        )
+        self.yaw_alignment_tolerance_rad = max(0.0, min(math.pi, self.yaw_alignment_tolerance_rad))
+        self.yaw_alignment_stop_rad = max(
+            self.yaw_alignment_tolerance_rad + math.radians(1.0),
+            min(math.pi, self.yaw_alignment_stop_rad)
+        )
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
@@ -514,20 +525,25 @@ class DroneOffboardNode(Node):
             vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
             vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
 
-        # ---- FILTRAGEM DE VELOCIDADE ----
-        self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
-        self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
+        # ---- FILTRAGEM DE VELOCIDADE E ALINHAMENTO DE YAW ----
+        vx_filtrado = self.smooth_vx + self.velocity_smooth_alpha * (vx - self.smooth_vx)
+        vy_filtrado = self.smooth_vy + self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
-        # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
+        # ---- AJUSTE DE YAW PELO VETOR DE MOVIMENTO ----
         if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
 
-        yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
+        yaw_alvo = self.calcular_yaw_do_vetor_movimento(vx_filtrado, vy_filtrado, pos_x, pos_y)
         erro_yaw = self.normalizar_angulo_rad(yaw_alvo - self.smooth_yaw)
         yaw_step = self.yaw_smooth_alpha * erro_yaw
         max_yaw_step = self.yaw_max_rate_rad_s * self.dt
         yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
         self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
+
+        erro_yaw_atual = abs(self.normalizar_angulo_rad(yaw_alvo - self.current_yaw))
+        fator_alinhamento = self.calcular_fator_alinhamento_yaw(erro_yaw_atual)
+        self.smooth_vx = vx_filtrado * fator_alinhamento
+        self.smooth_vy = vy_filtrado * fator_alinhamento
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
@@ -538,6 +554,42 @@ class DroneOffboardNode(Node):
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
+
+    def calcular_yaw_do_vetor_movimento(self, vx, vy, fallback_x=0.0, fallback_y=0.0):
+        """
+        Calcula o yaw a partir do vetor horizontal que sera realmente comandado.
+
+        Se a velocidade filtrada ainda estiver pequena, usa o vetor ate o alvo como
+        fallback para manter o drone apontando para o destino antes de voltar a andar.
+        """
+
+        velocidade_xy = math.sqrt(vx**2 + vy**2)
+        if velocidade_xy >= self.yaw_velocity_min_m_s:
+            return math.atan2(vy, vx)
+
+        fallback_norm = math.sqrt(fallback_x**2 + fallback_y**2)
+        if fallback_norm > 1e-6:
+            return math.atan2(fallback_y, fallback_x)
+
+        return self.current_yaw if self.smooth_yaw is None else self.smooth_yaw
+
+    def calcular_fator_alinhamento_yaw(self, erro_yaw_abs):
+        """
+        Reduz a velocidade quando o drone ainda nao esta apontado para o vetor de movimento.
+
+        Abaixo da tolerancia o drone anda normal. Acima do limite de parada ele gira parado.
+        Entre os dois limites, uma rampa suave evita trancos enquanto o yaw termina de alinhar.
+        """
+
+        if erro_yaw_abs <= self.yaw_alignment_tolerance_rad:
+            return 1.0
+
+        if erro_yaw_abs >= self.yaw_alignment_stop_rad:
+            return 0.0
+
+        intervalo = self.yaw_alignment_stop_rad - self.yaw_alignment_tolerance_rad
+        t = (self.yaw_alignment_stop_rad - erro_yaw_abs) / intervalo
+        return t * t * (3.0 - 2.0 * t)
 
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
         """ 
