@@ -211,20 +211,9 @@ class DroneOffboardNode(Node):
         self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
-        self.velocity_smooth_alpha = 0.35
+        self.velocity_smooth_alpha = 0.4
         self.yaw_smooth_alpha = 0.8
-        self.yaw_max_rate_rad_s = math.radians(35.0)
-        self.yaw_alignment_tolerance_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_tolerance_deg', 25.0).value)
-        )
-        self.yaw_alignment_stop_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_stop_deg', 75.0).value)
-        )
-        self.yaw_alignment_tolerance_rad = max(0.0, min(math.pi, self.yaw_alignment_tolerance_rad))
-        self.yaw_alignment_stop_rad = max(
-            self.yaw_alignment_tolerance_rad + math.radians(1.0),
-            min(math.pi, self.yaw_alignment_stop_rad)
-        )
+        self.yaw_max_rate_rad_s = math.radians(60.0)
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
@@ -232,11 +221,11 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 0.8
-        self.avoidance_max_brake = 0.35
+        self.avoidance_max_brake = 0.4
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 10.0
         self.evasao_visual_ativa = True
-        self.max_lateral_acceleration = 8.0
+        self.max_lateral_acceleration = 4.0
 
         self.start_x = None
         self.start_y = None
@@ -258,10 +247,10 @@ class DroneOffboardNode(Node):
         self.encerrando = False
         
         self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 3.5     # Raio de aceitação para mudar de waypoint
+        self.raio_de_aceitacao = 6.0     # Raio de aceitação para mudar de waypoint
         
-        self.zona_frenagem_curva = 7.0
-        self.angulo_curva_forte = math.radians(35)
+        self.zona_frenagem_curva = 8.0
+        self.angulo_curva_forte = math.radians(45)
 
         self.dt = 0.04  # (25Hz)
         self.timer = self.create_timer(self.dt, self.timer_callback)
@@ -460,9 +449,9 @@ class DroneOffboardNode(Node):
         # ---- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ----
         if distancia > distancia_corte:
             if is_ultimo_wp:
-                dist_inicio_frenagem = velocidade_maxima_atual * 1.2
+                dist_inicio_frenagem = velocidade_maxima_atual * 1.25
             else:
-                dist_inicio_frenagem = velocidade_maxima_atual * 0.6
+                dist_inicio_frenagem = velocidade_maxima_atual * 0.65
             velocidade_minima = velocidade_maxima_atual * 0.1
             
             if distancia > dist_inicio_frenagem:
@@ -500,7 +489,7 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body = 0.0
             self.avoid_brake = 0.0
 
-        if evasao_habilitada and self.obstacle_risk > 0.07:
+        if evasao_habilitada and self.obstacle_risk > 0.04:
             brake_scale = max(0.7, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
@@ -522,30 +511,23 @@ class DroneOffboardNode(Node):
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
-            vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
+            vx = self.smooth_vx + accel_x * scale * (self.dt * 5)
+            vy = self.smooth_vy + accel_y * scale * (self.dt * 3)
 
-        # ---- FILTRAGEM DE VELOCIDADE E ALINHAMENTO DE YAW ----
-        vx_filtrado = self.smooth_vx + self.velocity_smooth_alpha * (vx - self.smooth_vx)
-        vy_filtrado = self.smooth_vy + self.velocity_smooth_alpha * (vy - self.smooth_vy)
+        # ---- FILTRAGEM DE VELOCIDADE ----
+        self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
+        self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
 
-        # ---- AJUSTE DE YAW PELO VETOR DE MOVIMENTO ----
+        # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
         if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
 
-        yaw_alvo = self.calcular_yaw_do_vetor_movimento(vx_filtrado, vy_filtrado, pos_x, pos_y)
+        yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = self.normalizar_angulo_rad(yaw_alvo - self.smooth_yaw)
         yaw_step = self.yaw_smooth_alpha * erro_yaw
         max_yaw_step = self.yaw_max_rate_rad_s * self.dt
         yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
         self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
-
-        # A verificacao considera somente a direcao no plano XY. Inclinacoes em roll/pitch
-        # e o deslocamento vertical em Z nao interferem no fator de alinhamento horizontal.
-        erro_yaw_horizontal = abs(self.normalizar_angulo_rad(yaw_alvo - self.current_yaw))
-        fator_alinhamento = self.calcular_fator_alinhamento_yaw(erro_yaw_horizontal)
-        self.smooth_vx = vx_filtrado * fator_alinhamento
-        self.smooth_vy = vy_filtrado * fator_alinhamento
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
@@ -556,44 +538,6 @@ class DroneOffboardNode(Node):
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
-
-    def calcular_yaw_do_vetor_movimento(self, vx, vy, fallback_x=0.0, fallback_y=0.0):
-        """
-        Calcula o yaw a partir do vetor horizontal que sera realmente comandado.
-
-        Se a velocidade filtrada ainda estiver pequena, usa o vetor ate o alvo como
-        fallback para manter o drone apontando para o destino antes de voltar a andar.
-        """
-
-        velocidade_xy = math.sqrt(vx**2 + vy**2)
-        if velocidade_xy >= self.yaw_velocity_min_m_s:
-            return math.atan2(vy, vx)
-
-        fallback_norm = math.sqrt(fallback_x**2 + fallback_y**2)
-        if fallback_norm > 1e-6:
-            return math.atan2(fallback_y, fallback_x)
-
-        return self.current_yaw if self.smooth_yaw is None else self.smooth_yaw
-
-    def calcular_fator_alinhamento_yaw(self, erro_yaw_abs):
-        """
-        Reduz a velocidade quando o drone ainda nao esta apontado para o vetor de movimento.
-
-        O erro recebido considera apenas o yaw no plano XY, ignorando inclinacoes em roll/pitch
-        e qualquer movimento no eixo Z. A tolerancia absorve oscilacoes durante o voo. Acima
-        do limite de parada ele gira sem deslocamento horizontal; entre os dois limites, uma
-        rampa suave evita trancos enquanto o yaw termina de alinhar.
-        """
-
-        if erro_yaw_abs <= self.yaw_alignment_tolerance_rad:
-            return 1.0
-
-        if erro_yaw_abs >= self.yaw_alignment_stop_rad:
-            return 0.0
-
-        intervalo = self.yaw_alignment_stop_rad - self.yaw_alignment_tolerance_rad
-        t = (self.yaw_alignment_stop_rad - erro_yaw_abs) / intervalo
-        return t * t * (3.0 - 2.0 * t)
 
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
         """ 
@@ -616,10 +560,10 @@ class DroneOffboardNode(Node):
         
         distancia_atual = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
         
-        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 5.0:
+        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 10.0:
             next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
             yaw_next = math.atan2(next_wp[1] - self.current_y, next_wp[0] - self.current_x)
-            blend_factor = max(0.0, (5.0 - distancia_atual) / 5.0)
+            blend_factor = max(0.0, (4.0 - distancia_atual) / 5.0)
             yaw_base = math.atan2(target_y - self.current_y, target_x - self.current_x)
             erro = math.atan2(math.sin(yaw_next - yaw_base), math.cos(yaw_next - yaw_base))
             return yaw_base + erro * blend_factor
@@ -1639,7 +1583,7 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
         self.avoid_brake += alpha * (brake - self.avoid_brake)
 
-        if abs(self.avoid_lateral_body) > 0.01:
+        if abs(self.avoid_lateral_body) > 0.04:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
@@ -1700,7 +1644,7 @@ class DroneOffboardNode(Node):
             None,
             winSize=(21, 21),
             maxLevel=3,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03)
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.04)
         )
 
         if next_points is None or status is None:
@@ -1752,20 +1696,20 @@ class DroneOffboardNode(Node):
         point_risk *= speed_factor
         point_risk = np.clip(point_risk, 0.0, 1.0)
 
-        active = point_risk > 0.01
-        if np.count_nonzero(active) < 7:
+        active = point_risk > 0.04
+        if np.count_nonzero(active) < 10:
             risk = 0.0
             lateral_body = 0.0
         else:
             active_risk = point_risk[active]
             active_points = new[active]
             frontal_active = frontal_mask[active]
-            risk_global = float(np.percentile(active_risk, 80))
+            risk_global = float(np.percentile(active_risk, 75))
             if np.count_nonzero(frontal_active) >= 3:
                 risk_frontal = float(np.percentile(active_risk[frontal_active], 75))
             else:
                 risk_frontal = 0.0
-            risk = float(np.clip(max(risk_global * 1.25, risk_frontal * 1.75), 0.0, 1.0))
+            risk = float(np.clip(max(risk_global * 1.35, risk_frontal * 1.75), 0.0, 1.0))
 
             left = float(np.sum(active_risk[active_points[:, 0] < cx]))
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
@@ -1903,9 +1847,9 @@ class DroneOffboardNode(Node):
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             #cv2.imshow("Visao do Drone Original (Com tremor) + a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
             if depth_gt_visual is not None:
                 cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
+            cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
             #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
