@@ -215,10 +215,10 @@ class DroneOffboardNode(Node):
         self.yaw_smooth_alpha = 0.8
         self.yaw_max_rate_rad_s = math.radians(35.0)
         self.yaw_alignment_tolerance_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_tolerance_deg', 15.0).value)
+            float(self.declare_parameter('yaw_alignment_tolerance_deg', 25.0).value)
         )
         self.yaw_alignment_stop_rad = math.radians(
-            float(self.declare_parameter('yaw_alignment_stop_deg', 45.0).value)
+            float(self.declare_parameter('yaw_alignment_stop_deg', 75.0).value)
         )
         self.yaw_alignment_tolerance_rad = max(0.0, min(math.pi, self.yaw_alignment_tolerance_rad))
         self.yaw_alignment_stop_rad = max(
@@ -540,8 +540,10 @@ class DroneOffboardNode(Node):
         yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
         self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
 
-        erro_yaw_atual = abs(self.normalizar_angulo_rad(yaw_alvo - self.current_yaw))
-        fator_alinhamento = self.calcular_fator_alinhamento_yaw(erro_yaw_atual)
+        # A verificacao considera somente a direcao no plano XY. Inclinacoes em roll/pitch
+        # e o deslocamento vertical em Z nao interferem no fator de alinhamento horizontal.
+        erro_yaw_horizontal = abs(self.normalizar_angulo_rad(yaw_alvo - self.current_yaw))
+        fator_alinhamento = self.calcular_fator_alinhamento_yaw(erro_yaw_horizontal)
         self.smooth_vx = vx_filtrado * fator_alinhamento
         self.smooth_vy = vy_filtrado * fator_alinhamento
 
@@ -577,9 +579,10 @@ class DroneOffboardNode(Node):
         """
         Reduz a velocidade quando o drone ainda nao esta apontado para o vetor de movimento.
 
-        A tolerancia absorve pequenas oscilacoes de yaw durante o voo. Acima do limite de
-        parada ele gira parado; entre os dois limites, uma rampa suave evita trancos enquanto
-        o yaw termina de alinhar.
+        O erro recebido considera apenas o yaw no plano XY, ignorando inclinacoes em roll/pitch
+        e qualquer movimento no eixo Z. A tolerancia absorve oscilacoes durante o voo. Acima
+        do limite de parada ele gira sem deslocamento horizontal; entre os dois limites, uma
+        rampa suave evita trancos enquanto o yaw termina de alinhar.
         """
 
         if erro_yaw_abs <= self.yaw_alignment_tolerance_rad:
