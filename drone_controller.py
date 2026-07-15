@@ -252,7 +252,7 @@ class DroneOffboardNode(Node):
         self.avoid_side_memory = 0.8
         self.avoidance_max_brake = 0.4
         self.raio_finalizacao = 2.0
-        self.raio_desativa_evasao_final = 10.0
+        self.raio_desativa_evasao_final = 8.0
         self.evasao_visual_ativa = True
         self.max_lateral_acceleration = 4.0
 
@@ -278,7 +278,7 @@ class DroneOffboardNode(Node):
         self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
         self.raio_de_aceitacao = 6.0     # Raio de aceitação para mudar de waypoint
         
-        self.zona_frenagem_curva = 8.0
+        self.zona_frenagem_curva = 9.0
         self.angulo_curva_forte = math.radians(45)
 
         self.dt = 0.04  # Periodo nominal do controle (25 Hz).
@@ -2086,8 +2086,8 @@ class DroneOffboardNode(Node):
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
             #cv2.imshow("Visao do Drone Original (Com tremor) + a Geometria do Warping", img_geometria)
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            if depth_gt_visual is not None:
-                cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
+            #if depth_gt_visual is not None:
+                #cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
             cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
             #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
