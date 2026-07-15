@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from px4_msgs.msg import VehicleOdometry
 import json
 import numpy as np
@@ -46,6 +46,10 @@ class DataLogger(Node):
         os.makedirs(self.run_dir, exist_ok=True)
         self.manifest_path = os.path.join(self.run_dir, 'manifest.json')
         self.capacity = max(16, int(self.declare_parameter('flight_memmap_capacity', 20000).value))
+        self.flush_every_n = max(
+            1,
+            int(self.declare_parameter('flight_memmap_flush_every_n', 40).value)
+        )
         self.samples_saved = 0
         self.prev_state = None
         self.capacity_warned = False
@@ -104,6 +108,7 @@ class DataLogger(Node):
             ),
             'num_samples': int(self.samples_saved),
             'capacity': int(self.capacity),
+            'flush_every_n_samples': int(self.flush_every_n),
             'arrays': {
                 'flight_intervals': 'flight_intervals.npy',
             },
@@ -204,7 +209,14 @@ class DataLogger(Node):
 
         self.flight_intervals[idx] = linha[0]
         self.samples_saved += 1
-        self.flight_intervals.flush()
+        if self.samples_saved % self.flush_every_n == 0:
+            self.flush_flight_memmap()
+
+    def flush_flight_memmap(self):
+        """Descarrega o memmap e o manifesto em lotes, fora da maioria dos callbacks."""
+
+        if self.flight_intervals is not None:
+            self.flight_intervals.flush()
         self.atualizar_manifesto()
 
     def destroy_node(self):
@@ -219,9 +231,7 @@ class DataLogger(Node):
         [ROS 2 Nodes] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
         """
 
-        if self.flight_intervals is not None:
-            self.flight_intervals.flush()
-        self.atualizar_manifesto()
+        self.flush_flight_memmap()
         self.get_logger().info('Memmap de voo fechado e guardado com sucesso.')
         super().destroy_node()
 
@@ -252,12 +262,16 @@ def main(args=None):
     except KeyboardInterrupt:
         controller_node.get_logger().info('Processo encerrado pelo usuário (Ctrl+C).')
         logger_node.get_logger().info('Finalizando a gravação do voo...')
+    except ExternalShutdownException:
+        controller_node.get_logger().info('Encerramento automatico da missao solicitado.')
+        logger_node.get_logger().info('Finalizando a gravacao do voo...')
     finally:
         executor.remove_node(controller_node)
         executor.remove_node(logger_node)
         controller_node.destroy_node()
         logger_node.destroy_node() 
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

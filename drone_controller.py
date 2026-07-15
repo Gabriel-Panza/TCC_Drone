@@ -4,6 +4,7 @@ import json
 import numpy as np
 import math
 import cv2
+import rclpy
 from pathlib import Path
 from datetime import datetime
 from cv_bridge import CvBridge
@@ -82,6 +83,10 @@ class DroneOffboardNode(Node):
         self.ground_truth_save_every_n = max(
             1,
             int(self.declare_parameter('ground_truth_save_every_n', 1).value)
+        )
+        self.ground_truth_flush_every_n = max(
+            1,
+            int(self.declare_parameter('ground_truth_flush_every_n', 40).value)
         )
         self.ground_truth_memmap_capacity = max(
             16,
@@ -214,9 +219,12 @@ class DroneOffboardNode(Node):
         self.velocity_smooth_alpha = 0.4
         self.yaw_smooth_alpha = 0.8
         self.yaw_max_rate_rad_s = math.radians(60.0)
+        self.last_control_tick_s = None
+        self.control_dt_s = 0.04
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
+        self.prev_avoidance_stamp_s = None
         self.obstacle_risk = 0.0
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
@@ -252,8 +260,28 @@ class DroneOffboardNode(Node):
         self.zona_frenagem_curva = 8.0
         self.angulo_curva_forte = math.radians(45)
 
-        self.dt = 0.04  # (25Hz)
+        self.dt = 0.04  # Periodo nominal do controle (25 Hz).
+        self.control_dt_s = self.dt
+        self.nominal_visual_dt_s = max(
+            1e-3,
+            float(self.declare_parameter('nominal_visual_dt_s', self.dt).value)
+        )
         self.timer = self.create_timer(self.dt, self.timer_callback)
+
+    @staticmethod
+    def alpha_ajustado_por_dt(alpha_nominal, dt_s, dt_nominal_s):
+        """Mantem a mesma constante de tempo quando o intervalo real varia."""
+
+        alpha_nominal = float(np.clip(alpha_nominal, 0.0, 1.0))
+        if alpha_nominal in (0.0, 1.0):
+            return alpha_nominal
+
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            dt_s = dt_nominal_s
+        if not np.isfinite(dt_nominal_s) or dt_nominal_s <= 0.0:
+            return alpha_nominal
+
+        return float(1.0 - (1.0 - alpha_nominal) ** (dt_s / dt_nominal_s))
 
     def pos_callback(self, msg):
         """
@@ -308,6 +336,18 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        if self.last_control_tick_s is None:
+            self.control_dt_s = self.dt
+        else:
+            measured_dt_s = now_s - self.last_control_tick_s
+            self.control_dt_s = (
+                measured_dt_s
+                if np.isfinite(measured_dt_s) and 0.0 < measured_dt_s <= 0.5
+                else self.dt
+            )
+        self.last_control_tick_s = now_s
+
         if self.current_x is None:
             return
 
@@ -319,7 +359,7 @@ class DroneOffboardNode(Node):
             self.voo_iniciado = True
 
         if self.voo_iniciado:
-            self.navegar_por_waypoints()
+            self.navegar_por_waypoints(self.control_dt_s)
             
             if self.missao_concluida and not self.encerrando:
                 self.encerrando = True
@@ -373,7 +413,7 @@ class DroneOffboardNode(Node):
 
         return math.acos(cos_angle)
 
-    def navegar_por_waypoints(self):
+    def navegar_por_waypoints(self, control_dt_s=None):
         """
         ==================================================================================
         Executa a lógica principal de navegação por waypoints.
@@ -403,6 +443,9 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
+        if control_dt_s is None or not np.isfinite(control_dt_s) or control_dt_s <= 0.0:
+            control_dt_s = self.dt
+
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
@@ -506,17 +549,22 @@ class DroneOffboardNode(Node):
                 vy *= escala
 
         # ---- LIMITAÇÃO DE ACELERAÇÃO LATERAL ----
-        accel_x = (vx - self.smooth_vx) / (self.dt * 4)
-        accel_y = (vy - self.smooth_vy) / (self.dt * 4)
+        accel_x = (vx - self.smooth_vx) / (control_dt_s * 4)
+        accel_y = (vy - self.smooth_vy) / (control_dt_s * 4)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * (self.dt * 5)
-            vy = self.smooth_vy + accel_y * scale * (self.dt * 3)
+            vx = self.smooth_vx + accel_x * scale * (control_dt_s * 5)
+            vy = self.smooth_vy + accel_y * scale * (control_dt_s * 3)
 
         # ---- FILTRAGEM DE VELOCIDADE ----
-        self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
-        self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
+        velocity_alpha = self.alpha_ajustado_por_dt(
+            self.velocity_smooth_alpha,
+            control_dt_s,
+            self.dt,
+        )
+        self.smooth_vx += velocity_alpha * (vx - self.smooth_vx)
+        self.smooth_vy += velocity_alpha * (vy - self.smooth_vy)
 
         # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
         if self.smooth_yaw is None:
@@ -524,8 +572,13 @@ class DroneOffboardNode(Node):
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
         erro_yaw = self.normalizar_angulo_rad(yaw_alvo - self.smooth_yaw)
-        yaw_step = self.yaw_smooth_alpha * erro_yaw
-        max_yaw_step = self.yaw_max_rate_rad_s * self.dt
+        yaw_alpha = self.alpha_ajustado_por_dt(
+            self.yaw_smooth_alpha,
+            control_dt_s,
+            self.dt,
+        )
+        yaw_step = yaw_alpha * erro_yaw
+        max_yaw_step = self.yaw_max_rate_rad_s * control_dt_s
         yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
         self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
 
@@ -670,7 +723,8 @@ class DroneOffboardNode(Node):
         time.sleep(3)
         self.force_disarm()
         time.sleep(1)
-        os._exit(0)
+        if rclpy.ok():
+            rclpy.shutdown()
 
     def image_timestamp_s(self, msg):
         """
@@ -976,6 +1030,13 @@ class DroneOffboardNode(Node):
             ],
             'depth_max_m': float(self.ground_truth_depth_max_m),
             'max_flow_points': int(self.ground_truth_max_flow_points),
+            'flush_every_n_samples': int(self.ground_truth_flush_every_n),
+            'risk_flow_normalization': {
+                'camera_timestamp_source': 'sensor_msgs/Image.header.stamp',
+                'nominal_interval_s': float(self.nominal_visual_dt_s),
+                'stored_flow_unit': 'pixels_per_observed_interval',
+                'risk_flow_unit': 'equivalent_pixels_per_nominal_interval',
+            },
             'arrays': {
                 'intervals': 'intervals.npy',
                 'image_delta_bgr': 'image_delta_bgr.npy',
@@ -1254,11 +1315,21 @@ class DroneOffboardNode(Node):
         )
         self.depth_intervals_saved += 1
 
-        self.depth_gt_intervals.flush()
-        self.depth_gt_image_delta.flush()
-        self.depth_gt_depth_delta.flush()
-        self.depth_gt_depth_mask.flush()
-        self.depth_gt_flow_vectors.flush()
+        if self.depth_intervals_saved % self.ground_truth_flush_every_n == 0:
+            self.flush_ground_truth_memmaps()
+
+    def flush_ground_truth_memmaps(self):
+        """Descarrega em lote os memmaps de depth/flow e atualiza o manifesto."""
+
+        for memmap_array in (
+            self.depth_gt_intervals,
+            self.depth_gt_image_delta,
+            self.depth_gt_depth_delta,
+            self.depth_gt_depth_mask,
+            self.depth_gt_flow_vectors,
+        ):
+            if memmap_array is not None:
+                memmap_array.flush()
         self.atualizar_manifesto_depth_gt()
 
     def criar_visualizacao_depth_gt(self, depth_m):
@@ -1566,7 +1637,7 @@ class DroneOffboardNode(Node):
             mask=feature_mask
         )
 
-    def suavizar_comando_evasao(self, risk, lateral_body, brake):
+    def suavizar_comando_evasao(self, risk, lateral_body, brake, frame_dt_s):
         """
         Aplica filtro passa-baixa aos comandos reativos gerados pela visao.
 
@@ -1578,7 +1649,11 @@ class DroneOffboardNode(Node):
         [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
         """
 
-        alpha = self.velocity_smooth_alpha
+        alpha = self.alpha_ajustado_por_dt(
+            self.velocity_smooth_alpha,
+            frame_dt_s,
+            self.nominal_visual_dt_s,
+        )
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
         self.avoid_brake += alpha * (brake - self.avoid_brake)
@@ -1586,7 +1661,7 @@ class DroneOffboardNode(Node):
         if abs(self.avoid_lateral_body) > 0.04:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
-    def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha):
+    def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha, frame_stamp_s):
         """
         Estima risco de colisao por fluxo optico e profundidade inversa relativa.
 
@@ -1601,6 +1676,13 @@ class DroneOffboardNode(Node):
         [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
         [Artigo - Vyas2022] https://doi.org/10.48550/arXiv.2205.01399
         """
+
+        frame_dt_s = self.nominal_visual_dt_s
+        if self.prev_avoidance_stamp_s is not None:
+            measured_dt_s = frame_stamp_s - self.prev_avoidance_stamp_s
+            if np.isfinite(measured_dt_s) and 0.0 < measured_dt_s <= 0.5:
+                frame_dt_s = measured_dt_s
+        self.prev_avoidance_stamp_s = frame_stamp_s
 
         frame_bgr = imagem_estabilizada[:, :, :3]
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -1632,7 +1714,7 @@ class DroneOffboardNode(Node):
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
             return debug, None
 
         prev_points_total = int(len(self.prev_points_avoidance))
@@ -1650,7 +1732,7 @@ class DroneOffboardNode(Node):
         if next_points is None or status is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
             return debug, None
 
         old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
@@ -1666,7 +1748,7 @@ class DroneOffboardNode(Node):
         if len(new) < 12:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            self.suavizar_comando_evasao(0.0, 0.0, 0.0)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
             return debug, None
 
         valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
@@ -1678,6 +1760,8 @@ class DroneOffboardNode(Node):
         radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
         radial_unit = radial / radial_norm[:, None]
         radial_flow = np.sum(flow * radial_unit, axis=1)
+        flow_to_nominal_scale = self.nominal_visual_dt_s / frame_dt_s
+        radial_flow_nominal = radial_flow * flow_to_nominal_scale
 
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
         central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.5), 1.0)
@@ -1691,7 +1775,7 @@ class DroneOffboardNode(Node):
         speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
         speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
 
-        inverse_depth_score = np.clip((radial_flow - 0.1) / 10, 0.0, 1.0)
+        inverse_depth_score = np.clip((radial_flow_nominal - 0.1) / 10, 0.0, 1.0)
         point_risk = inverse_depth_score * central_weight * frontal_weight
         point_risk *= speed_factor
         point_risk = np.clip(point_risk, 0.0, 1.0)
@@ -1727,7 +1811,7 @@ class DroneOffboardNode(Node):
                 cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
 
         brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
-        self.suavizar_comando_evasao(risk, lateral_body, brake)
+        self.suavizar_comando_evasao(risk, lateral_body, brake, frame_dt_s)
 
         flow_interval = {
             'prev_points_total': prev_points_total,
@@ -1737,6 +1821,8 @@ class DroneOffboardNode(Node):
             'new_points': new.copy(),
             'flow': flow.copy(),
             'radial_flow': radial_flow.copy(),
+            'radial_flow_nominal': radial_flow_nominal.copy(),
+            'frame_dt_s': float(frame_dt_s),
             'point_risk': point_risk.copy(),
         }
 
@@ -1830,7 +1916,8 @@ class DroneOffboardNode(Node):
             if self.evasao_visual_ativa:
                 visao_da_evasao, flow_interval = self.calcular_evasao_visual(
                     imagem_estabilizada,
-                    mascara_alpha
+                    mascara_alpha,
+                    rgb_stamp_s,
                 )
                 self.registrar_intervalo_ground_truth(
                     imagem_estabilizada[:, :, :3],
@@ -1841,6 +1928,7 @@ class DroneOffboardNode(Node):
             else:
                 self.prev_gray_avoidance = None
                 self.prev_points_avoidance = None
+                self.prev_avoidance_stamp_s = None
                 self.prev_depth_interval_ref = None
                 visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
             
@@ -1910,14 +1998,5 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
 
-        for memmap_array in (
-            self.depth_gt_intervals,
-            self.depth_gt_image_delta,
-            self.depth_gt_depth_delta,
-            self.depth_gt_depth_mask,
-            self.depth_gt_flow_vectors,
-        ):
-            if memmap_array is not None:
-                memmap_array.flush()
-        self.atualizar_manifesto_depth_gt()
+        self.flush_ground_truth_memmaps()
         super().destroy_node()
