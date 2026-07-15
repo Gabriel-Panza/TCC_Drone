@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import math
+import base64
 import json
+import math
+from collections.abc import Callable
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -16,6 +18,7 @@ from dash import Dash, Input, Output, State, dcc, html
 ANALYSIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = ANALYSIS_DIR.parent
 LOG_DIR = PROJECT_ROOT / "logs"
+NOTEBOOK_PATH = ANALYSIS_DIR / "estudo_das_metricas.ipynb"
 
 
 def find_depth_ground_truth_dir() -> Path:
@@ -50,19 +53,45 @@ RAIO_DE_ACEITACAO = 5.0
 RAIO_DESATIVA_EVASAO_FINAL = 10.0
 OBSTACLE_RISK_THRESHOLD = 0.07
 
-FIRST_BATCH_RUN_IDS = {
+REFERENCE_RUN_ORDER = (
     "run_20260521_161617",
     "run_20260521_174507",
     "run_20260521_174545",
     "run_20260521_175244",
-}
-FIRST_BATCH_LABEL = "Primeira leva (4 runs)"
-NEW_BATCH_LABEL = "Runs novas"
-ALL_BATCH_LABEL = "Todas as runs atuais"
+    "run_20260624_211120",
+    "run_20260624_211302",
+    "run_20260624_224839",
+    "run_20260624_230625",
+    "run_20260710_192442",
+    "run_20260710_193015",
+    "run_20260715_114750",
+    "run_20260715_124338",
+    "run_20260715_125236",
+    "run_20260715_125317",
+    "run_20260715_130609",
+    "run_20260715_130751",
+    "run_20260715_131028",
+    "run_20260715_131335",
+)
+BATCH_SPECS = (
+    (4, "Primeiras 4 runs"),
+    (10, "Primeiras 10 runs"),
+    (14, "Primeiras 14 runs"),
+    (18, "Todas (18 runs)"),
+)
+BATCH_LABELS = dict(BATCH_SPECS)
+BATCH_LABEL_ORDER = [label for _size, label in BATCH_SPECS]
+RUN_ORDER_INDEX = {run_id: index for index, run_id in enumerate(REFERENCE_RUN_ORDER)}
+BLOCK_LABELS = (
+    "Runs 1-4",
+    "Runs 5-10",
+    "Runs 11-14",
+    "Runs 15-18",
+)
 
 REFERENCE_BATCH_STATS = [
     {
-        "leva": FIRST_BATCH_LABEL,
+        "leva": BATCH_LABELS[4],
         "runs": 4,
         "intervalos": 205,
         "dt_s_mean": 0.055239,
@@ -73,59 +102,110 @@ REFERENCE_BATCH_STATS = [
         "radial_flow_p90_px_mean": 26.264482,
         "delta_depth_close_5m_pp_mean": 0.075290,
         "delta_depth_close_5m_pp_std": 2.976323,
+        "delta_abs_p90": 3.051187,
         "event_rate_pct": 49 / 205 * 100.0,
     },
     {
-        "leva": ALL_BATCH_LABEL,
-        "runs": 9,
-        "intervalos": 382,
-        "dt_s_mean": 0.055602,
-        "depth_age_s_mean": 0.057173,
-        "flow_valid_points_mean": 81.848168,
-        "flow_track_retention_pct_mean": 97.476318,
-        "flow_mag_p90_px_mean": 34.574924,
-        "radial_flow_p90_px_mean": 28.885937,
-        "delta_depth_close_5m_pp_mean": 0.075447,
-        "delta_depth_close_5m_pp_std": 2.405984,
-        "event_rate_pct": 27.2,
+        "leva": BATCH_LABELS[10],
+        "runs": 10,
+        "intervalos": 418,
+        "dt_s_mean": 0.054660,
+        "depth_age_s_mean": 0.057598,
+        "flow_valid_points_mean": 81.610048,
+        "flow_track_retention_pct_mean": np.nan,
+        "flow_mag_p90_px_mean": 34.767502,
+        "radial_flow_p90_px_mean": 28.872068,
+        "delta_depth_close_5m_pp_mean": 0.094256,
+        "delta_depth_close_5m_pp_std": 2.240797,
+        "delta_abs_p90": 2.219535,
+        "event_rate_pct": 25.119617,
+    },
+    {
+        "leva": BATCH_LABELS[14],
+        "runs": 14,
+        "intervalos": 523,
+        "dt_s_mean": 0.057297,
+        "depth_age_s_mean": 0.057392,
+        "flow_valid_points_mean": 82.483748,
+        "flow_track_retention_pct_mean": np.nan,
+        "flow_mag_p90_px_mean": 32.023399,
+        "radial_flow_p90_px_mean": 26.871801,
+        "delta_depth_close_5m_pp_mean": 0.053311,
+        "delta_depth_close_5m_pp_std": 2.055796,
+        "delta_abs_p90": 1.789482,
+        "event_rate_pct": 21.223709,
+    },
+    {
+        "leva": BATCH_LABELS[18],
+        "runs": 18,
+        "intervalos": 621,
+        "dt_s_mean": 0.057880,
+        "depth_age_s_mean": 0.056895,
+        "flow_valid_points_mean": 82.563607,
+        "flow_track_retention_pct_mean": np.nan,
+        "flow_mag_p90_px_mean": 30.073231,
+        "radial_flow_p90_px_mean": 25.354202,
+        "delta_depth_close_5m_pp_mean": 0.042582,
+        "delta_depth_close_5m_pp_std": 2.036585,
+        "delta_abs_p90": 1.706680,
+        "event_rate_pct": 18.518519,
     },
 ]
 
 REFERENCE_MLP_TEST = [
-    ("Primeira leva", "MLP", "delta_depth_close_10m_pp", 3.299956, 13.520034),
-    ("Primeira leva", "Media treino", "delta_depth_close_10m_pp", 0.593824, 1.484924),
-    ("Primeira leva", "MLP", "delta_depth_close_2m_pp", 4.059252, 17.529010),
-    ("Primeira leva", "Media treino", "delta_depth_close_2m_pp", 1.592609, 6.444213),
-    ("Primeira leva", "MLP", "delta_depth_close_5m_pp", 3.907923, 14.620979),
-    ("Primeira leva", "Media treino", "delta_depth_close_5m_pp", 1.445566, 4.530197),
-    ("Primeira leva", "MLP", "delta_depth_p10_m", 0.171427, 0.591393),
-    ("Primeira leva", "Media treino", "delta_depth_p10_m", 0.097618, 0.375058),
-    ("Primeira leva", "MLP", "delta_depth_p50_m", 0.170319, 0.350195),
-    ("Primeira leva", "Media treino", "delta_depth_p50_m", 0.251893, 0.872944),
-    ("Primeira leva", "MLP", "delta_depth_p90_m", 1.863624, 4.800333),
-    ("Primeira leva", "Media treino", "delta_depth_p90_m", 0.847543, 2.119142),
-    ("Todas atuais", "MLP", "delta_depth_close_10m_pp", 1.038949, 1.919759),
-    ("Todas atuais", "Media treino", "delta_depth_close_10m_pp", 0.548046, 0.957294),
-    ("Todas atuais", "MLP", "delta_depth_close_2m_pp", 1.753198, 3.781931),
-    ("Todas atuais", "Media treino", "delta_depth_close_2m_pp", 0.733926, 1.388800),
-    ("Todas atuais", "MLP", "delta_depth_close_5m_pp", 2.027266, 4.154152),
-    ("Todas atuais", "Media treino", "delta_depth_close_5m_pp", 0.798785, 1.540230),
-    ("Todas atuais", "MLP", "delta_depth_p10_m", 0.066686, 0.141854),
-    ("Todas atuais", "Media treino", "delta_depth_p10_m", 0.033849, 0.065558),
-    ("Todas atuais", "MLP", "delta_depth_p50_m", 0.263102, 0.563510),
-    ("Todas atuais", "Media treino", "delta_depth_p50_m", 0.122928, 0.255040),
-    ("Todas atuais", "MLP", "delta_depth_p90_m", 1.298594, 3.082840),
-    ("Todas atuais", "Media treino", "delta_depth_p90_m", 0.591928, 1.817458),
+    (BATCH_LABELS[4], "MLP", "delta_depth_close_10m_pp", 3.299956, 13.520034),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_close_10m_pp", 0.593824, 1.484924),
+    (BATCH_LABELS[4], "MLP", "delta_depth_close_2m_pp", 4.059252, 17.529010),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_close_2m_pp", 1.592609, 6.444213),
+    (BATCH_LABELS[4], "MLP", "delta_depth_close_5m_pp", 3.907923, 14.620979),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_close_5m_pp", 1.445566, 4.530197),
+    (BATCH_LABELS[4], "MLP", "delta_depth_p10_m", 0.171427, 0.591393),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_p10_m", 0.097618, 0.375058),
+    (BATCH_LABELS[4], "MLP", "delta_depth_p50_m", 0.170319, 0.350195),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_p50_m", 0.251893, 0.872944),
+    (BATCH_LABELS[4], "MLP", "delta_depth_p90_m", 1.863624, 4.800333),
+    (BATCH_LABELS[4], "Media treino", "delta_depth_p90_m", 0.847543, 2.119142),
+    (BATCH_LABELS[10], "MLP", "delta_depth_close_10m_pp", 1.038949, 1.919759),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_close_10m_pp", 0.548046, 0.957294),
+    (BATCH_LABELS[10], "MLP", "delta_depth_close_2m_pp", 1.753198, 3.781931),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_close_2m_pp", 0.733926, 1.388800),
+    (BATCH_LABELS[10], "MLP", "delta_depth_close_5m_pp", 2.027266, 4.154152),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_close_5m_pp", 0.798785, 1.540230),
+    (BATCH_LABELS[10], "MLP", "delta_depth_p10_m", 0.066686, 0.141854),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_p10_m", 0.033849, 0.065558),
+    (BATCH_LABELS[10], "MLP", "delta_depth_p50_m", 0.263102, 0.563510),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_p50_m", 0.122928, 0.255040),
+    (BATCH_LABELS[10], "MLP", "delta_depth_p90_m", 1.298594, 3.082840),
+    (BATCH_LABELS[10], "Media treino", "delta_depth_p90_m", 0.591928, 1.817458),
+    (BATCH_LABELS[18], "MLP", "delta_depth_close_10m_pp", 0.419715, 0.913090),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_close_10m_pp", 0.429352, 0.911841),
+    (BATCH_LABELS[18], "MLP", "delta_depth_close_2m_pp", 0.898734, 2.744606),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_close_2m_pp", 0.573714, 1.735883),
+    (BATCH_LABELS[18], "MLP", "delta_depth_close_5m_pp", 0.903825, 2.601857),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_close_5m_pp", 0.866294, 2.575969),
+    (BATCH_LABELS[18], "MLP", "delta_depth_p10_m", 0.041949, 0.131760),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_p10_m", 0.043052, 0.142493),
+    (BATCH_LABELS[18], "MLP", "delta_depth_p50_m", 0.136736, 0.422506),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_p50_m", 0.102674, 0.284822),
+    (BATCH_LABELS[18], "MLP", "delta_depth_p90_m", 0.370830, 0.958919),
+    (BATCH_LABELS[18], "Media treino", "delta_depth_p90_m", 0.369380, 0.841454),
 ]
 
 REFERENCE_EVENT_RESULTS = [
-    ("Classificador evento", "balanced accuracy", 0.847078),
-    ("Classificador evento", "precisao", 0.766667),
-    ("Classificador evento", "recall", 0.821429),
-    ("Classificador evento", "F1", 0.793103),
-    ("Regressao pos-gate", "MAE zero delta", 0.736902),
-    ("Regressao pos-gate", "MAE MLP evento + MLP delta", 1.055266),
-    ("Regressao pos-gate", "MAE oracle evento + MLP delta", 0.932840),
+    ("10 runs - classificador", "balanced accuracy", 0.847078),
+    ("10 runs - classificador", "precisao", 0.766667),
+    ("10 runs - classificador", "recall", 0.821429),
+    ("10 runs - classificador", "F1", 0.793103),
+    ("18 runs - classificador", "balanced accuracy", 0.881311),
+    ("18 runs - classificador", "precisao", 0.787879),
+    ("18 runs - classificador", "recall", 0.838710),
+    ("18 runs - classificador", "F1", 0.812500),
+    ("10 runs - pos-gate", "MAE zero delta", 0.736902),
+    ("10 runs - pos-gate", "MAE MLP evento + MLP delta", 1.055266),
+    ("10 runs - pos-gate", "MAE oracle evento + MLP delta", 0.932840),
+    ("18 runs - pos-gate", "MAE zero delta", 0.847880),
+    ("18 runs - pos-gate", "MAE MLP evento + MLP delta", 1.056548),
+    ("18 runs - pos-gate", "MAE oracle evento + MLP delta", 1.041114),
 ]
 
 REFERENCE_RUN_EVENT_STATS = [
@@ -137,7 +217,16 @@ REFERENCE_RUN_EVENT_STATS = [
     ("run_20260624_211302", 34, 7, 0.205882),
     ("run_20260624_224839", 37, 12, 0.324324),
     ("run_20260624_230625", 34, 8, 0.235294),
-    ("run_20260624_230757", 49, 21, 0.428571),
+    ("run_20260710_192442", 41, 14, 0.341463),
+    ("run_20260710_193015", 44, 8, 0.181818),
+    ("run_20260715_114750", 32, 2, 0.062500),
+    ("run_20260715_124338", 26, 0, 0.000000),
+    ("run_20260715_125236", 23, 1, 0.043478),
+    ("run_20260715_125317", 24, 3, 0.125000),
+    ("run_20260715_130609", 13, 0, 0.000000),
+    ("run_20260715_130751", 17, 1, 0.058824),
+    ("run_20260715_131028", 36, 0, 0.000000),
+    ("run_20260715_131335", 32, 3, 0.093750),
 ]
 
 
@@ -152,20 +241,32 @@ COLORS = {
     "risk": "#c2410c",
     "accent": "#0f766e",
 }
+GRAPH_CONFIG = {"displaylogo": False}
+BATCH_COLORS = {
+    BATCH_LABELS[4]: COLORS["muted"],
+    BATCH_LABELS[10]: COLORS["drone"],
+    BATCH_LABELS[14]: COLORS["risk"],
+    BATCH_LABELS[18]: COLORS["accent"],
+}
+BLOCK_COLORS = {
+    BLOCK_LABELS[0]: COLORS["muted"],
+    BLOCK_LABELS[1]: COLORS["drone"],
+    BLOCK_LABELS[2]: COLORS["risk"],
+    BLOCK_LABELS[3]: COLORS["accent"],
+}
+EMPTY_FLIGHT_COLUMNS = (
+    "timestamp",
+    "x",
+    "y",
+    "z",
+    "roll_speed",
+    "pitch_speed",
+    "yaw_speed",
+)
 
 
 def _empty_dataframe() -> pd.DataFrame:
-    return pd.DataFrame(
-        columns=[
-            "timestamp",
-            "x",
-            "y",
-            "z",
-            "roll_speed",
-            "pitch_speed",
-            "yaw_speed",
-        ]
-    )
+    return pd.DataFrame(columns=EMPTY_FLIGHT_COLUMNS)
 
 
 def run_datetime(path: Path) -> datetime | None:
@@ -201,6 +302,8 @@ def _raw_depth_source_files() -> list[Path]:
 
 
 def paired_log_depth_files(max_delta_s: float = 120.0) -> list[tuple[Path, Path]]:
+    """Pareia runs de voo e depth pelo timestamp mais proximo, sem reutilizar datasets."""
+
     logs = sorted(_raw_log_manifest_files(), key=lambda path: run_datetime(path) or datetime.min)
     depths = sorted(_raw_depth_source_files(), key=lambda path: run_datetime(path) or datetime.min)
     used_depths: set[Path] = set()
@@ -230,15 +333,7 @@ def paired_log_depth_files(max_delta_s: float = 120.0) -> list[tuple[Path, Path]
 
 
 def list_log_files() -> list[Path]:
-    """
-    Lista os logs de voo novos do mais recente para o mais antigo.
-
-    As runs atuais ficam em logs/voo_teste_*/manifest.json. A pasta logs/old guarda CSVs
-    historicos e e ignorada para evitar misturar formatos antigos com os memmaps novos.
-
-    Fonte:
-    [Python pathlib] https://docs.python.org/3/library/pathlib.html
-    """
+    """Lista os logs atuais, priorizando runs pareadas e ignorando ``logs/old``."""
 
     paired_logs = [log_path for log_path, _depth_path in paired_log_depth_files()]
     if paired_logs:
@@ -250,18 +345,7 @@ def list_log_files() -> list[Path]:
 
 
 def list_depth_metadata_files() -> list[Path]:
-    """
-    Lista os arquivos novos de depth/flow produzidos pelo dataset de profundidade do Gazebo.
-
-    O formato atual usa datasets/depth_ground_truth/run_*/manifest.json com intervalos em
-    memmap. O formato antigo metadata.csv continua aceito como fallback, mas a pasta old/
-    e ignorada quando existir.
-
-    Fontes:
-    [Python pathlib] https://docs.python.org/3/library/pathlib.html
-    [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
-    [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
-    """
+    """Lista datasets atuais de depth, com ``metadata.csv`` como fallback legado."""
 
     paired_depths = [depth_path for _log_path, depth_path in paired_log_depth_files()]
     if paired_depths:
@@ -278,7 +362,26 @@ def list_depth_interval_runs() -> list[Path]:
     )
 
 
+def filter_synchronized_intervals(df: pd.DataFrame, require_depth_dt: bool = True) -> pd.DataFrame:
+    """Mantem somente intervalos com timestamps RGB/depth coerentes."""
+
+    if df.empty or "dt_s" not in df or "depth_age_s" not in df:
+        return pd.DataFrame() if require_depth_dt else df.copy()
+    if require_depth_dt and "depth_dt_s" not in df:
+        return pd.DataFrame()
+
+    dt_rgb = pd.to_numeric(df["dt_s"], errors="coerce")
+    depth_age = pd.to_numeric(df["depth_age_s"], errors="coerce")
+    mask = dt_rgb.gt(0.0) & dt_rgb.le(0.5) & depth_age.le(0.08)
+    if "depth_dt_s" in df:
+        dt_depth = pd.to_numeric(df["depth_dt_s"], errors="coerce")
+        mask &= dt_depth.gt(0.0) & dt_depth.le(0.5)
+    return df.loc[mask].reset_index(drop=True)
+
+
 def load_depth_interval_run(run_dir: Path) -> pd.DataFrame:
+    """Carrega os intervalos de uma run depth no formato memmap atual."""
+
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists():
         return pd.DataFrame()
@@ -303,12 +406,17 @@ def load_depth_interval_run(run_dir: Path) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
+    df = filter_synchronized_intervals(df)
+    if df.empty:
+        return pd.DataFrame()
     df["run_id"] = run_dir.name
     df["ordem_intervalo"] = np.arange(len(df))
     return df
 
 
 def enrich_depth_interval_dashboard(df: pd.DataFrame) -> pd.DataFrame:
+    """Adiciona campos derivados usados pelas visualizacoes de depth e IMU."""
+
     if df.empty:
         return df
 
@@ -338,6 +446,112 @@ def enrich_depth_interval_dashboard(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def is_depth_interval_memmap(df: pd.DataFrame) -> bool:
+    return (
+        not df.empty
+        and "source_format" in df.columns
+        and str(df["source_format"].iloc[0]) == "depth_interval_memmap"
+    )
+
+
+def _decode_plotly_array(value) -> np.ndarray:
+    """Decodifica arrays binarios embutidos pelo Plotly no notebook."""
+
+    if isinstance(value, list):
+        return np.asarray(value)
+    if not isinstance(value, dict) or "bdata" not in value:
+        return np.asarray(value)
+
+    array = np.frombuffer(base64.b64decode(value["bdata"]), dtype=np.dtype(value["dtype"]))
+    shape = value.get("shape")
+    if shape:
+        array = array.reshape(tuple(int(part.strip()) for part in str(shape).split(",")))
+    return array.copy()
+
+
+@lru_cache(maxsize=2)
+def _load_notebook_interval_snapshot(_mtime_ns: int) -> pd.DataFrame:
+    """Recupera as metricas exibidas no ultimo output do notebook.
+
+    Os memmaps continuam sendo a fonte principal. Este snapshot permite que o dashboard
+    represente runs cujo output foi salvo no notebook, mas cujas pastas locais nao estao
+    presentes no ambiente que abriu o dashboard.
+    """
+
+    try:
+        notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return pd.DataFrame()
+
+    scatter_figure = None
+    sequence_figure = None
+    for cell in notebook.get("cells", []):
+        for output in cell.get("outputs", []):
+            figure = output.get("data", {}).get("application/vnd.plotly.v1+json")
+            if not figure:
+                continue
+            title = figure.get("layout", {}).get("title", {})
+            title_text = title.get("text", "") if isinstance(title, dict) else str(title)
+            if title_text == "Flow radial do intervalo x variacao de proximidade no depth":
+                scatter_figure = figure
+            elif title_text == "Sequencia dos intervalos: flow visual e delta de proximidade":
+                sequence_figure = figure
+
+    if scatter_figure is None:
+        return pd.DataFrame()
+
+    flow_values = np.array([], dtype=float)
+    if sequence_figure is not None:
+        flow_trace = next(
+            (trace for trace in sequence_figure.get("data", []) if trace.get("name") == "P90 flow"),
+            None,
+        )
+        if flow_trace is not None:
+            flow_values = _decode_plotly_array(flow_trace.get("y", [])).astype(float)
+
+    frames = []
+    offset = 0
+    for trace in scatter_figure.get("data", []):
+        run_id = str(trace.get("name", ""))
+        if not run_id.startswith("run_"):
+            continue
+        radial_flow = _decode_plotly_array(trace.get("x", [])).astype(float)
+        delta_close_5m = _decode_plotly_array(trace.get("y", [])).astype(float)
+        customdata = _decode_plotly_array(trace.get("customdata", []))
+        marker_size = _decode_plotly_array(trace.get("marker", {}).get("size", [])).astype(float)
+        n = len(delta_close_5m)
+        if n == 0 or customdata.ndim != 2 or customdata.shape[0] != n:
+            continue
+        flow_slice = flow_values[offset : offset + n]
+        if len(flow_slice) != n:
+            flow_slice = np.full(n, np.nan)
+        offset += n
+        frames.append(
+            pd.DataFrame(
+                {
+                    "run_id": run_id,
+                    "sample_id": customdata[:, 0],
+                    "dt_s": customdata[:, 1],
+                    "depth_age_s": customdata[:, 2],
+                    "pan_comp_delta_rad": customdata[:, 3],
+                    "flow_valid_points": marker_size,
+                    "flow_mag_p90_px": flow_slice,
+                    "radial_flow_p90_px": radial_flow,
+                    "delta_depth_close_5m_pp": delta_close_5m,
+                    "source_format": "notebook_snapshot",
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def load_notebook_interval_snapshot() -> pd.DataFrame:
+    if not NOTEBOOK_PATH.exists():
+        return pd.DataFrame()
+    snapshot = _load_notebook_interval_snapshot(NOTEBOOK_PATH.stat().st_mtime_ns).copy()
+    return filter_synchronized_intervals(snapshot, require_depth_dt=False)
+
+
 def load_all_depth_intervals() -> pd.DataFrame:
     frames = []
     for run_dir in list_depth_interval_runs():
@@ -347,11 +561,38 @@ def load_all_depth_intervals() -> pd.DataFrame:
             continue
         if not df.empty:
             frames.append(df)
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    local_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    notebook_df = load_notebook_interval_snapshot()
+    if notebook_df.empty:
+        return local_df
+    if local_df.empty:
+        return notebook_df
+
+    local_runs = set(local_df["run_id"].astype(str))
+    missing_runs = notebook_df[~notebook_df["run_id"].isin(local_runs)]
+    return pd.concat([local_df, missing_runs], ignore_index=True, sort=False)
 
 
-def batch_label_for_run(run_id: str) -> str:
-    return FIRST_BATCH_LABEL if run_id in FIRST_BATCH_RUN_IDS else NEW_BATCH_LABEL
+def run_block_label(run_id: str) -> str:
+    index = RUN_ORDER_INDEX.get(run_id)
+    if index is None:
+        return "Fora das 18 runs"
+    if index < 4:
+        return BLOCK_LABELS[0]
+    if index < 10:
+        return BLOCK_LABELS[1]
+    if index < 14:
+        return BLOCK_LABELS[2]
+    return BLOCK_LABELS[3]
+
+
+def ordered_run_ids(df: pd.DataFrame) -> list[str]:
+    """Ordena primeiro as 18 runs de referencia e depois qualquer run adicional."""
+
+    available = set(df["run_id"].astype(str))
+    reference = [run_id for run_id in REFERENCE_RUN_ORDER if run_id in available]
+    return reference + sorted(available - set(reference))
 
 
 def run_label(path: Path) -> str:
@@ -363,30 +604,12 @@ def run_label(path: Path) -> str:
 
 
 def depth_run_label(path: Path) -> str:
-    """
-    Retorna o identificador curto de uma run de depth ground truth.
-
-    O metadata.csv fica dentro de uma pasta run_<timestamp>. Esta funcao preserva esse
-    timestamp para que a run possa ser pareada visualmente com os logs voo_teste_<timestamp>.
-
-    Fonte:
-    [Python pathlib] https://docs.python.org/3/library/pathlib.html
-    """
-
+    """Retorna o timestamp identificador de uma run depth."""
     return path.parent.name.replace("run_", "")
 
 
 def matching_depth_metadata(log_path: Path, depth_paths: list[Path]) -> Path | None:
-    """
-    Escolhe a run de depth mais compativel com o log selecionado no dashboard.
-
-    Quando o timestamp do log aparece no nome da pasta run_<timestamp>, esse metadata.csv e
-    usado. Caso contrario, o dashboard usa a run de depth mais recente para ainda expor a
-    analise dos dados novos sem quebrar a visualizacao.
-
-    Fonte:
-    [Python pathlib] https://docs.python.org/3/library/pathlib.html
-    """
+    """Encontra o dataset depth pareado; usa ordem de coleta como ultimo fallback."""
 
     if not depth_paths:
         return None
@@ -413,17 +636,7 @@ def matching_depth_metadata(log_path: Path, depth_paths: list[Path]) -> Path | N
 
 
 def resolve_depth_file(depth_path_value: str, run_dir: Path) -> Path:
-    """
-    Resolve o caminho de um arquivo NPY de profundidade no Windows ou no WSL.
-
-    O CSV pode guardar caminhos absolutos do ambiente WSL, como /home/prograf4080/..., que
-    nao existem quando a analise e aberta pelo Windows. Nesses casos, a funcao aproveita o
-    nome do arquivo e reconstrui o caminho local dentro de run_dir/depth_m.
-
-    Fontes:
-    [Python pathlib] https://docs.python.org/3/library/pathlib.html
-    [NumPy NPY format] https://numpy.org/doc/stable/reference/generated/numpy.save.html
-    """
+    """Resolve paths NPY salvos no Windows ou no WSL para a pasta local da run."""
 
     original = Path(str(depth_path_value))
     if original.exists():
@@ -433,20 +646,7 @@ def resolve_depth_file(depth_path_value: str, run_dir: Path) -> Path:
 
 @lru_cache(maxsize=8)
 def load_depth_metadata(metadata_path_value: str) -> pd.DataFrame:
-    """
-    Carrega e enriquece uma run de depth ground truth para uso no dashboard.
-
-    Alem dos campos do metadata.csv, a funcao le os mapas .npy quando eles existem e calcula
-    percentis de profundidade e porcentagem de pixels mais proximos que 2 m, 5 m e 10 m.
-    Esses indicadores ajudam a transformar o z-buffer/depth do Gazebo em um alvo analisavel
-    para a futura rede monocular, sem mudar o controlador em tempo real.
-
-    Fontes:
-    [Pandas read_csv] https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html
-    [NumPy load] https://numpy.org/doc/stable/reference/generated/numpy.load.html
-    [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
-    [Artigo - Vyas2022] https://doi.org/10.48550/arXiv.2205.01399
-    """
+    """Carrega uma run depth e calcula percentis e ocupacao por faixa de distancia."""
 
     metadata_path = Path(metadata_path_value)
     if not metadata_path.exists():
@@ -549,34 +749,13 @@ def load_depth_metadata(metadata_path_value: str) -> pd.DataFrame:
 
 
 def has_real_avoidance_metrics(df: pd.DataFrame) -> bool:
-    """
-    Indica se o log de voo contem metricas reais da evasao visual.
-
-    Runs novas gravadas por main.py incluem obstacle_risk, avoid_lateral_body e avoid_brake.
-    Quando esses campos existem, o dashboard deixa de usar o proxy derivado de odometria e
-    passa a mostrar os sinais calculados diretamente pelo controlador.
-
-    Fontes:
-    [Pandas DataFrame columns] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.columns.html
-    [Python set] https://docs.python.org/3/library/stdtypes.html#set
-    """
-
+    """Verifica se a run possui os tres sinais reais de evasao visual."""
     required = {"obstacle_risk", "avoid_lateral_body", "avoid_brake"}
     return required.issubset(set(df.columns))
 
 
 def add_real_avoidance_metrics(df: pd.DataFrame) -> None:
-    """
-    Padroniza as metricas reais de evasao para os graficos do dashboard.
-
-    A funcao cria colunas genericas usadas pela visualizacao: indice_desvio_reativo,
-    evento_desvio_reativo, lateral_reativo_m_s2 e freio_reativo. Assim, os graficos podem
-    tratar logs novos e antigos com a mesma interface de dados.
-
-    Fontes:
-    [Pandas to_numeric] https://pandas.pydata.org/docs/reference/api/pandas.to_numeric.html
-    [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
-    """
+    """Mapeia sinais reais de evasao para a interface comum dos graficos."""
 
     for col in ("obstacle_risk", "avoid_lateral_body", "avoid_brake", "evasao_visual_ativa", "pan_comp_delta_rad"):
         if col in df.columns:
@@ -590,17 +769,7 @@ def add_real_avoidance_metrics(df: pd.DataFrame) -> None:
 
 
 def load_flight_interval_memmap(manifest_path: Path) -> pd.DataFrame:
-    """
-    Carrega o formato atual de logs/voo_teste_*/manifest.json.
-
-    O logger novo salva apenas variacoes entre amostras. Para visualizacao, o dashboard
-    reconstrui uma trajetoria relativa acumulando os deltas de deslocamento e usa os deltas
-    de velocidade angular como sinais de IMU, igual ao notebook de metricas.
-
-    Fontes:
-    [NumPy load] https://numpy.org/doc/stable/reference/generated/numpy.load.html
-    [Pandas DataFrame] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
-    """
+    """Carrega uma run memmap e reconstrui sua trajetoria relativa pelos deltas."""
 
     if not manifest_path.exists():
         return _empty_dataframe()
@@ -645,18 +814,23 @@ def load_flight_interval_memmap(manifest_path: Path) -> pd.DataFrame:
     df["roll_speed"] = df.get("delta_roll_speed_rad_s", 0.0)
     df["pitch_speed"] = df.get("delta_pitch_speed_rad_s", 0.0)
     df["yaw_speed"] = df.get("delta_yaw_speed_rad_s", 0.0)
-    df["vel_horizontal"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2)
-    df["vel_3d"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2 + df["v_z"] ** 2)
-    df["vel_horizontal_suave"] = df["vel_horizontal"].rolling(15, min_periods=1, center=True).median()
-    df["angular_norm"] = np.sqrt(df["roll_speed"] ** 2 + df["pitch_speed"] ** 2 + df["yaw_speed"] ** 2)
-    df["angular_norm_suave"] = df["angular_norm"].rolling(15, min_periods=1, center=True).median()
+    add_motion_metrics(df)
 
-    rota = build_route(df)
-    add_route_metrics(df, rota)
-
-    risk_delta = df["delta_obstacle_risk"].fillna(0.0) if "delta_obstacle_risk" in df else pd.Series(0.0, index=df.index)
-    lateral_delta = df["delta_avoid_lateral_body"].fillna(0.0) if "delta_avoid_lateral_body" in df else pd.Series(0.0, index=df.index)
-    brake_delta = df["delta_avoid_brake"].fillna(0.0) if "delta_avoid_brake" in df else pd.Series(0.0, index=df.index)
+    risk_delta = (
+        df["delta_obstacle_risk"].fillna(0.0)
+        if "delta_obstacle_risk" in df
+        else pd.Series(0.0, index=df.index)
+    )
+    lateral_delta = (
+        df["delta_avoid_lateral_body"].fillna(0.0)
+        if "delta_avoid_lateral_body" in df
+        else pd.Series(0.0, index=df.index)
+    )
+    brake_delta = (
+        df["delta_avoid_brake"].fillna(0.0)
+        if "delta_avoid_brake" in df
+        else pd.Series(0.0, index=df.index)
+    )
     df["indice_desvio_reativo"] = normalize(risk_delta.abs())
     df["evento_desvio_reativo"] = df["indice_desvio_reativo"] > OBSTACLE_RISK_THRESHOLD
     df["lateral_reativo_m_s2"] = lateral_delta
@@ -667,18 +841,7 @@ def load_flight_interval_memmap(manifest_path: Path) -> pd.DataFrame:
 
 
 def load_run(path: Path) -> pd.DataFrame:
-    """
-    Carrega um CSV de voo e calcula metricas derivadas para o dashboard.
-
-    Logs novos usam diretamente obstacle_risk, avoid_lateral_body e avoid_brake gravados
-    pelo DataLogger. Logs antigos continuam recebendo um proxy baseado em desvio lateral,
-    frenagem relativa e atividade angular para manter comparabilidade historica.
-
-    Fontes:
-    [Pandas read_csv] https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html
-    [NumPy hypot] https://numpy.org/doc/stable/reference/generated/numpy.hypot.html
-    [PX4 VehicleOdometry] https://docs.px4.io/main/en/msg_docs/VehicleOdometry
-    """
+    """Carrega uma run de voo atual ou um CSV legado e calcula campos derivados."""
 
     if path.name == "manifest.json":
         return load_flight_interval_memmap(path)
@@ -701,16 +864,7 @@ def load_run(path: Path) -> pd.DataFrame:
         df[f"v_{axis}"] = df[axis].diff() / df["dt"]
 
     df[["v_x", "v_y", "v_z"]] = df[["v_x", "v_y", "v_z"]].replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    df["vel_horizontal"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2)
-    df["vel_3d"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2 + df["v_z"] ** 2)
-    df["vel_horizontal_suave"] = df["vel_horizontal"].rolling(15, min_periods=1, center=True).median()
-    df["angular_norm"] = np.sqrt(
-        df["roll_speed"] ** 2 + df["pitch_speed"] ** 2 + df["yaw_speed"] ** 2
-    )
-    df["angular_norm_suave"] = df["angular_norm"].rolling(15, min_periods=1, center=True).median()
-
-    rota = build_route(df)
-    add_route_metrics(df, rota)
+    add_motion_metrics(df)
     if has_real_avoidance_metrics(df):
         add_real_avoidance_metrics(df)
     else:
@@ -773,6 +927,23 @@ def add_route_metrics(df: pd.DataFrame, route: np.ndarray) -> None:
     df["evasao_habilitada_modelo"] = df["distancia_final_xy"] > RAIO_DESATIVA_EVASAO_FINAL
 
 
+def add_motion_metrics(df: pd.DataFrame) -> None:
+    """Calcula velocidade, atividade angular e distancia relativa a rota."""
+
+    df["vel_horizontal"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2)
+    df["vel_3d"] = np.sqrt(df["v_x"] ** 2 + df["v_y"] ** 2 + df["v_z"] ** 2)
+    df["vel_horizontal_suave"] = (
+        df["vel_horizontal"].rolling(15, min_periods=1, center=True).median()
+    )
+    df["angular_norm"] = np.sqrt(
+        df["roll_speed"] ** 2 + df["pitch_speed"] ** 2 + df["yaw_speed"] ** 2
+    )
+    df["angular_norm_suave"] = (
+        df["angular_norm"].rolling(15, min_periods=1, center=True).median()
+    )
+    add_route_metrics(df, build_route(df))
+
+
 def normalize(series: pd.Series, high_quantile: float = 0.95) -> pd.Series:
     clean = series.replace([np.inf, -np.inf], np.nan).fillna(0.0).abs()
     scale = float(clean.quantile(high_quantile))
@@ -784,17 +955,7 @@ def normalize(series: pd.Series, high_quantile: float = 0.95) -> pd.Series:
 
 
 def add_reactive_proxy(df: pd.DataFrame) -> None:
-    """
-    Calcula um proxy de evasao reativa para logs antigos sem metricas visuais reais.
-
-    O proxy combina velocidade lateral ao corredor, atividade angular, desvio da rota e
-    frenagem relativa. Ele fica marcado como "proxy estimado" para o dashboard avisar que a
-    run foi coletada antes do logger salvar obstacle_risk, avoid_lateral_body e avoid_brake.
-
-    Fontes:
-    [Pandas rolling] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.rolling.html
-    [PX4 VehicleOdometry] https://docs.px4.io/main/en/msg_docs/VehicleOdometry
-    """
+    """Estima a atividade reativa para CSVs legados sem sinais reais de evasao."""
 
     lateral = normalize(df["vel_lateral_rota"].rolling(9, min_periods=1, center=True).median())
     angular = normalize(df["angular_norm_suave"])
@@ -835,16 +996,7 @@ def metric_card(label: str, value: str, detail: str = "") -> html.Div:
 
 
 def run_summary(df: pd.DataFrame) -> list[html.Div]:
-    """
-    Cria os cards principais da aba de metricas de voo.
-
-    Para logs novos, o card de risco usa obstacle_risk real gravado pelo controlador. Para
-    logs antigos, o mesmo espaco mostra o proxy estimado e informa a fonte no detalhe.
-
-    Fontes:
-    [Pandas Series max] https://pandas.pydata.org/docs/reference/api/pandas.Series.max.html
-    [PX4 VehicleOdometry] https://docs.px4.io/main/en/msg_docs/VehicleOdometry
-    """
+    """Resume duracao, trajeto e atividade reativa da run selecionada."""
 
     if df.empty:
         return [metric_card("Sem dados", "-", "Nenhum CSV encontrado em logs/.")]
@@ -870,24 +1022,18 @@ def run_summary(df: pd.DataFrame) -> list[html.Div]:
         metric_card("Duracao", fmt_number(float(df["tempo_s"].max()), " s", 1), f"{len(df)} amostras"),
         metric_card("Distancia 3D", fmt_number(total_distance, " m", 1), "odometria acumulada"),
         metric_card("Altitude max.", fmt_number(float(df["altitude"].max()), " m", 2), "NED convertido para altitude"),
-        metric_card("Desvio rota max.", fmt_number(float(df["desvio_rota_m"].max()), " m", 2), "distancia lateral ao segmento"),
+        metric_card(
+            "Desvio rota max.",
+            fmt_number(float(df["desvio_rota_m"].max()), " m", 2),
+            "distancia lateral ao segmento",
+        ),
         metric_card(risk_label, fmt_number(max_reactive, "", 2), f"{source}; limiar {OBSTACLE_RISK_THRESHOLD:.2f}"),
         metric_card("Tempo em desvio", fmt_number(event_share, "%", 1), "indice acima do limiar"),
     ]
 
 
 def flight_notice(df: pd.DataFrame) -> html.Div:
-    """
-    Gera o aviso da aba de voo conforme a qualidade do log selecionado.
-
-    Runs novas exibem uma confirmacao de que obstacle_risk, avoid_lateral_body e avoid_brake
-    vieram do CSV. Runs antigas mantem o aviso de que o dashboard precisou estimar um proxy,
-    apontando exatamente o que falta coletar.
-
-    Fontes:
-    [Dash HTML components] https://dash.plotly.com/dash-html-components
-    [Python all] https://docs.python.org/3/library/functions.html#all
-    """
+    """Informa se os sinais reativos sao reais, deltas memmap ou proxy legado."""
 
     if not df.empty and has_real_avoidance_metrics(df):
         text = (
@@ -896,7 +1042,12 @@ def flight_notice(df: pd.DataFrame) -> html.Div:
         )
         return html.Div(text, className="notice notice-ok")
 
-    if not df.empty and "fonte_desvio_reativo" in df.columns and str(df["fonte_desvio_reativo"].iloc[0]) == "deltas memmap":
+    source = (
+        str(df["fonte_desvio_reativo"].iloc[0])
+        if not df.empty and "fonte_desvio_reativo" in df
+        else ""
+    )
+    if not df.empty and source == "deltas memmap":
         text = (
             "Esta run veio do formato novo em memmap. A trajetoria e relativa, reconstruida "
             "acumulando delta_x/delta_y/delta_z, e os graficos de IMU usam as variacoes "
@@ -913,33 +1064,38 @@ def flight_notice(df: pd.DataFrame) -> html.Div:
 
 
 def depth_summary(df: pd.DataFrame, metadata_path: Path | None) -> list[html.Div]:
-    """
-    Monta cards resumidos para a run de profundidade do Gazebo.
-
-    Os cards destacam sincronizacao RGB/depth, profundidade central da cena e fracao de
-    pixels proximos. A leitura permanece diagnostica: esses dados sao ground truth do
-    simulador para analise e treino futuro, nao uma depth camera embarcada.
-
-    Fontes:
-    [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
-    [Pandas DataFrame] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
-    [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
-    """
+    """Resume sincronizacao, flow e proximidade da run depth selecionada."""
 
     if df.empty or metadata_path is None:
         return [metric_card("Depth GT", "-", "Nenhuma run em datasets/depth_ground_truth/.")]
 
-    if "source_format" in df.columns and str(df["source_format"].iloc[0]) == "depth_interval_memmap":
+    if is_depth_interval_memmap(df):
         event_rate = 0.0
         if "delta_depth_close_5m_pp" in df.columns:
             event_rate = float((df["delta_depth_close_5m_pp"].abs() > 0.5).mean() * 100.0)
         return [
             metric_card("Dataset pareado", depth_run_label(metadata_path), f"{len(df)} intervalos depth/flow"),
-            metric_card("dt visual medio", fmt_number(float(df["dt_s"].mean() * 1000.0), " ms", 1), "entre atualizacoes visuais"),
-            metric_card("RGB-depth medio", fmt_number(float(df["depth_age_s"].mean() * 1000.0), " ms", 1), "idade do depth usado"),
-            metric_card("Flow valido", fmt_number(float(df["flow_valid_points"].mean()), " pts", 1), "media por intervalo"),
+            metric_card(
+                "dt visual medio",
+                fmt_number(float(df["dt_s"].mean() * 1000.0), " ms", 1),
+                "entre atualizacoes visuais",
+            ),
+            metric_card(
+                "RGB-depth medio",
+                fmt_number(float(df["depth_age_s"].mean() * 1000.0), " ms", 1),
+                "idade do depth usado",
+            ),
+            metric_card(
+                "Flow valido",
+                fmt_number(float(df["flow_valid_points"].mean()), " pts", 1),
+                "media por intervalo",
+            ),
             metric_card("Eventos prox.", fmt_number(event_rate, "%", 1), "|delta pixels < 5m| > 0,5 p.p."),
-            metric_card("Pan comp.", fmt_number(float(df["pan_comp_delta_rad"].abs().max()), " rad", 4), "maximo absoluto"),
+            metric_card(
+                "Pan comp.",
+                fmt_number(float(df["pan_comp_delta_rad"].abs().max()), " rad", 4),
+                "maximo absoluto",
+            ),
         ]
 
     pan_detail = "compensacao ausente nesta run"
@@ -950,7 +1106,11 @@ def depth_summary(df: pd.DataFrame, metadata_path: Path | None) -> list[html.Div
         metric_card("Depth run", depth_run_label(metadata_path), f"{len(df)} pares RGB/depth"),
         metric_card("Sincronia media", fmt_number(float(df["depth_age_s"].mean() * 1000.0), " ms", 1), "RGB x depth"),
         metric_card("Depth P10 med.", fmt_number(float(df["depth_p10_m"].median()), " m", 2), "percentil 10 por frame"),
-        metric_card("Pixels < 5 m", fmt_number(float(df["depth_close_5m_pct"].median()), "%", 1), "mediana da area valida"),
+        metric_card(
+            "Pixels < 5 m",
+            fmt_number(float(df["depth_close_5m_pct"].median()), "%", 1),
+            "mediana da area valida",
+        ),
         metric_card("Giro mediano", fmt_number(float(df["gyro_norm"].median()), " rad/s", 3), "norma do giroscopio"),
         metric_card("Pan comp.", fmt_number(float(df["pan_comp_delta_rad"].abs().max()), " rad", 4), pan_detail),
     ]
@@ -981,17 +1141,39 @@ def apply_layout(fig: go.Figure, title: str, height: int = 420) -> go.Figure:
     return fig
 
 
+def table_figure(
+    headers: list[str],
+    columns: list[list],
+    title: str,
+    height: int,
+    header_color: str = "#e8eef3",
+) -> go.Figure:
+    fig = go.Figure(
+        data=[
+            go.Table(
+                header=dict(
+                    values=headers,
+                    fill_color=header_color,
+                    align="left",
+                    font=dict(size=13),
+                ),
+                cells=dict(values=columns, fill_color="#ffffff", align="left", height=28),
+            )
+        ]
+    )
+    return apply_layout(fig, title, height)
+
+
+def rows_to_columns(rows: list[list], column_count: int) -> list[list]:
+    return list(map(list, zip(*rows))) if rows else [[] for _ in range(column_count)]
+
+
+def format_table_number(value: float, digits: int = 1) -> str:
+    return "N/D" if pd.isna(value) else f"{float(value):.{digits}f}"
+
+
 def figure_xy(df: pd.DataFrame) -> go.Figure:
-    """
-    Mostra a trajetoria XY colorida pelo indice de evasao reativa.
-
-    O indice vem de obstacle_risk real em logs novos ou do proxy em logs antigos. A rota
-    planejada continua sendo reconstruida a partir dos waypoints relativos do controlador.
-
-    Fontes:
-    [Plotly scatter] https://plotly.com/python/line-and-scatter/
-    [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
-    """
+    """Compara a trajetoria XY executada com a rota planejada."""
 
     route = build_route(df)
     fig = go.Figure()
@@ -1090,17 +1272,7 @@ def figure_3d(df: pd.DataFrame) -> go.Figure:
 
 
 def figure_reactive_timeseries(df: pd.DataFrame) -> go.Figure:
-    """
-    Plota os sinais de evasao reativa ao longo do tempo.
-
-    Em logs novos, a figura mostra obstacle_risk, avoid_lateral_body e avoid_brake reais.
-    Em logs antigos, mostra o indice de proxy e sinais derivados equivalentes para manter a
-    leitura temporal da manobra.
-
-    Fontes:
-    [Plotly line charts] https://plotly.com/python/line-charts/
-    [OpenCV Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
-    """
+    """Mostra risco, freio e comando lateral reativo ao longo da run."""
 
     source = str(df["fonte_desvio_reativo"].iloc[0]) if "fonte_desvio_reativo" in df.columns else "proxy estimado"
     if source == "metricas reais":
@@ -1224,20 +1396,9 @@ def figure_altitude(df: pd.DataFrame) -> go.Figure:
 
 
 def figure_depth_timeseries(df: pd.DataFrame) -> go.Figure:
-    """
-    Cria o grafico temporal de profundidade e pixels proximos da run do Gazebo.
+    """Mostra a evolucao temporal dos indicadores de profundidade e proximidade."""
 
-    O eixo principal mostra a profundidade media e os percentis P10/P50. O eixo secundario
-    mostra a porcentagem de pixels validos com profundidade menor que 5 m, que funciona como
-    um indicador simples de ocupacao proxima no campo visual.
-
-    Fontes:
-    [Plotly multiple axes] https://plotly.com/python/multiple-axes/
-    [NumPy percentile] https://numpy.org/doc/stable/reference/generated/numpy.percentile.html
-    [Artigo - Vyas2022] https://doi.org/10.48550/arXiv.2205.01399
-    """
-
-    if "source_format" in df.columns and str(df["source_format"].iloc[0]) == "depth_interval_memmap":
+    if is_depth_interval_memmap(df):
         fig = go.Figure()
         for col, label, color in [
             ("delta_depth_p10_m", "delta P10", COLORS["risk"]),
@@ -1307,20 +1468,9 @@ def figure_depth_timeseries(df: pd.DataFrame) -> go.Figure:
 
 
 def figure_depth_imu(df: pd.DataFrame) -> go.Figure:
-    """
-    Relaciona proximidade visual do depth ground truth com atividade inercial.
+    """Relaciona movimento visual ou proximidade com atividade inercial."""
 
-    Cada ponto representa um par RGB/depth. A leitura ajuda a identificar trechos em que a
-    cena estava proxima e o drone tambem girava bastante, justamente os casos em que a
-    compensacao IMU antes do fluxo optico tende a ser mais importante.
-
-    Fontes:
-    [Plotly scatter] https://plotly.com/python/line-and-scatter/
-    [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
-    [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
-    """
-
-    if "source_format" in df.columns and str(df["source_format"].iloc[0]) == "depth_interval_memmap":
+    if is_depth_interval_memmap(df):
         x = df["radial_flow_p90_px"] if "radial_flow_p90_px" in df.columns else pd.Series(0.0, index=df.index)
         y = df["delta_depth_close_5m_pp"] if "delta_depth_close_5m_pp" in df.columns else pd.Series(0.0, index=df.index)
         color = df["flow_valid_points"] if "flow_valid_points" in df.columns else df["gyro_norm"]
@@ -1400,20 +1550,9 @@ def figure_depth_imu(df: pd.DataFrame) -> go.Figure:
 
 
 def figure_depth_ranking(df: pd.DataFrame) -> go.Figure:
-    """
-    Cria uma tabela com os frames mais interessantes da run de depth.
+    """Lista os intervalos depth/flow mais informativos da run."""
 
-    O ranking prioriza frames com maior porcentagem de pixels abaixo de 5 m e maior giro
-    inercial. Esses casos tendem a ser uteis para inspecionar colisao iminente, paralaxe e
-    efeito da compensacao IMU antes do treino monocular.
-
-    Fontes:
-    [Plotly Table] https://plotly.com/python/table/
-    [Pandas sort_values] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.sort_values.html
-    [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
-    """
-
-    if "source_format" in df.columns and str(df["source_format"].iloc[0]) == "depth_interval_memmap":
+    if is_depth_interval_memmap(df):
         ranking = (
             df.assign(abs_delta_close_5m=lambda frame: frame["delta_depth_close_5m_pp"].abs())
             .sort_values(["abs_delta_close_5m", "radial_flow_p90_px"], ascending=False)
@@ -1436,20 +1575,13 @@ def figure_depth_ranking(df: pd.DataFrame) -> go.Figure:
             else:
                 values.append([fmt_number(float(value), "", 3) for value in ranking[col]])
 
-        fig = go.Figure(
-            data=[
-                go.Table(
-                    header=dict(
-                        values=[label for _, label in cols],
-                        fill_color="#ece7ff",
-                        align="left",
-                        font=dict(size=13),
-                    ),
-                    cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-                )
-            ]
+        return table_figure(
+            [label for _, label in cols],
+            values,
+            "Intervalos mais informativos de depth/flow",
+            360,
+            header_color="#ece7ff",
         )
-        return apply_layout(fig, "Intervalos mais informativos de depth/flow", 360)
 
     ranking = df.sort_values(["depth_close_5m_pct", "gyro_norm"], ascending=False).head(15)
     cols = [
@@ -1471,20 +1603,13 @@ def figure_depth_ranking(df: pd.DataFrame) -> go.Figure:
         else:
             values.append([fmt_number(float(value), "", 3) for value in ranking[col]])
 
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(
-                    values=[label for _, label in cols],
-                    fill_color="#ece7ff",
-                    align="left",
-                    font=dict(size=13),
-                ),
-                cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-            )
-        ]
+    return table_figure(
+        [label for _, label in cols],
+        values,
+        "Frames prioritarios para inspecao e treino",
+        360,
+        header_color="#ece7ff",
     )
-    return apply_layout(fig, "Frames prioritarios para inspecao e treino", 360)
 
 
 def batch_interval_frames(df: pd.DataFrame) -> pd.DataFrame:
@@ -1492,17 +1617,11 @@ def batch_interval_frames(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     frames = []
-    first_df = df[df["run_id"].isin(FIRST_BATCH_RUN_IDS)].copy()
-    new_df = df[~df["run_id"].isin(FIRST_BATCH_RUN_IDS)].copy()
-    all_df = df.copy()
-    for label, part in [
-        (FIRST_BATCH_LABEL, first_df),
-        (NEW_BATCH_LABEL, new_df),
-        (ALL_BATCH_LABEL, all_df),
-    ]:
+    run_ids = ordered_run_ids(df)
+    for size, label in BATCH_SPECS:
+        part = df[df["run_id"].isin(run_ids[:size])].copy()
         if part.empty:
             continue
-        part = part.copy()
         part["leva"] = label
         frames.append(part)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
@@ -1513,16 +1632,21 @@ def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(REFERENCE_BATCH_STATS)
 
     rows = []
-    for label, part in [
-        (FIRST_BATCH_LABEL, df[df["run_id"].isin(FIRST_BATCH_RUN_IDS)]),
-        (NEW_BATCH_LABEL, df[~df["run_id"].isin(FIRST_BATCH_RUN_IDS)]),
-        (ALL_BATCH_LABEL, df),
-    ]:
+    run_ids = ordered_run_ids(df)
+    for size, label in BATCH_SPECS:
+        part = df[df["run_id"].isin(run_ids[:size])]
         if part.empty:
             continue
         event_rate = 0.0
+        event_count = 0
+        delta_abs_p90 = np.nan
+        zero_rate = np.nan
         if "delta_depth_close_5m_pp" in part.columns:
-            event_rate = float((part["delta_depth_close_5m_pp"].abs() > 0.5).mean() * 100.0)
+            delta_abs = part["delta_depth_close_5m_pp"].abs()
+            event_count = int((delta_abs > 0.5).sum())
+            event_rate = float((delta_abs > 0.5).mean() * 100.0)
+            delta_abs_p90 = float(np.nanpercentile(delta_abs, 90))
+            zero_rate = float((delta_abs < 1e-9).mean() * 100.0)
         rows.append(
             {
                 "leva": label,
@@ -1530,12 +1654,35 @@ def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
                 "intervalos": int(len(part)),
                 "dt_s_mean": float(part["dt_s"].mean()) if "dt_s" in part else np.nan,
                 "depth_age_s_mean": float(part["depth_age_s"].mean()) if "depth_age_s" in part else np.nan,
-                "flow_valid_points_mean": float(part["flow_valid_points"].mean()) if "flow_valid_points" in part else np.nan,
-                "flow_track_retention_pct_mean": float(part["flow_track_retention_pct"].mean()) if "flow_track_retention_pct" in part else np.nan,
+                "flow_valid_points_mean": (
+                    float(part["flow_valid_points"].mean())
+                    if "flow_valid_points" in part
+                    else np.nan
+                ),
+                "flow_track_retention_pct_mean": (
+                    float(part["flow_track_retention_pct"].mean())
+                    if "flow_track_retention_pct" in part
+                    else np.nan
+                ),
                 "flow_mag_p90_px_mean": float(part["flow_mag_p90_px"].mean()) if "flow_mag_p90_px" in part else np.nan,
-                "radial_flow_p90_px_mean": float(part["radial_flow_p90_px"].mean()) if "radial_flow_p90_px" in part else np.nan,
-                "delta_depth_close_5m_pp_mean": float(part["delta_depth_close_5m_pp"].mean()) if "delta_depth_close_5m_pp" in part else np.nan,
-                "delta_depth_close_5m_pp_std": float(part["delta_depth_close_5m_pp"].std()) if "delta_depth_close_5m_pp" in part else np.nan,
+                "radial_flow_p90_px_mean": (
+                    float(part["radial_flow_p90_px"].mean())
+                    if "radial_flow_p90_px" in part
+                    else np.nan
+                ),
+                "delta_depth_close_5m_pp_mean": (
+                    float(part["delta_depth_close_5m_pp"].mean())
+                    if "delta_depth_close_5m_pp" in part
+                    else np.nan
+                ),
+                "delta_depth_close_5m_pp_std": (
+                    float(part["delta_depth_close_5m_pp"].std())
+                    if "delta_depth_close_5m_pp" in part
+                    else np.nan
+                ),
+                "delta_abs_p90": delta_abs_p90,
+                "zero_rate_pct": zero_rate,
+                "eventos": event_count,
                 "event_rate_pct": event_rate,
             }
         )
@@ -1561,7 +1708,7 @@ def reference_run_event_df() -> pd.DataFrame:
         REFERENCE_RUN_EVENT_STATS,
         columns=["run_id", "intervalos", "eventos", "taxa_evento"],
     )
-    df["leva"] = df["run_id"].map(batch_label_for_run)
+    df["leva"] = df["run_id"].map(run_block_label)
     return df
 
 
@@ -1569,48 +1716,71 @@ def batch_summary_cards(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> list[html.
     if stats.empty:
         return [metric_card("Comparacao", "-", "Sem dados ou referencias para comparar.")]
 
-    first = stats[stats["leva"] == FIRST_BATCH_LABEL]
-    all_runs = stats[stats["leva"] == ALL_BATCH_LABEL]
-    first_row = first.iloc[0] if not first.empty else stats.iloc[0]
-    all_row = all_runs.iloc[0] if not all_runs.empty else stats.iloc[-1]
+    by_label = {row["leva"]: row for _, row in stats.iterrows()}
+    first_row = by_label.get(BATCH_LABELS[4], stats.iloc[0])
+    ten_row = by_label.get(BATCH_LABELS[10], first_row)
+    fourteen_row = by_label.get(BATCH_LABELS[14], stats.iloc[-1])
+    all_row = by_label.get(BATCH_LABELS[18], stats.iloc[-1])
 
     close5 = mlp_df[(mlp_df["alvo_delta"] == "delta_depth_close_5m_pp") & (mlp_df["modelo"] == "MLP")]
-    close5_first = close5[close5["leva"] == "Primeira leva"]["MAE"]
-    close5_all = close5[close5["leva"] == "Todas atuais"]["MAE"]
-    close5_detail = "referencia do notebook"
+    close5_ten = close5[close5["leva"] == BATCH_LABELS[10]]["MAE"]
+    close5_all = close5[close5["leva"] == BATCH_LABELS[18]]["MAE"]
     close5_value = "-"
-    if not close5_first.empty and not close5_all.empty:
-        diff = float(close5_first.iloc[0] - close5_all.iloc[0])
-        close5_value = fmt_number(float(close5_all.iloc[0]), " p.p.", 2)
-        close5_detail = f"antes {float(close5_first.iloc[0]):.2f}; melhora {diff:.2f}"
+    close5_detail = "14 runs nao foi avaliado no output salvo"
+    if not close5_ten.empty and not close5_all.empty:
+        old_value = float(close5_ten.iloc[0])
+        new_value = float(close5_all.iloc[0])
+        improvement = (old_value - new_value) / old_value * 100.0
+        close5_value = fmt_number(new_value, " p.p.", 3)
+        close5_detail = f"10 -> 18 runs: {improvement:.1f}% menor"
+
+    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[18]) & (mlp_df["modelo"] == "MLP")]
+    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[18]) & (mlp_df["modelo"] == "Media treino")]
+    joined = current_mlp.merge(current_base, on="alvo_delta", suffixes=("_mlp", "_base"))
+    beats_baseline = int((joined["MAE_mlp"] < joined["MAE_base"]).sum()) if not joined.empty else 0
+
+    def incremental_event_rate(previous: pd.Series, current: pd.Series) -> float:
+        interval_delta = int(current.get("intervalos", 0)) - int(previous.get("intervalos", 0))
+        event_delta = int(current.get("eventos", 0)) - int(previous.get("eventos", 0))
+        return event_delta / interval_delta * 100.0 if interval_delta > 0 else np.nan
+
+    event_11_14 = incremental_event_rate(ten_row, fourteen_row)
+    event_15_18 = incremental_event_rate(fourteen_row, all_row)
 
     return [
         metric_card(
             "Intervalos",
             f"{int(all_row['intervalos'])}",
-            f"antes {int(first_row['intervalos'])}; runs {int(first_row['runs'])} -> {int(all_row['runs'])}",
+            (
+                f"{int(first_row['intervalos'])} -> {int(ten_row['intervalos'])} -> "
+                f"{int(fourteen_row['intervalos'])} -> {int(all_row['intervalos'])}"
+            ),
         ),
         metric_card(
-            "dt medio",
-            fmt_number(float(all_row["dt_s_mean"] * 1000.0), " ms", 1),
-            f"antes {float(first_row['dt_s_mean'] * 1000.0):.1f} ms",
+            "Novas runs 11-14",
+            fmt_number(event_11_14, "% eventos", 1),
+            "poucos deltas relevantes de proximidade",
         ),
         metric_card(
-            "RGB-depth",
-            fmt_number(float(all_row["depth_age_s_mean"] * 1000.0), " ms", 1),
-            f"antes {float(first_row['depth_age_s_mean'] * 1000.0):.1f} ms",
+            "Novas runs 15-18",
+            fmt_number(event_15_18, "% eventos", 1),
+            "grupo ainda mais concentrado em delta zero",
         ),
         metric_card(
-            "Eventos prox.",
+            "MLP close 5m",
+            close5_value,
+            close5_detail,
+        ),
+        metric_card(
+            "MLP x baseline",
+            f"{beats_baseline}/6 alvos",
+            "ganha em P10 e pixels < 10 m nas 18 runs",
+        ),
+        metric_card(
+            "Eventos acumulados",
             fmt_number(float(all_row["event_rate_pct"]), "%", 1),
-            f"antes {float(first_row['event_rate_pct']):.1f}% com |delta| > 0,5 p.p.",
+            f"10 runs {float(ten_row['event_rate_pct']):.1f}%; 14 runs {float(fourteen_row['event_rate_pct']):.1f}%",
         ),
-        metric_card(
-            "Variacao < 5m",
-            fmt_number(float(all_row["delta_depth_close_5m_pp_std"]), " p.p.", 2),
-            f"desvio padrao antes {float(first_row['delta_depth_close_5m_pp_std']):.2f}",
-        ),
-        metric_card("MLP close 5m", close5_value, close5_detail),
     ]
 
 
@@ -1624,10 +1794,21 @@ def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
 
     run_count = intervals_df["run_id"].nunique()
     interval_count = len(intervals_df)
+    snapshot_runs = 0
+    if "source_format" in intervals_df:
+        snapshot_runs = intervals_df.loc[
+            intervals_df["source_format"] == "notebook_snapshot", "run_id"
+        ].nunique()
+    source_text = (
+        f"; {snapshot_runs} runs recuperadas dos plots salvos no notebook"
+        if snapshot_runs
+        else "; todas lidas dos memmaps"
+    )
     text = (
-        f"Comparacao calculada diretamente dos memmaps encontrados: {interval_count} intervalos em "
-        f"{run_count} runs. A primeira leva usa as 4 runs de 20260521; 'todas atuais' inclui "
-        "as runs disponiveis agora."
+        f"Comparacao cumulativa 4 -> 10 -> 14 -> 18: {interval_count} intervalos em {run_count} runs"
+        f"{source_text}. Os MAEs exibidos sao os outputs salvos de 4, 10 e 18 runs; o notebook nao "
+        "salvou um treino separado com 14 runs. Como o split por run_id muda a cada tamanho, a curva "
+        "de MAE atual e indicativa, nao uma curva de aprendizado com teste fixo."
     )
     return html.Div(text, className="notice notice-ok")
 
@@ -1636,7 +1817,9 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
     if stats.empty:
         return apply_layout(go.Figure(), "Resumo estatistico por leva")
 
-    plot_df = stats[stats["leva"].isin([FIRST_BATCH_LABEL, ALL_BATCH_LABEL])].copy()
+    plot_df = stats[stats["leva"].isin(BATCH_LABEL_ORDER)].copy()
+    plot_df["leva"] = pd.Categorical(plot_df["leva"], categories=BATCH_LABEL_ORDER, ordered=True)
+    plot_df = plot_df.sort_values("leva")
     metrics = [
         ("intervalos", "Intervalos", ""),
         ("dt_s_mean", "dt medio", "ms"),
@@ -1646,8 +1829,6 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
         ("event_rate_pct", "Eventos prox.", "%"),
     ]
     fig = make_subplots(rows=2, cols=3, subplot_titles=[m[1] for m in metrics])
-    colors = {FIRST_BATCH_LABEL: COLORS["muted"], ALL_BATCH_LABEL: COLORS["accent"]}
-
     for idx, (col, _label, unit) in enumerate(metrics):
         row = (idx // 3) + 1
         subplot_col = (idx % 3) + 1
@@ -1658,7 +1839,7 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
             go.Bar(
                 x=plot_df["leva"],
                 y=values,
-                marker_color=[colors.get(label, COLORS["drone"]) for label in plot_df["leva"]],
+                marker_color=[BATCH_COLORS.get(label, COLORS["drone"]) for label in plot_df["leva"]],
                 text=[fmt_number(float(value), "", 1) for value in values],
                 textposition="outside",
                 showlegend=False,
@@ -1669,7 +1850,7 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
         )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Resumo visual: primeira leva x todas as runs atuais", 620)
+    return apply_layout(fig, "Evolucao cumulativa das metricas: 4, 10, 14 e 18 runs", 620)
 
 
 def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
@@ -1683,9 +1864,7 @@ def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
         ("delta_depth_close_5m_pp", "Delta pixels < 5m", "p.p.", 1.0),
     ]
     fig = make_subplots(rows=2, cols=2, subplot_titles=[m[1] for m in metrics])
-    labels = [FIRST_BATCH_LABEL, NEW_BATCH_LABEL, ALL_BATCH_LABEL]
-    colors = {FIRST_BATCH_LABEL: COLORS["drone"], NEW_BATCH_LABEL: COLORS["risk"], ALL_BATCH_LABEL: COLORS["accent"]}
-
+    labels = BATCH_LABEL_ORDER
     for idx, (col, _label, unit, scale) in enumerate(metrics):
         if col not in batch_df.columns:
             continue
@@ -1699,7 +1878,7 @@ def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
                 go.Box(
                     y=part[col].astype(float) * scale,
                     name=label,
-                    marker_color=colors[label],
+                    marker_color=BATCH_COLORS[label],
                     boxmean=True,
                     showlegend=idx == 0,
                     hovertemplate=label + "<br>%{y:.3f} " + unit + "<extra></extra>",
@@ -1709,7 +1888,7 @@ def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
             )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Distribuicoes: primeira leva, runs novas e conjunto atual", 700)
+    return apply_layout(fig, "Distribuicoes cumulativas: 4, 10, 14 e 18 runs", 700)
 
 
 def figure_batch_event_rates(intervals_df: pd.DataFrame) -> go.Figure:
@@ -1721,22 +1900,26 @@ def figure_batch_event_rates(intervals_df: pd.DataFrame) -> go.Figure:
             .groupby("run_id", as_index=False)
             .agg(intervalos=("evento", "size"), eventos=("evento", "sum"), taxa_evento=("evento", "mean"))
         )
-        summary["leva"] = summary["run_id"].map(batch_label_for_run)
+        summary["leva"] = summary["run_id"].map(run_block_label)
     summary = summary.sort_values("run_id")
     fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=summary["run_id"].str.replace("run_", "", regex=False),
-            y=summary["taxa_evento"] * 100.0,
-            marker_color=np.where(summary["leva"] == FIRST_BATCH_LABEL, COLORS["drone"], COLORS["risk"]),
-            customdata=np.stack([summary["intervalos"], summary["eventos"], summary["leva"]], axis=-1),
-            hovertemplate=(
-                "run=%{x}<br>leva=%{customdata[2]}<br>"
-                "eventos=%{customdata[1]} / %{customdata[0]}<br>"
-                "taxa=%{y:.1f}%<extra></extra>"
-            ),
+    for block_label in BLOCK_LABELS:
+        part = summary[summary["leva"] == block_label]
+        if part.empty:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=part["run_id"].str.replace("run_", "", regex=False),
+                y=part["taxa_evento"] * 100.0,
+                name=block_label,
+                marker_color=BLOCK_COLORS[block_label],
+                customdata=np.stack([part["intervalos"], part["eventos"]], axis=-1),
+                hovertemplate=(
+                    "run=%{x}<br>eventos=%{customdata[1]} / %{customdata[0]}<br>"
+                    "taxa=%{y:.1f}%<extra>" + block_label + "</extra>"
+                ),
+            )
         )
-    )
     fig.update_xaxes(title="Run", tickangle=-25)
     fig.update_yaxes(title="Eventos com |delta pixels < 5m| > 0,5 p.p. (%)")
     return apply_layout(fig, "Taxa de eventos de proximidade por run", 420)
@@ -1756,10 +1939,10 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
     ]
     fig = go.Figure()
     series = [
-        ("Primeira leva", "MLP", COLORS["risk"]),
-        ("Primeira leva", "Media treino", COLORS["muted"]),
-        ("Todas atuais", "MLP", COLORS["drone"]),
-        ("Todas atuais", "Media treino", COLORS["accent"]),
+        (BATCH_LABELS[4], "MLP", COLORS["muted"]),
+        (BATCH_LABELS[10], "MLP", COLORS["drone"]),
+        (BATCH_LABELS[18], "MLP", COLORS["accent"]),
+        (BATCH_LABELS[18], "Media treino", COLORS["risk"]),
     ]
     for leva, modelo, color in series:
         part = mlp_df[(mlp_df["leva"] == leva) & (mlp_df["modelo"] == modelo)].set_index("alvo_delta")
@@ -1774,9 +1957,19 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
             )
         )
     fig.update_layout(barmode="group")
+    fig.add_annotation(
+        text="14 runs: treino intermediario nao foi salvo no notebook",
+        xref="paper",
+        yref="paper",
+        x=1.0,
+        y=1.12,
+        showarrow=False,
+        xanchor="right",
+        font=dict(color=COLORS["muted"], size=12),
+    )
     fig.update_xaxes(title="Alvo delta", tickangle=-20)
     fig.update_yaxes(title="MAE no teste")
-    return apply_layout(fig, "Resultado de modelo: primeira leva x notebook atual", 520)
+    return apply_layout(fig, "MAE da MLP por quantidade de runs", 520)
 
 
 def figure_mlp_reference_table(mlp_df: pd.DataFrame) -> go.Figure:
@@ -1785,37 +1978,51 @@ def figure_mlp_reference_table(mlp_df: pd.DataFrame) -> go.Figure:
 
     rows = []
     targets = sorted(mlp_df["alvo_delta"].unique())
+
+    def mae_value(target: str, batch_label: str, model: str) -> float:
+        part = mlp_df[
+            (mlp_df["leva"] == batch_label)
+            & (mlp_df["modelo"] == model)
+            & (mlp_df["alvo_delta"] == target)
+        ]
+        return float(part["MAE"].iloc[0]) if not part.empty else np.nan
+
     for target in targets:
-        old_mlp = mlp_df[(mlp_df["leva"] == "Primeira leva") & (mlp_df["modelo"] == "MLP") & (mlp_df["alvo_delta"] == target)]
-        new_mlp = mlp_df[(mlp_df["leva"] == "Todas atuais") & (mlp_df["modelo"] == "MLP") & (mlp_df["alvo_delta"] == target)]
-        old_base = mlp_df[(mlp_df["leva"] == "Primeira leva") & (mlp_df["modelo"] == "Media treino") & (mlp_df["alvo_delta"] == target)]
-        new_base = mlp_df[(mlp_df["leva"] == "Todas atuais") & (mlp_df["modelo"] == "Media treino") & (mlp_df["alvo_delta"] == target)]
-        if old_mlp.empty or new_mlp.empty or old_base.empty or new_base.empty:
-            continue
-        old_value = float(old_mlp["MAE"].iloc[0])
-        new_value = float(new_mlp["MAE"].iloc[0])
+        mlp_4 = mae_value(target, BATCH_LABELS[4], "MLP")
+        mlp_10 = mae_value(target, BATCH_LABELS[10], "MLP")
+        mlp_18 = mae_value(target, BATCH_LABELS[18], "MLP")
+        base_18 = mae_value(target, BATCH_LABELS[18], "Media treino")
+        gain_10_18 = (mlp_10 - mlp_18) / mlp_10 * 100.0 if mlp_10 > 0 else np.nan
+        ratio = mlp_18 / base_18 if base_18 > 0 else np.nan
         rows.append(
             [
                 target,
-                f"{old_value:.3f}",
-                f"{new_value:.3f}",
-                f"{old_value - new_value:+.3f}",
-                f"{float(old_base['MAE'].iloc[0]):.3f}",
-                f"{float(new_base['MAE'].iloc[0]):.3f}",
+                f"{mlp_4:.3f}",
+                f"{mlp_10:.3f}",
+                "N/D",
+                f"{mlp_18:.3f}",
+                f"{gain_10_18:+.1f}%",
+                f"{base_18:.3f}",
+                f"{ratio:.2f}x",
             ]
         )
 
-    headers = ["Alvo", "MLP antiga", "MLP atual", "Delta MAE", "Media antiga", "Media atual"]
-    values = list(map(list, zip(*rows))) if rows else [[] for _ in headers]
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(values=headers, fill_color="#e8eef3", align="left", font=dict(size=13)),
-                cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-            )
-        ]
+    headers = [
+        "Alvo",
+        "MLP 4",
+        "MLP 10",
+        "MLP 14",
+        "MLP 18",
+        "Melhora 10->18",
+        "Media 18",
+        "MLP/media",
+    ]
+    return table_figure(
+        headers,
+        rows_to_columns(rows, len(headers)),
+        "Evolucao do MAE no teste salvo",
+        340,
     )
-    return apply_layout(fig, "Tabela estatistica do teste MLP", 340)
 
 
 def figure_event_reference_table(event_df: pd.DataFrame) -> go.Figure:
@@ -1827,35 +2034,32 @@ def figure_event_reference_table(event_df: pd.DataFrame) -> go.Figure:
         event_df["metrica"].tolist(),
         [f"{float(value):.3f}" for value in event_df["valor"]],
     ]
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(values=["Grupo", "Metrica", "Valor no teste atual"], fill_color="#e8eef3", align="left", font=dict(size=13)),
-                cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-            )
-        ]
+    return table_figure(
+        ["Grupo", "Metrica", "Valor no teste atual"],
+        values,
+        "Modelo em duas etapas: 10 x 18 runs",
+        480,
     )
-    return apply_layout(fig, "Resumo do modelo em duas etapas no notebook atual", 320)
 
 
 def figure_batch_stats_table(stats: pd.DataFrame) -> go.Figure:
     if stats.empty:
         return apply_layout(go.Figure(), "Tabela de estatisticas por leva")
 
-    table = stats.copy()
     rows = []
-    for _, row in table.iterrows():
+    for _, row in stats.iterrows():
         rows.append(
             [
                 row["leva"],
                 f"{int(row['runs'])}",
                 f"{int(row['intervalos'])}",
-                f"{float(row['dt_s_mean'] * 1000.0):.1f}",
-                f"{float(row['depth_age_s_mean'] * 1000.0):.1f}",
-                f"{float(row['flow_valid_points_mean']):.1f}",
-                f"{float(row['flow_track_retention_pct_mean']):.1f}",
-                f"{float(row['event_rate_pct']):.1f}",
-                f"{float(row['delta_depth_close_5m_pp_std']):.2f}",
+                format_table_number(row["dt_s_mean"] * 1000.0),
+                format_table_number(row["depth_age_s_mean"] * 1000.0),
+                format_table_number(row["flow_valid_points_mean"]),
+                format_table_number(row["event_rate_pct"]),
+                format_table_number(row.get("zero_rate_pct", np.nan)),
+                format_table_number(row.get("delta_abs_p90", np.nan), 2),
+                format_table_number(row["delta_depth_close_5m_pp_std"], 2),
             ]
         )
     headers = [
@@ -1865,34 +2069,21 @@ def figure_batch_stats_table(stats: pd.DataFrame) -> go.Figure:
         "dt medio (ms)",
         "RGB-depth (ms)",
         "Flow valido",
-        "Retencao (%)",
         "Eventos (%)",
+        "Delta zero (%)",
+        "P90 |delta|",
         "Std delta <5m",
     ]
-    values = list(map(list, zip(*rows))) if rows else [[] for _ in headers]
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(values=headers, fill_color="#e8eef3", align="left", font=dict(size=13)),
-                cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-            )
-        ]
+    return table_figure(
+        headers,
+        rows_to_columns(rows, len(headers)),
+        "Tabela estatistica das levas",
+        340,
     )
-    return apply_layout(fig, "Tabela estatistica das levas", 340)
 
 
 def comparison_table(paths: list[Path]) -> go.Figure:
-    """
-    Gera a tabela comparativa das runs de voo.
-
-    A coluna de indice reativo usa as metricas reais quando o CSV possui obstacle_risk,
-    avoid_lateral_body e avoid_brake; caso contrario, usa o proxy historico e indica a
-    fonte dos dados.
-
-    Fontes:
-    [Plotly Table] https://plotly.com/python/table/
-    [Pandas DataFrame] https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
-    """
+    """Compara duracao, distancia e atividade reativa entre runs de voo."""
 
     rows = []
     for path in paths:
@@ -1929,37 +2120,134 @@ def comparison_table(paths: list[Path]) -> go.Figure:
         "Tempo desvio (%)",
         "Fonte evasao",
     ]
-    values = list(map(list, zip(*rows))) if rows else [[] for _ in headers]
-
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(values=headers, fill_color="#e8eef3", align="left", font=dict(size=13)),
-                cells=dict(values=values, fill_color="#ffffff", align="left", height=28),
-            )
-        ]
+    return table_figure(
+        headers,
+        rows_to_columns(rows, len(headers)),
+        "Comparativo entre runs",
+        320,
     )
-    return apply_layout(fig, "Comparativo entre runs", 320)
+
+
+def graph(component_id: str) -> dcc.Graph:
+    return dcc.Graph(id=component_id, config=GRAPH_CONFIG)
+
+
+def graph_grid(*component_ids: str) -> html.Div:
+    return html.Div(
+        className="graph-grid graph-grid-two",
+        children=[graph(component_id) for component_id in component_ids],
+    )
+
+
+def dashboard_tab(label: str, value: str, children: list) -> dcc.Tab:
+    return dcc.Tab(
+        label=label,
+        value=value,
+        className="tab",
+        selected_className="tab tab-selected",
+        children=[html.Div(className="tab-panel", children=children)],
+    )
+
+
+def overview_tab() -> dcc.Tab:
+    return dashboard_tab(
+        "Trajetoria e IMU",
+        "overview-tab",
+        [
+            html.Div(id="metrics", className="metrics-grid"),
+            html.Div(id="flight-notice"),
+            graph_grid("xy-graph", "trajectory-3d"),
+            graph_grid("control-graph", "altitude-graph"),
+        ],
+    )
+
+
+def reactive_tab() -> dcc.Tab:
+    return dashboard_tab(
+        "Evasao e voo",
+        "reactive-tab",
+        [
+            graph_grid("reactive-graph", "speed-graph"),
+            graph("comparison-table"),
+        ],
+    )
+
+
+def depth_tab(depth_options: list[dict], depth_default: str) -> dcc.Tab:
+    return dashboard_tab(
+        "Depth ground truth",
+        "depth-tab",
+        [
+            html.Div(
+                className="selector selector-inline",
+                children=[
+                    html.Label("Dataset pareado em depth_ground_truth"),
+                    dcc.Dropdown(
+                        id="depth-run-select",
+                        options=depth_options,
+                        value=depth_default,
+                        clearable=False,
+                    ),
+                ],
+            ),
+            html.Div(
+                className="notice notice-depth",
+                children=(
+                    "Esta aba usa o mapa renderizado pelo Gazebo como ground truth "
+                    "sintetico para analise/treino futuro. Ele nao representa uma "
+                    "depth camera embarcada no drone."
+                ),
+            ),
+            html.Div(id="depth-metrics", className="metrics-grid"),
+            graph_grid("depth-timeseries", "depth-imu-graph"),
+            graph("depth-ranking-table"),
+        ],
+    )
+
+
+def batch_tab() -> dcc.Tab:
+    return dashboard_tab(
+        "Comparar levas",
+        "batch-tab",
+        [
+            html.Div(id="batch-comparison-notice"),
+            html.Div(id="batch-comparison-metrics", className="metrics-grid"),
+            graph_grid("batch-metric-facets", "batch-event-rates"),
+            graph("batch-distributions"),
+            graph_grid("batch-mlp-mae", "batch-mlp-table"),
+            graph_grid("batch-stats-table", "batch-event-table"),
+        ],
+    )
+
+
+def dropdown_options(
+    paths: list[Path], label_factory: Callable[[Path], str]
+) -> list[dict[str, str]]:
+    return [{"label": label_factory(path), "value": str(path)} for path in paths]
+
+
+def selected_dropdown_value(
+    options: list[dict[str, str]], *preferred_values: str | None
+) -> str:
+    valid_values = {option["value"] for option in options}
+    for preferred in preferred_values:
+        if preferred in valid_values:
+            return str(preferred)
+    return options[0]["value"] if options else ""
 
 
 def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
-    """
-    Monta o layout do dashboard em abas por tema.
+    """Monta as abas do dashboard e seus seletores iniciais."""
 
-    O seletor de voo fica no topo porque as abas de trajetoria/IMU e evasao usam a mesma
-    run. A aba de depth mantem seu seletor proprio, e a aba de comparacao agrega as levas
-    de intervalos depth/flow usadas no notebook.
-
-    Fontes:
-    [Dash Tabs] https://dash.plotly.com/dash-core-components/tabs
-    [Dash Dropdown] https://dash.plotly.com/dash-core-components/dropdown
-    """
-
-    flight_options = [{"label": run_label(path), "value": str(path)} for path in log_paths]
+    flight_options = dropdown_options(log_paths, run_label)
     flight_default = flight_options[0]["value"] if flight_options else ""
-    depth_options = [{"label": depth_run_label(path), "value": str(path)} for path in depth_paths]
-    paired_depth_default = matching_depth_metadata(Path(flight_default), depth_paths) if flight_default else None
-    depth_default = str(paired_depth_default) if paired_depth_default is not None else (depth_options[0]["value"] if depth_options else "")
+    depth_options = dropdown_options(depth_paths, depth_run_label)
+    paired_depth = matching_depth_metadata(Path(flight_default), depth_paths) if flight_default else None
+    depth_default = (
+        str(paired_depth)
+        if paired_depth is not None
+        else (depth_options[0]["value"] if depth_options else "")
+    )
 
     return html.Div(
         className="app-shell",
@@ -1971,7 +2259,8 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                         children=[
                             html.H1("Dashboard de metricas do desvio reativo"),
                             html.P(
-                                "Analise organizada por trajetoria/IMU, evasao, depth ground truth e comparacao das levas."
+                                "Analise organizada por trajetoria/IMU, evasao, "
+                                "depth ground truth e comparacao das levas."
                             ),
                         ]
                     ),
@@ -1993,151 +2282,14 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                 id="dashboard-tabs",
                 value="overview-tab",
                 className="tabs",
-                children=[
-                    dcc.Tab(
-                        label="Trajetoria e IMU",
-                        value="overview-tab",
-                        className="tab",
-                        selected_className="tab tab-selected",
-                        children=[
-                            html.Div(
-                                className="tab-panel",
-                                children=[
-                                    html.Div(id="metrics", className="metrics-grid"),
-                                    html.Div(id="flight-notice"),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="xy-graph", config={"displaylogo": False}),
-                                            dcc.Graph(id="trajectory-3d", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="control-graph", config={"displaylogo": False}),
-                                            dcc.Graph(id="altitude-graph", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                ],
-                            )
-                        ],
-                    ),
-                    dcc.Tab(
-                        label="Evasao e voo",
-                        value="reactive-tab",
-                        className="tab",
-                        selected_className="tab tab-selected",
-                        children=[
-                            html.Div(
-                                className="tab-panel",
-                                children=[
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="reactive-graph", config={"displaylogo": False}),
-                                            dcc.Graph(id="speed-graph", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                    dcc.Graph(id="comparison-table", config={"displaylogo": False}),
-                                ],
-                            )
-                        ],
-                    ),
-                    dcc.Tab(
-                        label="Depth ground truth",
-                        value="depth-tab",
-                        className="tab",
-                        selected_className="tab tab-selected",
-                        children=[
-                            html.Div(
-                                className="tab-panel",
-                                children=[
-                                    html.Div(
-                                        className="selector selector-inline",
-                                        children=[
-                                            html.Label("Dataset pareado em depth_ground_truth"),
-                                            dcc.Dropdown(
-                                                id="depth-run-select",
-                                                options=depth_options,
-                                                value=depth_default,
-                                                clearable=False,
-                                            ),
-                                        ],
-                                    ),
-                                    html.Div(
-                                        className="notice notice-depth",
-                                        children=(
-                                            "Esta aba usa o mapa renderizado pelo Gazebo como ground truth "
-                                            "sintetico para analise/treino futuro. Ele nao representa uma "
-                                            "depth camera embarcada no drone."
-                                        ),
-                                    ),
-                                    html.Div(id="depth-metrics", className="metrics-grid"),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="depth-timeseries", config={"displaylogo": False}),
-                                            dcc.Graph(id="depth-imu-graph", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                    dcc.Graph(id="depth-ranking-table", config={"displaylogo": False}),
-                                ],
-                            )
-                        ],
-                    ),
-                    dcc.Tab(
-                        label="Comparar levas",
-                        value="batch-tab",
-                        className="tab",
-                        selected_className="tab tab-selected",
-                        children=[
-                            html.Div(
-                                className="tab-panel",
-                                children=[
-                                    html.Div(id="batch-comparison-notice"),
-                                    html.Div(id="batch-comparison-metrics", className="metrics-grid"),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="batch-metric-facets", config={"displaylogo": False}),
-                                            dcc.Graph(id="batch-event-rates", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                    dcc.Graph(id="batch-distributions", config={"displaylogo": False}),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="batch-mlp-mae", config={"displaylogo": False}),
-                                            dcc.Graph(id="batch-mlp-table", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                    html.Div(
-                                        className="graph-grid graph-grid-two",
-                                        children=[
-                                            dcc.Graph(id="batch-stats-table", config={"displaylogo": False}),
-                                            dcc.Graph(id="batch-event-table", config={"displaylogo": False}),
-                                        ],
-                                    ),
-                                ],
-                            )
-                        ],
-                    ),
-                ],
+                children=[overview_tab(), reactive_tab(), depth_tab(depth_options, depth_default), batch_tab()],
             ),
             dcc.Interval(id="refresh-data", interval=10000, n_intervals=0),
         ],
     )
 
 
-def create_app() -> Dash:
-    log_paths = list_log_files()
-    depth_paths = list_depth_metadata_files()
-    app = Dash(__name__)
-    app.title = "Metricas do desvio reativo"
-    app.layout = layout(log_paths, depth_paths)
-
-    app.index_string = """
+INDEX_TEMPLATE = """
     <!DOCTYPE html>
     <html>
         <head>
@@ -2310,6 +2462,8 @@ def create_app() -> Dash:
     </html>
     """
 
+
+def register_callbacks(app: Dash) -> None:
     @app.callback(
         Output("run-select", "options"),
         Output("run-select", "value"),
@@ -2317,22 +2471,9 @@ def create_app() -> Dash:
         State("run-select", "value"),
     )
     def refresh_flight_run_options(_n_intervals: int, selected_path: str):
-        """
-        Atualiza o seletor da aba de voo enquanto o dashboard esta aberto.
-
-        A cada intervalo, a funcao relista logs/*.csv. Se a run selecionada ainda existir,
-        ela e preservada; caso contrario, o dashboard abre na run mais recente.
-
-        Fontes:
-        [Dash callbacks] https://dash.plotly.com/basic-callbacks
-        [Dash dcc.Interval] https://dash.plotly.com/dash-core-components/interval
-        """
-
         current_paths = list_log_files()
-        options = [{"label": run_label(path), "value": str(path)} for path in current_paths]
-        valid_values = {option["value"] for option in options}
-        selected = selected_path if selected_path in valid_values else (options[0]["value"] if options else "")
-        return options, selected
+        options = dropdown_options(current_paths, run_label)
+        return options, selected_dropdown_value(options, selected_path)
 
     @app.callback(
         Output("depth-run-select", "options"),
@@ -2342,27 +2483,13 @@ def create_app() -> Dash:
         State("depth-run-select", "value"),
     )
     def refresh_depth_run_options(_n_intervals: int, selected_log_path: str, selected_path: str):
-        """
-        Atualiza o seletor da aba de depth enquanto o dashboard esta aberto.
-
-        A funcao relista datasets/depth_ground_truth/run_*/metadata.csv e preserva a run
-        selecionada quando possivel. Isso permite gerar uma nova coleta de depth e ve-la no
-        dashboard sem reiniciar o servidor.
-
-        Fontes:
-        [Dash callbacks] https://dash.plotly.com/basic-callbacks
-        [Dash dcc.Interval] https://dash.plotly.com/dash-core-components/interval
-        """
-
         current_paths = list_depth_metadata_files()
-        options = [{"label": depth_run_label(path), "value": str(path)} for path in current_paths]
-        valid_values = {option["value"] for option in options}
+        options = dropdown_options(current_paths, depth_run_label)
         paired = None
         if selected_log_path:
             paired_path = matching_depth_metadata(Path(selected_log_path), current_paths)
             paired = str(paired_path) if paired_path is not None else None
-        selected = paired if paired in valid_values else (selected_path if selected_path in valid_values else (options[0]["value"] if options else ""))
-        return options, selected
+        return options, selected_dropdown_value(options, paired, selected_path)
 
     @app.callback(
         Output("metrics", "children"),
@@ -2377,18 +2504,6 @@ def create_app() -> Dash:
         Input("run-select", "value"),
     )
     def update_flight_dashboard(selected_path: str):
-        """
-        Atualiza somente a aba de metricas de voo.
-
-        O callback recebe uma run vinda de logs/*.csv e nao tenta carregar depth. Isso evita
-        misturar os seletores e deixa claro se a evasao veio de metricas reais ou de proxy
-        para logs antigos.
-
-        Fontes:
-        [Dash callbacks] https://dash.plotly.com/basic-callbacks
-        [Plotly figures] https://plotly.com/python/creating-and-updating-figures/
-        """
-
         current_log_paths = list_log_files()
         path = Path(selected_path) if selected_path else (current_log_paths[0] if current_log_paths else Path())
         df = load_run(path)
@@ -2426,19 +2541,6 @@ def create_app() -> Dash:
         Input("depth-run-select", "value"),
     )
     def update_depth_dashboard(selected_path: str):
-        """
-        Atualiza somente a aba de depth ground truth.
-
-        O callback carrega metadata.csv de datasets/depth_ground_truth/run_* e os arquivos
-        .npy correspondentes. Assim, as runs de depth aparecem em uma lista propria e nao
-        dependem da existencia de um CSV de voo com o mesmo timestamp.
-
-        Fontes:
-        [Dash callbacks] https://dash.plotly.com/basic-callbacks
-        [NumPy load] https://numpy.org/doc/stable/reference/generated/numpy.load.html
-        [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
-        """
-
         current_depth_paths = list_depth_metadata_files()
         depth_path = Path(selected_path) if selected_path else (current_depth_paths[0] if current_depth_paths else None)
         depth_df = load_depth_metadata(str(depth_path)) if depth_path is not None else pd.DataFrame()
@@ -2489,6 +2591,12 @@ def create_app() -> Dash:
             figure_event_reference_table(event_df),
         )
 
+def create_app() -> Dash:
+    app = Dash(__name__)
+    app.title = "Metricas do desvio reativo"
+    app.layout = layout(list_log_files(), list_depth_metadata_files())
+    app.index_string = INDEX_TEMPLATE
+    register_callbacks(app)
     return app
 
 

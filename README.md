@@ -61,5 +61,13 @@ source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
 PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p ground_truth_depth_topic:=/sim_depth_ground_truth \
-  -p save_ground_truth_dataset:=true
+  -p save_ground_truth_dataset:=true \
+  -p ground_truth_depth_max_age_s:=0.08 \
+  -p ground_truth_max_interval_s:=0.50 \
+  -p use_dt_normalized_control:=false
 ```
+
+O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam
+o mesmo frame de depth e intervalos temporais invalidos. Ao final de cada run, confira no
+`manifest.json` os campos `quality_counters`: `rgb_frames_rejected_nonmonotonic` deve ser
+baixo, e cada amostra salva deve ter `dt_s > 0` e `depth_dt_s > 0`.

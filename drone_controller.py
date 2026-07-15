@@ -5,6 +5,7 @@ import numpy as np
 import math
 import cv2
 import rclpy
+import threading
 from pathlib import Path
 from datetime import datetime
 from cv_bridge import CvBridge
@@ -73,6 +74,10 @@ class DroneOffboardNode(Node):
 
         self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
         self.depth_gt_max_age_s = float(self.declare_parameter('ground_truth_depth_max_age_s', 0.08).value)
+        self.ground_truth_max_interval_s = max(
+            self.depth_gt_max_age_s,
+            float(self.declare_parameter('ground_truth_max_interval_s', 0.5).value)
+        )
         self.save_ground_truth_dataset = bool(self.declare_parameter('save_ground_truth_dataset', False).value)
         self.ground_truth_dataset_dir = str(
             self.declare_parameter(
@@ -136,11 +141,27 @@ class DroneOffboardNode(Node):
 
         self.latest_depth_gt = None
         self.latest_depth_gt_stamp_s = None
+        self.latest_depth_gt_sequence = 0
         self.latest_depth_gt_encoding = ''
+        self.sensor_state_lock = threading.Lock()
+        self.last_rgb_stamp_s = None
         self.depth_gt_frames = 0
+        self.depth_gt_frames_received = 0
+        self.depth_gt_frames_rejected_nonmonotonic = 0
         self.rgb_frames_seen = 0
+        self.rgb_frames_received = 0
+        self.rgb_frames_rejected_nonmonotonic = 0
         self.visual_intervals_seen = 0
         self.depth_intervals_saved = 0
+        self.dataset_intervals_rejected = {
+            'missing_depth': 0,
+            'missing_flow': 0,
+            'invalid_rgb_dt': 0,
+            'rgb_dt_too_large': 0,
+            'reused_depth': 0,
+            'invalid_depth_dt': 0,
+            'depth_dt_too_large': 0,
+        }
         self.depth_gt_run_dir = None
         self.depth_gt_manifest_path = None
         self.depth_gt_intervals = None
@@ -266,6 +287,9 @@ class DroneOffboardNode(Node):
             1e-3,
             float(self.declare_parameter('nominal_visual_dt_s', self.dt).value)
         )
+        self.use_dt_normalized_control = bool(
+            self.declare_parameter('use_dt_normalized_control', False).value
+        )
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
     @staticmethod
@@ -337,7 +361,7 @@ class DroneOffboardNode(Node):
         """
         
         now_s = self.get_clock().now().nanoseconds * 1e-9
-        if self.last_control_tick_s is None:
+        if not self.use_dt_normalized_control or self.last_control_tick_s is None:
             self.control_dt_s = self.dt
         else:
             measured_dt_s = now_s - self.last_control_tick_s
@@ -807,22 +831,43 @@ class DroneOffboardNode(Node):
         """
 
         try:
-            self.latest_depth_gt = self.converter_depth_gt_para_metros(msg)
-            self.latest_depth_gt_stamp_s = self.image_timestamp_s(msg)
-            self.latest_depth_gt_encoding = msg.encoding
-            self.depth_gt_frames += 1
+            depth_m = self.converter_depth_gt_para_metros(msg)
+            depth_stamp_s = self.image_timestamp_s(msg)
+            self.depth_gt_frames_received += 1
+
+            with self.sensor_state_lock:
+                if (
+                    self.latest_depth_gt_stamp_s is not None
+                    and depth_stamp_s <= self.latest_depth_gt_stamp_s
+                ):
+                    self.depth_gt_frames_rejected_nonmonotonic += 1
+                    if (
+                        self.depth_gt_frames_rejected_nonmonotonic == 1
+                        or self.depth_gt_frames_rejected_nonmonotonic % 100 == 0
+                    ):
+                        self.get_logger().warning(
+                            'Frame depth descartado por timestamp repetido ou nao monotonico; '
+                            f'total={self.depth_gt_frames_rejected_nonmonotonic}.'
+                        )
+                    return
+
+                self.latest_depth_gt = depth_m
+                self.latest_depth_gt_stamp_s = depth_stamp_s
+                self.latest_depth_gt_sequence += 1
+                self.latest_depth_gt_encoding = msg.encoding
+                self.depth_gt_frames += 1
 
             if self.depth_gt_frames == 1:
-                valid = self.latest_depth_gt[self.latest_depth_gt > 0.0]
+                valid = depth_m[depth_m > 0.0]
                 if valid.size > 0:
                     self.get_logger().info(
-                        f'Primeiro depth GT recebido: {self.latest_depth_gt.shape}, '
+                        f'Primeiro depth GT recebido: {depth_m.shape}, '
                         f'encoding={msg.encoding}, min={float(np.min(valid)):.2f}m, '
                         f'max={float(np.max(valid)):.2f}m.'
                     )
                 else:
                     self.get_logger().info(
-                        f'Primeiro depth GT recebido: {self.latest_depth_gt.shape}, '
+                        f'Primeiro depth GT recebido: {depth_m.shape}, '
                         f'encoding={msg.encoding}, sem pixels validos positivos.'
                     )
         except Exception as e:
@@ -853,7 +898,7 @@ class DroneOffboardNode(Node):
         self.current_accel_m_s2 = np.array(getattr(msg, 'accelerometer_m_s2', [0.0, 0.0, 0.0]), dtype=float)
         self.last_imu_timestamp_s = getattr(msg, 'timestamp', 0) / 1_000_000.0
 
-    def obter_depth_gt_sincronizado(self, rgb_msg):
+    def obter_depth_gt_sincronizado(self, rgb_msg, rgb_stamp_s=None):
         """
         ==================================================================================
         Retorna o mapa de profundidade ground truth mais proximo do frame RGB atual.
@@ -872,16 +917,22 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
 
-        if self.latest_depth_gt is None or self.latest_depth_gt_stamp_s is None:
-            return None, None, None
+        with self.sensor_state_lock:
+            depth_gt = self.latest_depth_gt
+            depth_stamp_s = self.latest_depth_gt_stamp_s
+            depth_sequence = self.latest_depth_gt_sequence
 
-        rgb_stamp_s = self.image_timestamp_s(rgb_msg)
-        depth_age_s = abs(rgb_stamp_s - self.latest_depth_gt_stamp_s)
+        if depth_gt is None or depth_stamp_s is None:
+            return None, rgb_stamp_s, None, None, None
+
+        if rgb_stamp_s is None:
+            rgb_stamp_s = self.image_timestamp_s(rgb_msg)
+        depth_age_s = abs(rgb_stamp_s - depth_stamp_s)
 
         if depth_age_s > self.depth_gt_max_age_s:
-            return None, rgb_stamp_s, depth_age_s
+            return None, rgb_stamp_s, depth_age_s, depth_stamp_s, depth_sequence
 
-        return self.latest_depth_gt, rgb_stamp_s, depth_age_s
+        return depth_gt, rgb_stamp_s, depth_age_s, depth_stamp_s, depth_sequence
 
     def dtype_intervalos_ground_truth(self):
         """
@@ -1031,8 +1082,34 @@ class DroneOffboardNode(Node):
             'depth_max_m': float(self.ground_truth_depth_max_m),
             'max_flow_points': int(self.ground_truth_max_flow_points),
             'flush_every_n_samples': int(self.ground_truth_flush_every_n),
+            'quality_filters': {
+                'require_monotonic_rgb_timestamp': True,
+                'require_new_depth_frame': True,
+                'max_rgb_interval_s': float(self.ground_truth_max_interval_s),
+                'max_depth_interval_s': float(self.ground_truth_max_interval_s),
+                'max_rgb_depth_age_s': float(self.depth_gt_max_age_s),
+            },
+            'quality_counters': {
+                'rgb_frames_received': int(self.rgb_frames_received),
+                'rgb_frames_processed': int(self.rgb_frames_seen),
+                'rgb_frames_rejected_nonmonotonic': int(
+                    self.rgb_frames_rejected_nonmonotonic
+                ),
+                'depth_frames_received': int(self.depth_gt_frames_received),
+                'depth_frames_accepted': int(self.depth_gt_frames),
+                'depth_frames_rejected_nonmonotonic': int(
+                    self.depth_gt_frames_rejected_nonmonotonic
+                ),
+                'visual_intervals_evaluated': int(self.visual_intervals_seen),
+                'intervals_saved': int(self.depth_intervals_saved),
+                'intervals_rejected': {
+                    key: int(value)
+                    for key, value in self.dataset_intervals_rejected.items()
+                },
+            },
             'risk_flow_normalization': {
                 'camera_timestamp_source': 'sensor_msgs/Image.header.stamp',
+                'enabled': bool(self.use_dt_normalized_control),
                 'nominal_interval_s': float(self.nominal_visual_dt_s),
                 'stored_flow_unit': 'pixels_per_observed_interval',
                 'risk_flow_unit': 'equivalent_pixels_per_nominal_interval',
@@ -1058,7 +1135,13 @@ class DroneOffboardNode(Node):
         with open(self.depth_gt_manifest_path, mode='w', encoding='utf-8') as fp:
             json.dump(manifesto, fp, indent=2)
 
-    def capturar_estado_intervalo(self, frame_stamp_s, depth_age_s):
+    def capturar_estado_intervalo(
+        self,
+        frame_stamp_s,
+        depth_age_s,
+        depth_stamp_s=None,
+        depth_sequence=None,
+    ):
         """Captura o estado atual apenas para calcular deltas antes do salvamento."""
 
         def numero(valor):
@@ -1066,7 +1149,8 @@ class DroneOffboardNode(Node):
 
         return {
             'frame_stamp_s': numero(frame_stamp_s),
-            'depth_stamp_s': numero(self.latest_depth_gt_stamp_s),
+            'depth_stamp_s': numero(depth_stamp_s),
+            'depth_sequence': int(depth_sequence or 0),
             'depth_age_s': numero(depth_age_s),
             'x': numero(self.current_x),
             'y': numero(self.current_y),
@@ -1175,6 +1259,18 @@ class DroneOffboardNode(Node):
         matriz[:n, 5] = point_risk[:n]
         return matriz
 
+    def registrar_descarte_intervalo(self, motivo):
+        """Contabiliza descartes e alerta quando a coleta permanece degradada."""
+
+        self.dataset_intervals_rejected[motivo] += 1
+        total_descartado = sum(self.dataset_intervals_rejected.values())
+        if total_descartado == 1 or total_descartado % 100 == 0:
+            self.get_logger().warning(
+                'Dataset descartou '
+                f'{total_descartado} intervalos; ultimo motivo: {motivo}. '
+                'Verifique os timestamps RGB/depth se esse numero continuar crescendo.'
+            )
+
     def registrar_intervalo_ground_truth(self, imagem_estabilizada_bgr, depth_m, estado_atual, flow_interval):
         """
         Salva uma amostra sincronizada com o intervalo usado pelo optical flow.
@@ -1195,14 +1291,41 @@ class DroneOffboardNode(Node):
         referencia_anterior = self.prev_depth_interval_ref
         self.prev_depth_interval_ref = referencia_atual
 
-        if referencia_anterior is None or flow_interval is None:
+        if referencia_anterior is None:
+            return
+
+        if flow_interval is None:
+            self.registrar_descarte_intervalo('missing_flow')
             return
 
         self.visual_intervals_seen += 1
-        if self.visual_intervals_seen % self.ground_truth_save_every_n != 0:
-            return
 
         if referencia_anterior['depth_m'] is None or referencia_atual['depth_m'] is None:
+            self.registrar_descarte_intervalo('missing_depth')
+            return
+
+        prev_estado = referencia_anterior['estado']
+        curr_estado = referencia_atual['estado']
+        dt_s = curr_estado['frame_stamp_s'] - prev_estado['frame_stamp_s']
+        depth_dt_s = curr_estado['depth_stamp_s'] - prev_estado['depth_stamp_s']
+
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            self.registrar_descarte_intervalo('invalid_rgb_dt')
+            return
+        if dt_s > self.ground_truth_max_interval_s:
+            self.registrar_descarte_intervalo('rgb_dt_too_large')
+            return
+        if curr_estado['depth_sequence'] <= prev_estado['depth_sequence']:
+            self.registrar_descarte_intervalo('reused_depth')
+            return
+        if not np.isfinite(depth_dt_s) or depth_dt_s <= 0.0:
+            self.registrar_descarte_intervalo('invalid_depth_dt')
+            return
+        if depth_dt_s > self.ground_truth_max_interval_s:
+            self.registrar_descarte_intervalo('depth_dt_too_large')
+            return
+
+        if self.visual_intervals_seen % self.ground_truth_save_every_n != 0:
             return
 
         if self.depth_gt_intervals is None:
@@ -1218,14 +1341,8 @@ class DroneOffboardNode(Node):
             return
 
         idx = self.depth_intervals_saved
-        prev_estado = referencia_anterior['estado']
-        curr_estado = referencia_atual['estado']
         prev_depth_metricas = self.metricas_depth_memmap(referencia_anterior['depth_m'])
         curr_depth_metricas = self.metricas_depth_memmap(referencia_atual['depth_m'])
-
-        dt_s = curr_estado['frame_stamp_s'] - prev_estado['frame_stamp_s']
-        if not np.isfinite(dt_s) or dt_s <= 0.0:
-            dt_s = float('nan')
 
         def delta(campo):
             return float(curr_estado[campo] - prev_estado[campo])
@@ -1248,7 +1365,7 @@ class DroneOffboardNode(Node):
         linha['sample_id'][0] = idx + 1
         linha['dt_s'][0] = dt_s
         linha['depth_age_s'][0] = curr_estado['depth_age_s']
-        linha['depth_dt_s'][0] = curr_estado['depth_stamp_s'] - prev_estado['depth_stamp_s']
+        linha['depth_dt_s'][0] = depth_dt_s
         linha['delta_x_m'][0] = delta('x')
         linha['delta_y_m'][0] = delta('y')
         linha['delta_z_m'][0] = delta('z')
@@ -1649,9 +1766,14 @@ class DroneOffboardNode(Node):
         [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
         """
 
+        smoothing_dt_s = (
+            frame_dt_s
+            if self.use_dt_normalized_control
+            else self.nominal_visual_dt_s
+        )
         alpha = self.alpha_ajustado_por_dt(
             self.velocity_smooth_alpha,
-            frame_dt_s,
+            smoothing_dt_s,
             self.nominal_visual_dt_s,
         )
         self.obstacle_risk += alpha * (risk - self.obstacle_risk)
@@ -1760,7 +1882,11 @@ class DroneOffboardNode(Node):
         radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
         radial_unit = radial / radial_norm[:, None]
         radial_flow = np.sum(flow * radial_unit, axis=1)
-        flow_to_nominal_scale = self.nominal_visual_dt_s / frame_dt_s
+        flow_to_nominal_scale = (
+            self.nominal_visual_dt_s / frame_dt_s
+            if self.use_dt_normalized_control
+            else 1.0
+        )
         radial_flow_nominal = radial_flow * flow_to_nominal_scale
 
         central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
@@ -1878,6 +2004,22 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
+        self.rgb_frames_received += 1
+        rgb_stamp_s = self.image_timestamp_s(msg)
+        with self.sensor_state_lock:
+            if self.last_rgb_stamp_s is not None and rgb_stamp_s <= self.last_rgb_stamp_s:
+                self.rgb_frames_rejected_nonmonotonic += 1
+                if (
+                    self.rgb_frames_rejected_nonmonotonic == 1
+                    or self.rgb_frames_rejected_nonmonotonic % 100 == 0
+                ):
+                    self.get_logger().warning(
+                        'Frame RGB descartado por timestamp repetido ou nao monotonico; '
+                        f'total={self.rgb_frames_rejected_nonmonotonic}.'
+                    )
+                return
+            self.last_rgb_stamp_s = rgb_stamp_s
+
         resolucao_largura = msg.width
         resolucao_altura = msg.height
         # formato_ros = msg.encoding
@@ -1890,9 +2032,13 @@ class DroneOffboardNode(Node):
             cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             self.rgb_frames_seen += 1
 
-            depth_gt, rgb_stamp_s, depth_age_s = self.obter_depth_gt_sincronizado(msg)
-            if rgb_stamp_s is None:
-                rgb_stamp_s = self.image_timestamp_s(msg)
+            (
+                depth_gt,
+                rgb_stamp_s,
+                depth_age_s,
+                depth_stamp_s,
+                depth_sequence,
+            ) = self.obter_depth_gt_sincronizado(msg, rgb_stamp_s)
             depth_gt_visual = None
             if depth_gt is not None:
                 if depth_gt.shape[:2] != (resolucao_altura, resolucao_largura) and not self.depth_gt_shape_warned:
@@ -1910,7 +2056,12 @@ class DroneOffboardNode(Node):
                 cv_image,
                 msg
             )
-            estado_intervalo = self.capturar_estado_intervalo(rgb_stamp_s, depth_age_s)
+            estado_intervalo = self.capturar_estado_intervalo(
+                rgb_stamp_s,
+                depth_age_s,
+                depth_stamp_s,
+                depth_sequence,
+            )
 
             # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
             if self.evasao_visual_ativa:
@@ -1999,4 +2150,10 @@ class DroneOffboardNode(Node):
         """
 
         self.flush_ground_truth_memmaps()
+        descartes = sum(self.dataset_intervals_rejected.values())
+        self.get_logger().info(
+            'Qualidade do dataset: '
+            f'{self.depth_intervals_saved} intervalos salvos, {descartes} descartados, '
+            f'{self.rgb_frames_rejected_nonmonotonic} RGB repetidos/nao monotonicos.'
+        )
         super().destroy_node()
