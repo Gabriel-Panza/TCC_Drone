@@ -1,3 +1,5 @@
+"""Dashboard interativo para inspecao das metricas de voo, depth e modelos."""
+
 from __future__ import annotations
 
 import base64
@@ -8,20 +10,37 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
+from dash import Dash, Input, Output, State, dcc, html
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from dash import Dash, Input, Output, State, dcc, html
 
 
 ANALYSIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = ANALYSIS_DIR.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 NOTEBOOK_PATH = ANALYSIS_DIR / "estudo_das_metricas.ipynb"
+MLP_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_mlp_splits_fixos.csv"
+EVENT_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_eventos_splits_fixos.csv"
+
+
+def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
+    """Carrega um CSV somente quando ele existe e contem o esquema esperado."""
+
+    if not path.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    return df if required_columns.issubset(df.columns) else pd.DataFrame()
+
+
+def has_fixed_comparison_results() -> bool:
+    return MLP_FIXED_RESULTS_PATH.exists() and EVENT_FIXED_RESULTS_PATH.exists()
 
 
 def find_depth_ground_truth_dir() -> Path:
+    """Localiza o dataset de depth nos layouts suportados pelo projeto."""
+
     candidates = [
         PROJECT_ROOT / "datasets" / "depth_ground_truth",
         PROJECT_ROOT.parent / "datasets" / "depth_ground_truth",
@@ -70,50 +89,39 @@ REFERENCE_RUN_ORDER = (
     "run_20260715_163825",
     "run_20260715_174528",
     "run_20260715_183633",
+    "run_20260715_215803",
+    "run_20260715_220110",
+    "run_20260715_220346",
+    "run_20260715_220437",
+    "run_20260716_221426",
+    "run_20260716_221504",
+    "run_20260716_221545",
+    "run_20260716_231519",
+    "run_20260716_231600",
 )
 BATCH_SPECS = (
-    (3, "Primeiras 3 runs"),
     (7, "Primeiras 7 runs"),
-    (11, "Primeiras 11 runs"),
-    (16, "Todas (16 runs)"),
+    (16, "Primeiras 16 runs"),
+    (25, "Todas (25 runs)"),
 )
 BATCH_LABELS = dict(BATCH_SPECS)
 BATCH_LABEL_ORDER = [label for _size, label in BATCH_SPECS]
 RUN_ORDER_INDEX = {run_id: index for index, run_id in enumerate(REFERENCE_RUN_ORDER)}
 BLOCK_LABELS = (
-    "Runs 1-3",
-    "Runs 4-7",
-    "Runs 8-11",
-    "Runs 12-16",
+    "Runs 1-7",
+    "Runs 8-16",
+    "Runs 17-25",
 )
 
 REFERENCE_BATCH_STATS = [
     {
-        "leva": BATCH_LABELS[3], "runs": 3, "intervalos": 61,
-        "dt_s_mean": 0.095410, "depth_age_s_mean": 0.039738,
-        "flow_valid_points_mean": 81.409836, "flow_track_retention_pct_mean": np.nan,
-        "flow_mag_p90_px_mean": 36.037539, "radial_flow_p90_px_mean": 28.832078,
-        "delta_depth_close_5m_pp_mean": np.nan, "delta_depth_close_5m_pp_std": 4.223891,
-        "delta_abs_p90": 4.720250, "zero_rate_pct": 6.557377,
-        "eventos": 38, "event_rate_pct": 62.295082,
-    },
-    {
         "leva": BATCH_LABELS[7], "runs": 7, "intervalos": 118,
         "dt_s_mean": 0.092881, "depth_age_s_mean": 0.041831,
-        "flow_valid_points_mean": 80.813559, "flow_track_retention_pct_mean": np.nan,
+        "flow_valid_points_mean": 80.813559, "flow_track_retention_pct_mean": 96.534164,
         "flow_mag_p90_px_mean": 43.700533, "radial_flow_p90_px_mean": 35.155069,
         "delta_depth_close_5m_pp_mean": np.nan, "delta_depth_close_5m_pp_std": 3.249952,
         "delta_abs_p90": 4.026670, "zero_rate_pct": 5.084746,
         "eventos": 79, "event_rate_pct": 66.949153,
-    },
-    {
-        "leva": BATCH_LABELS[11], "runs": 11, "intervalos": 227,
-        "dt_s_mean": 0.093727, "depth_age_s_mean": 0.040863,
-        "flow_valid_points_mean": 81.255507, "flow_track_retention_pct_mean": np.nan,
-        "flow_mag_p90_px_mean": 40.122148, "radial_flow_p90_px_mean": 32.665148,
-        "delta_depth_close_5m_pp_mean": np.nan, "delta_depth_close_5m_pp_std": 2.853586,
-        "delta_abs_p90": 4.064582, "zero_rate_pct": 5.286344,
-        "eventos": 155, "event_rate_pct": 68.281938,
     },
     {
         "leva": BATCH_LABELS[16], "runs": 16, "intervalos": 410,
@@ -123,6 +131,15 @@ REFERENCE_BATCH_STATS = [
         "delta_depth_close_5m_pp_mean": 0.021713, "delta_depth_close_5m_pp_std": 2.735755,
         "delta_abs_p90": 3.889082, "zero_rate_pct": 3.658537,
         "eventos": 281, "event_rate_pct": 68.536585,
+    },
+    {
+        "leva": BATCH_LABELS[25], "runs": 25, "intervalos": 720,
+        "dt_s_mean": 0.090783, "depth_age_s_mean": 0.043322,
+        "flow_valid_points_mean": 80.040278, "flow_track_retention_pct_mean": 96.892998,
+        "flow_mag_p90_px_mean": 39.500362, "radial_flow_p90_px_mean": 32.902471,
+        "delta_depth_close_5m_pp_mean": -0.020764, "delta_depth_close_5m_pp_std": 2.610670,
+        "delta_abs_p90": 3.832938, "zero_rate_pct": 2.638889,
+        "eventos": 506, "event_rate_pct": 70.277778,
     },
 ]
 
@@ -139,6 +156,18 @@ REFERENCE_MLP_TEST = [
     (BATCH_LABELS[16], "Media treino", "delta_depth_p50_m", 0.249817, 0.349569),
     (BATCH_LABELS[16], "MLP", "delta_depth_p90_m", 1.746266, 2.661626),
     (BATCH_LABELS[16], "Media treino", "delta_depth_p90_m", 1.115172, 1.937910),
+    (BATCH_LABELS[25], "MLP", "delta_depth_close_10m_pp", 2.041496, 2.906099),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_close_10m_pp", 0.952055, 1.406515),
+    (BATCH_LABELS[25], "MLP", "delta_depth_close_2m_pp", 2.859533, 4.801528),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_close_2m_pp", 1.416045, 2.475855),
+    (BATCH_LABELS[25], "MLP", "delta_depth_close_5m_pp", 3.736108, 5.168131),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_close_5m_pp", 1.710887, 2.365598),
+    (BATCH_LABELS[25], "MLP", "delta_depth_p10_m", 0.220102, 0.467165),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_p10_m", 0.080154, 0.136932),
+    (BATCH_LABELS[25], "MLP", "delta_depth_p50_m", 0.443824, 0.642170),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_p50_m", 0.235744, 0.355026),
+    (BATCH_LABELS[25], "MLP", "delta_depth_p90_m", 1.723759, 3.344502),
+    (BATCH_LABELS[25], "Media treino", "delta_depth_p90_m", 1.200840, 2.994017),
 ]
 
 REFERENCE_EVENT_RESULTS = [
@@ -147,9 +176,23 @@ REFERENCE_EVENT_RESULTS = [
     ("16 runs - classificador", "recall", 0.854545),
     ("16 runs - classificador", "F1", 0.810345),
     ("16 runs - classificador", "average precision", 0.853243),
+    ("16 runs - classificador", "falsos positivos", 14.0),
+    ("16 runs - classificador", "falsos negativos", 8.0),
     ("16 runs - pos-gate", "MAE zero delta", 1.731648),
     ("16 runs - pos-gate", "MAE MLP evento + MLP delta", 2.419790),
-    ("16 runs - pos-gate", "MAE oracle evento + MLP delta", 2.051965),
+    ("16 runs - pos-gate", "MAE evento real + MLP delta (diagnostico)", 2.051965),
+    ("16 runs - pos-gate", "MAE MLP evento + mediana", 1.824273),
+    ("25 runs - classificador", "balanced accuracy", 0.696233),
+    ("25 runs - classificador", "precisao", 0.833333),
+    ("25 runs - classificador", "recall", 0.797872),
+    ("25 runs - classificador", "F1", 0.815217),
+    ("25 runs - classificador", "average precision", 0.895586),
+    ("25 runs - classificador", "falsos positivos", 15.0),
+    ("25 runs - classificador", "falsos negativos", 19.0),
+    ("25 runs - pos-gate", "MAE zero delta", 1.706795),
+    ("25 runs - pos-gate", "MAE MLP evento + MLP delta", 2.757244),
+    ("25 runs - pos-gate", "MAE evento real + MLP delta (diagnostico)", 2.762598),
+    ("25 runs - pos-gate", "MAE MLP evento + mediana", 1.771411),
 ]
 
 REFERENCE_RUN_EVENT_STATS = [
@@ -169,6 +212,15 @@ REFERENCE_RUN_EVENT_STATS = [
     ("run_20260715_163825", 43, 29, 0.674419),
     ("run_20260715_174528", 27, 22, 0.814815),
     ("run_20260715_183633", 42, 30, 0.714286),
+    ("run_20260715_215803", 46, 38, 0.826087),
+    ("run_20260715_220110", 36, 24, 0.666667),
+    ("run_20260715_220346", 30, 20, 0.666667),
+    ("run_20260715_220437", 32, 21, 0.656250),
+    ("run_20260716_221426", 32, 26, 0.812500),
+    ("run_20260716_221504", 34, 18, 0.529412),
+    ("run_20260716_221545", 39, 27, 0.692308),
+    ("run_20260716_231519", 32, 28, 0.875000),
+    ("run_20260716_231600", 29, 23, 0.793103),
 ]
 
 
@@ -182,19 +234,18 @@ COLORS = {
     "drone": "#246bfe",
     "risk": "#c2410c",
     "accent": "#0f766e",
+    "latest": "#7c3aed",
 }
 GRAPH_CONFIG = {"displaylogo": False}
 BATCH_COLORS = {
-    BATCH_LABELS[3]: COLORS["muted"],
     BATCH_LABELS[7]: COLORS["drone"],
-    BATCH_LABELS[11]: COLORS["risk"],
     BATCH_LABELS[16]: COLORS["accent"],
+    BATCH_LABELS[25]: COLORS["latest"],
 }
 BLOCK_COLORS = {
-    BLOCK_LABELS[0]: COLORS["muted"],
-    BLOCK_LABELS[1]: COLORS["drone"],
-    BLOCK_LABELS[2]: COLORS["risk"],
-    BLOCK_LABELS[3]: COLORS["accent"],
+    BLOCK_LABELS[0]: COLORS["drone"],
+    BLOCK_LABELS[1]: COLORS["accent"],
+    BLOCK_LABELS[2]: COLORS["latest"],
 }
 EMPTY_FLIGHT_COLUMNS = (
     "timestamp",
@@ -212,6 +263,8 @@ def _empty_dataframe() -> pd.DataFrame:
 
 
 def run_datetime(path: Path) -> datetime | None:
+    """Extrai o instante de coleta do nome de uma run de log ou depth."""
+
     name = path.parent.name if path.name == "manifest.json" else path.name
     token = name.replace("voo_teste_", "").replace("run_", "").replace(".csv", "")
     try:
@@ -488,6 +541,8 @@ def _load_notebook_interval_snapshot(_mtime_ns: int) -> pd.DataFrame:
 
 
 def load_notebook_interval_snapshot() -> pd.DataFrame:
+    """Recupera os intervalos embutidos nos outputs salvos do notebook."""
+
     if not NOTEBOOK_PATH.exists():
         return pd.DataFrame()
     snapshot = _load_notebook_interval_snapshot(NOTEBOOK_PATH.stat().st_mtime_ns).copy()
@@ -495,6 +550,8 @@ def load_notebook_interval_snapshot() -> pd.DataFrame:
 
 
 def load_all_depth_intervals() -> pd.DataFrame:
+    """Combina memmaps locais com runs ausentes recuperadas do notebook."""
+
     frames = []
     for run_dir in list_depth_interval_runs():
         try:
@@ -519,18 +576,16 @@ def load_all_depth_intervals() -> pd.DataFrame:
 def run_block_label(run_id: str) -> str:
     index = RUN_ORDER_INDEX.get(run_id)
     if index is None:
-        return "Fora das 16 runs"
-    if index < 3:
-        return BLOCK_LABELS[0]
+        return "Fora das 25 runs"
     if index < 7:
+        return BLOCK_LABELS[0]
+    if index < 16:
         return BLOCK_LABELS[1]
-    if index < 11:
-        return BLOCK_LABELS[2]
-    return BLOCK_LABELS[3]
+    return BLOCK_LABELS[2]
 
 
 def ordered_run_ids(df: pd.DataFrame) -> list[str]:
-    """Ordena primeiro as 16 runs de referencia e depois qualquer run adicional."""
+    """Ordena primeiro as 25 runs de referencia e depois qualquer run adicional."""
 
     available = set(df["run_id"].astype(str))
     reference = [run_id for run_id in REFERENCE_RUN_ORDER if run_id in available]
@@ -821,6 +876,8 @@ def build_route(df: pd.DataFrame) -> np.ndarray:
 
 
 def add_route_metrics(df: pd.DataFrame, route: np.ndarray) -> None:
+    """Projeta a trajetoria na rota e adiciona desvio, progresso e velocidades."""
+
     points = df[["x", "y"]].to_numpy(dtype=float)
     segments = route[1:, :2] - route[:-1, :2]
     starts = route[:-1, :2]
@@ -887,6 +944,8 @@ def add_motion_metrics(df: pd.DataFrame) -> None:
 
 
 def normalize(series: pd.Series, high_quantile: float = 0.95) -> pd.Series:
+    """Normaliza magnitudes pelo quantil informado, limitando o resultado a [0, 1]."""
+
     clean = series.replace([np.inf, -np.inf], np.nan).fillna(0.0).abs()
     scale = float(clean.quantile(high_quantile))
     if not math.isfinite(scale) or scale <= 1e-9:
@@ -1059,6 +1118,8 @@ def depth_summary(df: pd.DataFrame, metadata_path: Path | None) -> list[html.Div
 
 
 def apply_layout(fig: go.Figure, title: str, height: int = 420) -> go.Figure:
+    """Aplica o estilo visual compartilhado pelos graficos do dashboard."""
+
     fig.update_layout(
         title=dict(text=title, x=0.02, xanchor="left", font=dict(size=16)),
         template="plotly_white",
@@ -1090,6 +1151,8 @@ def table_figure(
     height: int,
     header_color: str = "#e8eef3",
 ) -> go.Figure:
+    """Cria uma tabela Plotly com a identidade visual do dashboard."""
+
     fig = go.Figure(
         data=[
             go.Table(
@@ -1555,6 +1618,8 @@ def figure_depth_ranking(df: pd.DataFrame) -> go.Figure:
 
 
 def batch_interval_frames(df: pd.DataFrame) -> pd.DataFrame:
+    """Monta visoes cumulativas dos intervalos para cada marco de runs."""
+
     if df.empty:
         return pd.DataFrame()
 
@@ -1570,6 +1635,8 @@ def batch_interval_frames(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
+    """Resume sincronizacao, flow e eventos de cada conjunto cumulativo."""
+
     if df.empty:
         return pd.DataFrame(REFERENCE_BATCH_STATS)
 
@@ -1632,6 +1699,17 @@ def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def reference_mlp_df() -> pd.DataFrame:
+    """Retorna os resultados controlados da MLP ou a referencia embutida."""
+
+    fixed = load_validated_csv(
+        MLP_FIXED_RESULTS_PATH,
+        {"marco_runs", "modelo", "split", "alvo_delta", "MAE", "RMSE"},
+    )
+    if not fixed.empty:
+        fixed = fixed[fixed["split"] == "teste"].copy()
+        fixed["leva"] = fixed["marco_runs"].map(BATCH_LABELS)
+        fixed = fixed[fixed["leva"].notna()]
+        return fixed[["leva", "modelo", "alvo_delta", "MAE", "RMSE"]]
     return pd.DataFrame(
         REFERENCE_MLP_TEST,
         columns=["leva", "modelo", "alvo_delta", "MAE", "RMSE"],
@@ -1639,6 +1717,32 @@ def reference_mlp_df() -> pd.DataFrame:
 
 
 def reference_event_df() -> pd.DataFrame:
+    """Retorna metricas do classificador fixo e do modelo pos-gate."""
+
+    fixed = load_validated_csv(
+        EVENT_FIXED_RESULTS_PATH,
+        {
+            "marco_runs", "split", "balanced_acc", "precision_evento",
+            "recall_evento", "f1_evento", "avg_precision", "fp", "fn",
+        },
+    )
+    if not fixed.empty:
+        metrics = {
+            "balanced_acc": "balanced accuracy",
+            "precision_evento": "precisao",
+            "recall_evento": "recall",
+            "f1_evento": "F1",
+            "avg_precision": "average precision",
+            "fp": "falsos positivos",
+            "fn": "falsos negativos",
+        }
+        rows = []
+        for _, result in fixed[fixed["split"] == "teste"].iterrows():
+            group = f"{int(result['marco_runs'])} runs - classificador fixo"
+            rows.extend((group, label, float(result[column])) for column, label in metrics.items())
+        rows.extend(row for row in REFERENCE_EVENT_RESULTS if row[0] == "25 runs - pos-gate")
+        if rows:
+            return pd.DataFrame(rows, columns=["grupo", "metrica", "valor"])
     return pd.DataFrame(
         REFERENCE_EVENT_RESULTS,
         columns=["grupo", "metrica", "valor"],
@@ -1655,62 +1759,67 @@ def reference_run_event_df() -> pd.DataFrame:
 
 
 def batch_summary_cards(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> list[html.Div]:
+    """Cria os indicadores principais da comparacao entre marcos de runs."""
+
     if stats.empty:
         return [metric_card("Comparacao", "-", "Sem dados ou referencias para comparar.")]
 
     by_label = {row["leva"]: row for _, row in stats.iterrows()}
-    first_row = by_label.get(BATCH_LABELS[3], stats.iloc[0])
-    seven_row = by_label.get(BATCH_LABELS[7], first_row)
-    eleven_row = by_label.get(BATCH_LABELS[11], stats.iloc[-1])
-    all_row = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
+    seven_row = by_label.get(BATCH_LABELS[7], stats.iloc[0])
+    sixteen_row = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
+    all_row = by_label.get(BATCH_LABELS[25], stats.iloc[-1])
 
-    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[16]) & (mlp_df["modelo"] == "MLP")]
-    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[16]) & (mlp_df["modelo"] == "Media treino")]
+    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "MLP")]
+    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "Media treino")]
     joined = current_mlp.merge(current_base, on="alvo_delta", suffixes=("_mlp", "_base"))
     beats_baseline = int((joined["MAE_mlp"] < joined["MAE_base"]).sum()) if not joined.empty else 0
+
+    mlp_7 = mlp_df[(mlp_df["leva"] == BATCH_LABELS[7]) & (mlp_df["modelo"] == "MLP")]
+    mlp_change = current_mlp.merge(mlp_7, on="alvo_delta", suffixes=("_25", "_7"))
+    improved_targets = int((mlp_change["MAE_25"] < mlp_change["MAE_7"]).sum()) if not mlp_change.empty else 0
 
     def incremental_event_rate(previous: pd.Series, current: pd.Series) -> float:
         interval_delta = int(current.get("intervalos", 0)) - int(previous.get("intervalos", 0))
         event_delta = int(current.get("eventos", 0)) - int(previous.get("eventos", 0))
         return event_delta / interval_delta * 100.0 if interval_delta > 0 else np.nan
 
-    event_8_11 = incremental_event_rate(seven_row, eleven_row)
-    event_12_16 = incremental_event_rate(eleven_row, all_row)
-    added_intervals = int(all_row["intervalos"]) - int(seven_row["intervalos"])
+    event_17_25 = incremental_event_rate(sixteen_row, all_row)
+    added_intervals = int(all_row["intervalos"]) - int(sixteen_row["intervalos"])
 
     return [
         metric_card(
             "Intervalos",
             f"{int(all_row['intervalos'])}",
-            (
-                f"{int(first_row['intervalos'])} -> {int(seven_row['intervalos'])} -> "
-                f"{int(eleven_row['intervalos'])} -> {int(all_row['intervalos'])}"
-            ),
+            f"{int(seven_row['intervalos'])} -> {int(sixteen_row['intervalos'])} -> {int(all_row['intervalos'])}",
         ),
         metric_card(
-            "9 runs novas",
+            "Runs 17-25",
             f"+{added_intervals}",
-            "intervalos validos sobre as 7 primeiras",
+            "intervalos validos sobre as primeiras 16",
         ),
         metric_card(
-            "Eventos runs 8-11",
-            fmt_number(event_8_11, "%", 1),
-            "distribuicao consistente com o conjunto anterior",
-        ),
-        metric_card(
-            "Eventos runs 12-16",
-            fmt_number(event_12_16, "%", 1),
-            "taxa praticamente estabilizada",
+            "Eventos runs 17-25",
+            fmt_number(event_17_25, "%", 1),
+            "225 eventos em 310 intervalos",
         ),
         metric_card(
             "MLP x baseline",
             f"{beats_baseline}/6 alvos",
-            "resultado atual com todas as 16 runs",
+            "resultado atual com todas as 25 runs",
+        ),
+        metric_card(
+            "MLP 7 -> 25",
+            f"{improved_targets}/6 alvos",
+            (
+                "alvos com reducao de MAE no mesmo teste"
+                if MLP_FIXED_RESULTS_PATH.exists()
+                else "referencias antigas; rerode o notebook com o split fixo"
+            ),
         ),
         metric_card(
             "Eventos acumulados",
             fmt_number(float(all_row["event_rate_pct"]), "%", 1),
-            f"7 runs {float(seven_row['event_rate_pct']):.1f}%; 11 runs {float(eleven_row['event_rate_pct']):.1f}%",
+            f"7 runs {float(seven_row['event_rate_pct']):.1f}%; 16 runs {float(sixteen_row['event_rate_pct']):.1f}%",
         ),
     ]
 
@@ -1724,14 +1833,15 @@ def analysis_note(title: str, paragraphs: list[str], tone: str = "") -> html.Div
 
 
 def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[html.Div, ...]:
-    by_label = {row["leva"]: row for _, row in stats.iterrows()}
-    row_3 = by_label.get(BATCH_LABELS[3], stats.iloc[0])
-    row_7 = by_label.get(BATCH_LABELS[7], row_3)
-    row_11 = by_label.get(BATCH_LABELS[11], stats.iloc[-1])
-    row_16 = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
+    """Gera os blocos textuais de interpretacao exibidos na aba comparativa."""
 
-    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[16]) & (mlp_df["modelo"] == "MLP")]
-    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[16]) & (mlp_df["modelo"] == "Media treino")]
+    by_label = {row["leva"]: row for _, row in stats.iterrows()}
+    row_7 = by_label.get(BATCH_LABELS[7], stats.iloc[0])
+    row_16 = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
+    row_25 = by_label.get(BATCH_LABELS[25], stats.iloc[-1])
+
+    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "MLP")]
+    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "Media treino")]
     joined = current_mlp.merge(current_base, on="alvo_delta", suffixes=("_mlp", "_base"))
     worst_target = "indisponivel"
     if not joined.empty:
@@ -1742,12 +1852,11 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
         "Comparar o desempenho conforme o conjunto cresce",
         [
             (
-                f"Os intervalos validos cresceram de {int(row_3['intervalos'])} para "
-                f"{int(row_7['intervalos'])}, {int(row_11['intervalos'])} e "
-                f"{int(row_16['intervalos'])}. As nove runs novas adicionaram "
-                f"{int(row_16['intervalos']) - int(row_7['intervalos'])} intervalos validos."
+                f"Os intervalos validos cresceram de {int(row_7['intervalos'])} para "
+                f"{int(row_16['intervalos'])} e {int(row_25['intervalos'])}. As runs 17-25 adicionaram "
+                f"{int(row_25['intervalos']) - int(row_16['intervalos'])} intervalos validos."
             ),
-            "A taxa de eventos permaneceu na mesma faixa, portanto o ganho de volume nao veio de repeticoes ou deltas artificialmente zerados.",
+            "O ultimo bloco teve 72,6% de eventos; as cinco runs mais recentes somaram 166 intervalos, com 73,5% de eventos.",
         ],
         "ok",
     )
@@ -1755,29 +1864,35 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
         "Verificar se a melhora continua ou comeca a estabilizar",
         [
             (
-                f"A taxa acumulada de eventos passou de {float(row_7['event_rate_pct']):.1f}% "
-                f"para {float(row_11['event_rate_pct']):.1f}% e {float(row_16['event_rate_pct']):.1f}%. "
+                f"A taxa acumulada de eventos passou de {float(row_7['event_rate_pct']):.1f}% para "
+                f"{float(row_16['event_rate_pct']):.1f}% e {float(row_25['event_rate_pct']):.1f}%. "
                 "Essa variacao pequena indica estabilizacao da distribuicao dos eventos."
             ),
             (
-                f"O P90 do delta absoluto terminou em {float(row_16['delta_abs_p90']):.2f} p.p. e os zeros "
-                f"cairam para {float(row_16.get('zero_rate_pct', np.nan)):.1f}%, mantendo eventos relevantes sem inflar extremos."
+                f"O P90 do delta absoluto caiu de {float(row_16['delta_abs_p90']):.2f} para "
+                f"{float(row_25['delta_abs_p90']):.2f} p.p., enquanto os zeros cairam para "
+                f"{float(row_25.get('zero_rate_pct', np.nan)):.1f}%. A distribuicao esta mais consistente, mas segue concentrada em eventos."
             ),
         ],
     )
     split = analysis_note(
         "Separar ganho real de variacao causada pela divisao treino/teste",
         [
-            "O notebook atual salvou o treino da MLP apenas para as 16 runs. Por isso, os graficos de 3, 7 e 11 runs descrevem a evolucao dos dados, nao uma curva de aprendizado da rede.",
-            "Como o split por run_id muda quando novas runs entram, uma queda isolada de MAE pode refletir um teste mais facil. Uma comparacao conclusiva exige repetir 3, 7, 11 e 16 runs com um conjunto de teste fixo.",
+            "O notebook agora fixa a validacao na run 20260710_192442 e o teste nas runs 20260624_211302 e 20260710_193015 desde o marco de 7 runs. Apenas o treino cresce em 7, 16 e 25 runs.",
+            (
+                "Os CSVs controlados foram carregados pelo dashboard. Assim, a variacao atual de MAE e balanced accuracy nao inclui mudanca na composicao do teste."
+                if has_fixed_comparison_results()
+                else "Reexecute o notebook com as 25 runs para gerar os CSVs da curva controlada."
+            ),
         ],
         "warning",
     )
     errors = analysis_note(
         "Identificar quais alvos e eventos ainda concentram os erros",
         [
-            f"Com 16 runs, a MLP ainda nao supera a media do treino em nenhum dos seis alvos. O maior gap absoluto esta em {worst_target}.",
-            "Os maiores MAEs continuam nos alvos de ocupacao proxima, especialmente pixels abaixo de 5 m e 2 m. O classificador encontra a maioria dos eventos, mas ainda troca recall por falsos positivos.",
+            f"Com 25 runs, a MLP continua sem superar a media do treino nos seis alvos. O maior gap atual esta em {worst_target}.",
+            "No teste fixo, a MLP de 25 runs melhora cinco dos seis alvos em relacao a 16 e todos os seis em relacao a 7. Para pixels abaixo de 5 m, o MAE cai de 2,89 para 1,39 p.p.",
+            "O classificador nao segue a mesma curva: a balanced accuracy no teste passa de 0,656 para 0,700 e depois 0,667. O melhor marco observado para classificacao continua sendo 16 runs.",
         ],
         "warning",
     )
@@ -1785,15 +1900,13 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
         "Resposta sugerida ao professor",
         [
             (
-                "Professor, refiz a coleta removendo tres runs ruidosas e adicionei nove runs novas. "
-                "Agora tenho 16 runs e 410 intervalos validos. A taxa de eventos ficou estavel em torno "
-                "de 68%, entao os dados novos parecem consistentes e nao repetem o problema dos zeros artificiais."
+                "Professor, reorganizei a comparacao em 7, 16 e 25 runs. O conjunto atual tem 720 intervalos validos, "
+                "com taxa acumulada de eventos de 70,3% e poucos intervalos zerados."
             ),
             (
-                "A MLP ficou mais estavel, principalmente no modelo em duas etapas, mas ainda nao supera "
-                "os baselines simples nos alvos avaliados. Antes de concluir que ela chegou ao limite, vou "
-                "comparar 3, 7, 11 e 16 runs usando o mesmo conjunto de teste, porque o split atual muda com "
-                "a quantidade de runs e pode confundir ganho real com variacao da avaliacao."
+                "Com o teste fixo, a MLP apresentou melhora clara conforme o treino cresceu: no alvo de pixels abaixo de 5 m, "
+                "o MAE caiu de 2,89 para 2,17 e depois 1,39 p.p. O classificador teve seu melhor resultado com 16 runs, "
+                "entao a regressao continua se beneficiando dos dados, mas a classificacao parece ter estabilizado antes."
             ),
         ],
         "professor",
@@ -1802,6 +1915,8 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
 
 
 def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
+    """Informa as fontes usadas e a cobertura de runs da comparacao atual."""
+
     if intervals_df.empty:
         text = (
             "Nao encontrei os memmaps de depth/flow em datasets/depth_ground_truth no ambiente atual. "
@@ -1821,11 +1936,17 @@ def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
         if snapshot_runs
         else "; todas lidas dos memmaps"
     )
+    model_text = (
+        "As curvas de MLP e classificacao com splits fixos foram carregadas dos CSVs gerados pelo notebook."
+        if has_fixed_comparison_results()
+        else (
+            "O notebook ja esta configurado para treinar 7, 16 e 25 com validacao e teste fixos; "
+            "rerode-o com todas as pastas para atualizar a curva controlada."
+        )
+    )
     text = (
-        f"Comparacao cumulativa 3 -> 7 -> 11 -> 16: {interval_count} intervalos em {run_count} runs"
-        f"{source_text}. As metricas cumulativas descrevem a evolucao dos dados. O MAE de modelo "
-        "disponivel corresponde apenas ao treino atual com 16 runs; 3, 7 e 11 ainda precisam ser "
-        "avaliados com teste fixo para formar uma curva de aprendizado comparavel."
+        f"Comparacao cumulativa 7 -> 16 -> 25: {interval_count} intervalos em {run_count} runs"
+        f"{source_text}. As metricas cumulativas descrevem a evolucao dos dados. {model_text}"
     )
     return html.Div(text, className="notice notice-ok")
 
@@ -1867,7 +1988,7 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
         )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Evolucao cumulativa das metricas: 3, 7, 11 e 16 runs", 620)
+    return apply_layout(fig, "Evolucao cumulativa das metricas: 7, 16 e 25 runs", 620)
 
 
 def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
@@ -1905,7 +2026,7 @@ def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
             )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Distribuicoes cumulativas: 3, 7, 11 e 16 runs", 700)
+    return apply_layout(fig, "Distribuicoes cumulativas: 7, 16 e 25 runs", 700)
 
 
 def figure_batch_event_rates(intervals_df: pd.DataFrame) -> go.Figure:
@@ -1956,8 +2077,10 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
     ]
     fig = go.Figure()
     series = [
+        (BATCH_LABELS[7], "MLP", COLORS["drone"]),
         (BATCH_LABELS[16], "MLP", COLORS["accent"]),
-        (BATCH_LABELS[16], "Media treino", COLORS["risk"]),
+        (BATCH_LABELS[25], "MLP", COLORS["latest"]),
+        (BATCH_LABELS[25], "Media treino", COLORS["risk"]),
     ]
     for leva, modelo, color in series:
         part = mlp_df[(mlp_df["leva"] == leva) & (mlp_df["modelo"] == modelo)].set_index("alvo_delta")
@@ -1973,7 +2096,11 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
         )
     fig.update_layout(barmode="group")
     fig.add_annotation(
-        text="Treinos cumulativos de 3, 7 e 11 runs ainda nao foram salvos",
+        text=(
+            "Validacao e teste fixos; apenas o treino cresce"
+            if MLP_FIXED_RESULTS_PATH.exists()
+            else "Referencias anteriores; rerode o notebook para gerar 7, 16 e 25 no teste fixo"
+        ),
         xref="paper",
         yref="paper",
         x=1.0,
@@ -1984,7 +2111,8 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
     )
     fig.update_xaxes(title="Alvo delta", tickangle=-20)
     fig.update_yaxes(title="MAE no teste")
-    return apply_layout(fig, "MAE no teste atual: MLP x baseline com 16 runs", 520)
+    title = "MAE no teste fixo: MLP com 7, 16 e 25 runs" if MLP_FIXED_RESULTS_PATH.exists() else "MAE registrado: MLP com 16 e 25 runs"
+    return apply_layout(fig, title, 520)
 
 
 def figure_mlp_reference_table(mlp_df: pd.DataFrame) -> go.Figure:
@@ -2003,31 +2131,41 @@ def figure_mlp_reference_table(mlp_df: pd.DataFrame) -> go.Figure:
         return float(part["MAE"].iloc[0]) if not part.empty else np.nan
 
     for target in targets:
+        mlp_7 = mae_value(target, BATCH_LABELS[7], "MLP")
         mlp_16 = mae_value(target, BATCH_LABELS[16], "MLP")
-        base_16 = mae_value(target, BATCH_LABELS[16], "Media treino")
-        ratio = mlp_16 / base_16 if base_16 > 0 else np.nan
-        gap = mlp_16 - base_16
+        mlp_25 = mae_value(target, BATCH_LABELS[25], "MLP")
+        base_25 = mae_value(target, BATCH_LABELS[25], "Media treino")
+        change = (mlp_25 / mlp_7 - 1.0) * 100.0 if mlp_7 > 0 else np.nan
+        gap = mlp_25 - base_25
         rows.append(
             [
                 target,
+                f"{mlp_7:.3f}",
                 f"{mlp_16:.3f}",
-                f"{base_16:.3f}",
+                f"{mlp_25:.3f}",
+                f"{change:+.1f}%",
+                f"{base_25:.3f}",
                 f"{gap:+.3f}",
-                f"{ratio:.2f}x",
             ]
         )
 
     headers = [
         "Alvo",
+        "MLP 7",
         "MLP 16",
-        "Media 16",
-        "Gap MAE",
-        "MLP/media",
+        "MLP 25",
+        "Variacao 7-25",
+        "Media 25",
+        "Gap atual",
     ]
     return table_figure(
         headers,
         rows_to_columns(rows, len(headers)),
-        "Erros por alvo no teste de 16 runs",
+        (
+            "Curva de erro no teste fixo: 7, 16 e 25 runs"
+            if MLP_FIXED_RESULTS_PATH.exists()
+            else "Erros registrados antes da curva com split fixo"
+        ),
         340,
     )
 
@@ -2044,8 +2182,8 @@ def figure_event_reference_table(event_df: pd.DataFrame) -> go.Figure:
     return table_figure(
         ["Grupo", "Metrica", "Valor no teste atual"],
         values,
-        "Modelo em duas etapas e classificador: 16 runs",
-        480,
+        "Modelo em duas etapas e classificador: 16 x 25 runs",
+        620,
     )
 
 
@@ -2543,6 +2681,8 @@ INDEX_TEMPLATE = """
 
 
 def register_callbacks(app: Dash) -> None:
+    """Registra callbacks de atualizacao das abas de voo, depth e comparacao."""
+
     @app.callback(
         Output("run-select", "options"),
         Output("run-select", "value"),
@@ -2678,6 +2818,8 @@ def register_callbacks(app: Dash) -> None:
         )
 
 def create_app() -> Dash:
+    """Cria e configura a aplicacao Dash pronta para execucao."""
+
     app = Dash(__name__)
     app.title = "Metricas do desvio reativo"
     app.layout = layout(list_log_files(), list_depth_metadata_files())
