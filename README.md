@@ -68,9 +68,18 @@ PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p nominal_visual_dt_s:=0.055 \
   -p deterministic_cv:=true \
   -p show_debug_window:=false \
-  -p velocidade_maxima_m_s:=6.0 \
-  -p avoidance_max_brake:=0.85 \
-  -p perception_failure_brake:=0.85
+  -p velocidade_maxima_m_s:=12.0 \
+  -p avoidance_max_brake:=0.75 \
+  -p perception_failure_brake:=0.65 \
+  -p perception_failure_lateral_decay:=0.5 \
+  -p avoidance_min_speed_scale:=0.25 \
+  -p risk_enter_threshold:=0.06 \
+  -p risk_exit_threshold:=0.03 \
+  -p risk_activation_frames:=2 \
+  -p minimum_active_risk_points:=12 \
+  -p avoidance_side_deadband:=0.18 \
+  -p avoidance_side_hold_s:=0.75 \
+  -p avoidance_side_switch_threshold:=0.35
 ```
 
 O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam

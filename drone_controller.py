@@ -270,33 +270,43 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
         self.avoid_side_memory = 1.0
+        self.avoidance_committed_side = None
+        self.avoidance_side_last_switch_s = None
         self.avoidance_engaged = False
+        self.risk_activation_count = 0
         self.last_visual_update_clock_s = None
         self.last_valid_visual_clock_s = None
         self.last_visual_failure_reason = 'none'
         self.risk_enter_threshold = float(
-            np.clip(self.declare_parameter('risk_enter_threshold', 0.04).value, 0.0, 1.0)
+            np.clip(self.declare_parameter('risk_enter_threshold', 0.06).value, 0.0, 1.0)
         )
         self.risk_exit_threshold = float(
             np.clip(
-                self.declare_parameter('risk_exit_threshold', 0.025).value,
+                self.declare_parameter('risk_exit_threshold', 0.03).value,
                 0.0,
                 self.risk_enter_threshold,
             )
         )
         self.avoidance_max_brake = float(
-            np.clip(self.declare_parameter('avoidance_max_brake', 0.85).value, 0.0, 1.0)
+            np.clip(self.declare_parameter('avoidance_max_brake', 0.75).value, 0.0, 1.0)
         )
         self.perception_failure_brake = float(
             np.clip(
-                self.declare_parameter('perception_failure_brake', 0.85).value,
+                self.declare_parameter('perception_failure_brake', 0.65).value,
+                0.0,
+                1.0,
+            )
+        )
+        self.perception_failure_lateral_decay = float(
+            np.clip(
+                self.declare_parameter('perception_failure_lateral_decay', 0.5).value,
                 0.0,
                 1.0,
             )
         )
         self.avoidance_min_speed_scale = float(
             np.clip(
-                self.declare_parameter('avoidance_min_speed_scale', 0.15).value,
+                self.declare_parameter('avoidance_min_speed_scale', 0.25).value,
                 0.0,
                 1.0,
             )
@@ -304,6 +314,32 @@ class DroneOffboardNode(Node):
         self.visual_stale_timeout_s = max(
             self.dt,
             float(self.declare_parameter('visual_stale_timeout_s', 0.25).value),
+        )
+        self.risk_activation_frames = max(
+            1,
+            int(self.declare_parameter('risk_activation_frames', 2).value),
+        )
+        self.minimum_active_risk_points = max(
+            1,
+            int(self.declare_parameter('minimum_active_risk_points', 12).value),
+        )
+        self.avoidance_side_deadband = float(
+            np.clip(
+                self.declare_parameter('avoidance_side_deadband', 0.18).value,
+                0.0,
+                1.0,
+            )
+        )
+        self.avoidance_side_switch_threshold = float(
+            np.clip(
+                self.declare_parameter('avoidance_side_switch_threshold', 0.35).value,
+                self.avoidance_side_deadband,
+                1.0,
+            )
+        )
+        self.avoidance_side_hold_s = max(
+            0.0,
+            float(self.declare_parameter('avoidance_side_hold_s', 0.75).value),
         )
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 8.0
@@ -340,7 +376,7 @@ class DroneOffboardNode(Node):
         
         self.velocidade_maxima = max(
             0.5,
-            float(self.declare_parameter('velocidade_maxima_m_s', 6.0).value),
+            float(self.declare_parameter('velocidade_maxima_m_s', 12.0).value),
         )
         self.raio_de_aceitacao = 6.0     # Raio de aceitação para mudar de waypoint
         
@@ -391,7 +427,7 @@ class DroneOffboardNode(Node):
         """Descreve a configuracao de controle usada para auditar cada run."""
 
         return {
-            'profile_version': 'reproducible_v1',
+            'profile_version': 'high_speed_reproducible_v2',
             'deterministic_cv': bool(self.deterministic_cv),
             'opencv_threads': 1 if self.deterministic_cv else None,
             'debug_window_enabled': bool(self.show_debug_window),
@@ -402,10 +438,20 @@ class DroneOffboardNode(Node):
             'max_speed_m_s': float(self.velocidade_maxima),
             'risk_enter_threshold': float(self.risk_enter_threshold),
             'risk_exit_threshold': float(self.risk_exit_threshold),
+            'risk_activation_frames': int(self.risk_activation_frames),
+            'minimum_active_risk_points': int(self.minimum_active_risk_points),
             'max_brake': float(self.avoidance_max_brake),
             'perception_failure_brake': float(self.perception_failure_brake),
+            'perception_failure_lateral_decay': float(
+                self.perception_failure_lateral_decay
+            ),
             'minimum_speed_scale': float(self.avoidance_min_speed_scale),
             'visual_stale_timeout_s': float(self.visual_stale_timeout_s),
+            'avoidance_side_deadband': float(self.avoidance_side_deadband),
+            'avoidance_side_switch_threshold': float(
+                self.avoidance_side_switch_threshold
+            ),
+            'avoidance_side_hold_s': float(self.avoidance_side_hold_s),
             'visual_tracking_failures': int(self.visual_tracking_failures),
             'visual_stale_events': int(self.visual_stale_events),
             'visual_failure_reasons': {
@@ -426,11 +472,13 @@ class DroneOffboardNode(Node):
             self.last_visual_update_clock_s = now_s
             self.last_visual_failure_reason = reason
             self.avoidance_engaged = True
+            self.risk_activation_count = self.risk_activation_frames
             self.obstacle_risk = max(
                 self.obstacle_risk,
                 self.risk_enter_threshold * 1.25,
             )
             self.avoid_brake = max(self.avoid_brake, self.perception_failure_brake)
+            self.avoid_lateral_body *= self.perception_failure_lateral_decay
 
         if self.visual_tracking_failures == 1 or self.visual_tracking_failures % 25 == 0:
             self.get_logger().warning(
@@ -463,11 +511,42 @@ class DroneOffboardNode(Node):
                     self.visual_stale_events += 1
                 self.last_visual_failure_reason = 'visual_stale'
                 self.avoidance_engaged = True
+                self.risk_activation_count = self.risk_activation_frames
                 self.obstacle_risk = max(
                     self.obstacle_risk,
                     self.risk_enter_threshold * 1.25,
                 )
                 self.avoid_brake = max(self.avoid_brake, self.perception_failure_brake)
+                self.avoid_lateral_body = 0.0
+
+    def selecionar_lado_evasao(self, balance, frame_stamp_s):
+        """Mantem um lado de desvio ate existir evidencia forte para troca-lo."""
+
+        if abs(balance) >= self.avoidance_side_deadband:
+            candidate = -math.copysign(1.0, balance)
+        else:
+            candidate = self.avoidance_committed_side or self.avoid_side_memory
+
+        if self.avoidance_committed_side is None:
+            self.avoidance_committed_side = candidate
+            self.avoidance_side_last_switch_s = frame_stamp_s
+            return candidate
+
+        elapsed_s = (
+            frame_stamp_s - self.avoidance_side_last_switch_s
+            if self.avoidance_side_last_switch_s is not None
+            else float('inf')
+        )
+        can_switch = (
+            candidate != self.avoidance_committed_side
+            and abs(balance) >= self.avoidance_side_switch_threshold
+            and elapsed_s >= self.avoidance_side_hold_s
+        )
+        if can_switch:
+            self.avoidance_committed_side = candidate
+            self.avoidance_side_last_switch_s = frame_stamp_s
+
+        return self.avoidance_committed_side
 
     def pos_callback(self, msg):
         """
@@ -735,6 +814,7 @@ class DroneOffboardNode(Node):
                 self.avoid_lateral_body = 0.0
                 self.avoid_brake = 0.0
                 self.avoidance_engaged = False
+                self.risk_activation_count = 0
         else:
             self.proteger_contra_percepcao_obsoleta()
 
@@ -1972,10 +2052,15 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
             self.avoid_brake += alpha * (brake - self.avoid_brake)
 
+            if risk >= self.risk_enter_threshold:
+                self.risk_activation_count += 1
+            else:
+                self.risk_activation_count = 0
+
             if self.avoidance_engaged:
                 if self.obstacle_risk <= self.risk_exit_threshold:
                     self.avoidance_engaged = False
-            elif self.obstacle_risk >= self.risk_enter_threshold:
+            elif self.risk_activation_count >= self.risk_activation_frames:
                 self.avoidance_engaged = True
 
             if abs(self.avoid_lateral_body) > 0.04:
@@ -2115,7 +2200,7 @@ class DroneOffboardNode(Node):
         point_risk = np.clip(point_risk, 0.0, 1.0)
 
         active = point_risk > 0.04
-        if np.count_nonzero(active) < 10:
+        if np.count_nonzero(active) < self.minimum_active_risk_points:
             risk = 0.0
             lateral_body = 0.0
         else:
@@ -2133,10 +2218,7 @@ class DroneOffboardNode(Node):
             right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
             balance = (right - left) / (right + left + 1e-6)
 
-            if abs(balance) < 0.1:
-                side = self.avoid_side_memory
-            else:
-                side = -math.copysign(1.0, balance)
+            side = self.selecionar_lado_evasao(balance, frame_stamp_s)
 
             lateral_body = side * self.max_lateral_acceleration * risk
 
