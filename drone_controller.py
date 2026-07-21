@@ -52,6 +52,21 @@ class DroneOffboardNode(Node):
     def __init__(self):
         super().__init__('drone_offboard_node')
 
+        self.dt = 0.04
+        self.control_state_lock = threading.RLock()
+
+        self.deterministic_cv = bool(
+            self.declare_parameter('deterministic_cv', True).value
+        )
+        self.show_debug_window = bool(
+            self.declare_parameter('show_debug_window', False).value
+        )
+        if self.deterministic_cv:
+            cv2.setNumThreads(1)
+            cv2.setRNGSeed(0)
+            if hasattr(cv2, 'ocl'):
+                cv2.ocl.setUseOpenCL(False)
+
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE, 
@@ -151,6 +166,10 @@ class DroneOffboardNode(Node):
         self.rgb_frames_seen = 0
         self.rgb_frames_received = 0
         self.rgb_frames_rejected_nonmonotonic = 0
+        self.visual_tracking_failures = 0
+        self.visual_stale_events = 0
+        self.visual_failure_reasons = {}
+        self.consecutive_visual_failures = 0
         self.visual_intervals_seen = 0
         self.depth_intervals_saved = 0
         self.dataset_intervals_rejected = {
@@ -234,6 +253,7 @@ class DroneOffboardNode(Node):
         self.current_pitch = 0.0
         self.current_yaw = 0.0
         self.current_yaw_attitude = 0.0
+        self.attitude_frames_received = 0
         self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
@@ -249,8 +269,42 @@ class DroneOffboardNode(Node):
         self.obstacle_risk = 0.0
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
-        self.avoid_side_memory = 0.8
-        self.avoidance_max_brake = 0.4
+        self.avoid_side_memory = 1.0
+        self.avoidance_engaged = False
+        self.last_visual_update_clock_s = None
+        self.last_valid_visual_clock_s = None
+        self.last_visual_failure_reason = 'none'
+        self.risk_enter_threshold = float(
+            np.clip(self.declare_parameter('risk_enter_threshold', 0.04).value, 0.0, 1.0)
+        )
+        self.risk_exit_threshold = float(
+            np.clip(
+                self.declare_parameter('risk_exit_threshold', 0.025).value,
+                0.0,
+                self.risk_enter_threshold,
+            )
+        )
+        self.avoidance_max_brake = float(
+            np.clip(self.declare_parameter('avoidance_max_brake', 0.85).value, 0.0, 1.0)
+        )
+        self.perception_failure_brake = float(
+            np.clip(
+                self.declare_parameter('perception_failure_brake', 0.85).value,
+                0.0,
+                1.0,
+            )
+        )
+        self.avoidance_min_speed_scale = float(
+            np.clip(
+                self.declare_parameter('avoidance_min_speed_scale', 0.15).value,
+                0.0,
+                1.0,
+            )
+        )
+        self.visual_stale_timeout_s = max(
+            self.dt,
+            float(self.declare_parameter('visual_stale_timeout_s', 0.25).value),
+        )
         self.raio_finalizacao = 2.0
         self.raio_desativa_evasao_final = 8.0
         self.evasao_visual_ativa = True
@@ -259,6 +313,15 @@ class DroneOffboardNode(Node):
         self.start_x = None
         self.start_y = None
         self.start_z = None
+        self.initial_pose_samples = []
+        self.initial_pose_samples_required = max(
+            1,
+            int(self.declare_parameter('initial_pose_samples_required', 50).value),
+        )
+        self.startup_visual_frames_required = max(
+            2,
+            int(self.declare_parameter('startup_visual_frames_required', 20).value),
+        )
 
         self.waypoints_relativos = [
             [-25.0, 25.0, -1.75],
@@ -275,20 +338,22 @@ class DroneOffboardNode(Node):
         self.missao_concluida = False
         self.encerrando = False
         
-        self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
+        self.velocidade_maxima = max(
+            0.5,
+            float(self.declare_parameter('velocidade_maxima_m_s', 6.0).value),
+        )
         self.raio_de_aceitacao = 6.0     # Raio de aceitação para mudar de waypoint
         
         self.zona_frenagem_curva = 9.0
         self.angulo_curva_forte = math.radians(45)
 
-        self.dt = 0.04  # Periodo nominal do controle (25 Hz).
         self.control_dt_s = self.dt
         self.nominal_visual_dt_s = max(
             1e-3,
-            float(self.declare_parameter('nominal_visual_dt_s', self.dt).value)
+            float(self.declare_parameter('nominal_visual_dt_s', 0.055).value)
         )
         self.use_dt_normalized_control = bool(
-            self.declare_parameter('use_dt_normalized_control', False).value
+            self.declare_parameter('use_dt_normalized_control', True).value
         )
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
@@ -306,6 +371,103 @@ class DroneOffboardNode(Node):
             return alpha_nominal
 
         return float(1.0 - (1.0 - alpha_nominal) ** (dt_s / dt_nominal_s))
+
+    def obter_snapshot_evasao(self):
+        """Retorna um estado atomico da evasao para controle e telemetria."""
+
+        with self.control_state_lock:
+            return {
+                'obstacle_risk': float(self.obstacle_risk),
+                'avoid_lateral_body': float(self.avoid_lateral_body),
+                'avoid_brake': float(self.avoid_brake),
+                'avoidance_engaged': bool(self.avoidance_engaged),
+                'evasao_visual_ativa': bool(self.evasao_visual_ativa),
+                'last_pan_delta_rad': float(self.last_pan_delta_rad),
+                'last_pan_delta_source': str(self.last_pan_delta_source),
+                'last_visual_failure_reason': str(self.last_visual_failure_reason),
+            }
+
+    def obter_configuracao_reprodutibilidade(self):
+        """Descreve a configuracao de controle usada para auditar cada run."""
+
+        return {
+            'profile_version': 'reproducible_v1',
+            'deterministic_cv': bool(self.deterministic_cv),
+            'opencv_threads': 1 if self.deterministic_cv else None,
+            'debug_window_enabled': bool(self.show_debug_window),
+            'dt_normalized_control': bool(self.use_dt_normalized_control),
+            'nominal_visual_interval_s': float(self.nominal_visual_dt_s),
+            'initial_pose_samples': int(self.initial_pose_samples_required),
+            'startup_visual_frames': int(self.startup_visual_frames_required),
+            'max_speed_m_s': float(self.velocidade_maxima),
+            'risk_enter_threshold': float(self.risk_enter_threshold),
+            'risk_exit_threshold': float(self.risk_exit_threshold),
+            'max_brake': float(self.avoidance_max_brake),
+            'perception_failure_brake': float(self.perception_failure_brake),
+            'minimum_speed_scale': float(self.avoidance_min_speed_scale),
+            'visual_stale_timeout_s': float(self.visual_stale_timeout_s),
+            'visual_tracking_failures': int(self.visual_tracking_failures),
+            'visual_stale_events': int(self.visual_stale_events),
+            'visual_failure_reasons': {
+                key: int(value)
+                for key, value in self.visual_failure_reasons.items()
+            },
+        }
+
+    def registrar_falha_percepcao(self, reason):
+        """Mantem a evasao em modo seguro quando o optical flow nao e confiavel."""
+
+        self.visual_tracking_failures += 1
+        self.consecutive_visual_failures += 1
+        self.visual_failure_reasons[reason] = self.visual_failure_reasons.get(reason, 0) + 1
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+
+        with self.control_state_lock:
+            self.last_visual_update_clock_s = now_s
+            self.last_visual_failure_reason = reason
+            self.avoidance_engaged = True
+            self.obstacle_risk = max(
+                self.obstacle_risk,
+                self.risk_enter_threshold * 1.25,
+            )
+            self.avoid_brake = max(self.avoid_brake, self.perception_failure_brake)
+
+        if self.visual_tracking_failures == 1 or self.visual_tracking_failures % 25 == 0:
+            self.get_logger().warning(
+                'Percepcao visual indisponivel; frenagem fail-safe aplicada '
+                f'(motivo={reason}, consecutivas={self.consecutive_visual_failures}).'
+            )
+
+    def registrar_percepcao_valida(self):
+        """Marca o instante da ultima estimativa visual confiavel."""
+
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        self.consecutive_visual_failures = 0
+        with self.control_state_lock:
+            self.last_visual_update_clock_s = now_s
+            self.last_valid_visual_clock_s = now_s
+            self.last_visual_failure_reason = 'none'
+
+    def proteger_contra_percepcao_obsoleta(self):
+        """Aciona frenagem quando o controle deixa de receber atualizacoes visuais."""
+
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        with self.control_state_lock:
+            last_update_s = self.last_visual_update_clock_s
+            stale = (
+                last_update_s is None
+                or now_s - last_update_s > self.visual_stale_timeout_s
+            )
+            if stale:
+                if self.last_visual_failure_reason != 'visual_stale':
+                    self.visual_stale_events += 1
+                self.last_visual_failure_reason = 'visual_stale'
+                self.avoidance_engaged = True
+                self.obstacle_risk = max(
+                    self.obstacle_risk,
+                    self.risk_enter_threshold * 1.25,
+                )
+                self.avoid_brake = max(self.avoid_brake, self.perception_failure_brake)
 
     def pos_callback(self, msg):
         """
@@ -326,22 +488,28 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
 
-        if self.current_x is None:
-            self.start_x = msg.x
-            self.start_y = msg.y
-            self.start_z = msg.z
-            
+        self.current_x = msg.x
+        self.current_y = msg.y
+        self.current_z = msg.z
+        self.current_yaw = msg.heading
+
+        if self.start_x is None:
+            self.initial_pose_samples.append((msg.x, msg.y, msg.z))
+            if len(self.initial_pose_samples) < self.initial_pose_samples_required:
+                return
+
+            initial_pose = np.asarray(self.initial_pose_samples, dtype=float)
+            self.start_x, self.start_y, self.start_z = np.mean(initial_pose, axis=0)
+
             for wp in self.waypoints_relativos:
                 self.lista_alvos_absolutos.append([
                     self.start_x + wp[0],
                     self.start_y + wp[1],
                     self.start_z + wp[2]])
-            self.get_logger().info(f'Rota mapeada com {len(self.lista_alvos_absolutos)} waypoints. Decolando...')
-            
-        self.current_x = msg.x
-        self.current_y = msg.y
-        self.current_z = msg.z
-        self.current_yaw = msg.heading
+            self.get_logger().info(
+                f'Origem estabilizada com {len(initial_pose)} amostras; '
+                f'rota mapeada com {len(self.lista_alvos_absolutos)} waypoints.'
+            )
 
     def timer_callback(self):
         """
@@ -372,7 +540,16 @@ class DroneOffboardNode(Node):
             )
         self.last_control_tick_s = now_s
 
-        if self.current_x is None:
+        if self.current_x is None or not self.lista_alvos_absolutos:
+            return
+
+        sensores_prontos = (
+            self.rgb_frames_seen >= self.startup_visual_frames_required
+            and self.last_valid_visual_clock_s is not None
+            and self.attitude_frames_received > 0
+            and (not self.use_imu_raw or self.last_imu_timestamp_s is not None)
+        )
+        if not sensores_prontos:
             return
 
         self.publish_offboard_control_mode()
@@ -549,22 +726,31 @@ class DroneOffboardNode(Node):
             not self.missao_concluida and
             not (is_ultimo_wp and distancia <= self.raio_desativa_evasao_final)
         )
-        self.evasao_visual_ativa = evasao_habilitada
+        with self.control_state_lock:
+            self.evasao_visual_ativa = evasao_habilitada
 
         if not evasao_habilitada:
-            self.obstacle_risk = 0.0
-            self.avoid_lateral_body = 0.0
-            self.avoid_brake = 0.0
+            with self.control_state_lock:
+                self.obstacle_risk = 0.0
+                self.avoid_lateral_body = 0.0
+                self.avoid_brake = 0.0
+                self.avoidance_engaged = False
+        else:
+            self.proteger_contra_percepcao_obsoleta()
 
-        if evasao_habilitada and self.obstacle_risk > 0.04:
-            brake_scale = max(0.7, 1.0 - self.avoid_brake)
+        avoidance = self.obter_snapshot_evasao()
+        if evasao_habilitada and avoidance['avoidance_engaged']:
+            brake_scale = max(
+                self.avoidance_min_speed_scale,
+                1.0 - avoidance['avoid_brake'],
+            )
             vx *= brake_scale
             vy *= brake_scale
 
             right_x = -math.sin(self.current_yaw)
             right_y = math.cos(self.current_yaw)
-            vx += right_x * self.avoid_lateral_body
-            vy += right_y * self.avoid_lateral_body
+            vx += right_x * avoidance['avoid_lateral_body']
+            vy += right_y * avoidance['avoid_lateral_body']
 
             velocidade_cmd = math.sqrt(vx**2 + vy**2)
             if velocidade_cmd > velocidade_maxima_atual:
@@ -1114,6 +1300,7 @@ class DroneOffboardNode(Node):
                 'stored_flow_unit': 'pixels_per_observed_interval',
                 'risk_flow_unit': 'equivalent_pixels_per_nominal_interval',
             },
+            'reproducibility_and_safety': self.obter_configuracao_reprodutibilidade(),
             'arrays': {
                 'intervals': 'intervals.npy',
                 'image_delta_bgr': 'image_delta_bgr.npy',
@@ -1147,6 +1334,7 @@ class DroneOffboardNode(Node):
         def numero(valor):
             return float(valor) if valor is not None else float('nan')
 
+        avoidance = self.obter_snapshot_evasao()
         return {
             'frame_stamp_s': numero(frame_stamp_s),
             'depth_stamp_s': numero(depth_stamp_s),
@@ -1163,10 +1351,10 @@ class DroneOffboardNode(Node):
             'accel': np.asarray(self.current_accel_m_s2, dtype=float).copy(),
             'smooth_vx': float(self.smooth_vx),
             'smooth_vy': float(self.smooth_vy),
-            'obstacle_risk': float(self.obstacle_risk),
-            'avoid_lateral_body': float(self.avoid_lateral_body),
-            'avoid_brake': float(self.avoid_brake),
-            'pan_comp_delta_rad': float(self.last_pan_delta_rad),
+            'obstacle_risk': avoidance['obstacle_risk'],
+            'avoid_lateral_body': avoidance['avoid_lateral_body'],
+            'avoid_brake': avoidance['avoid_brake'],
+            'pan_comp_delta_rad': avoidance['last_pan_delta_rad'],
         }
 
     def metricas_depth_memmap(self, depth_m):
@@ -1524,8 +1712,9 @@ class DroneOffboardNode(Node):
         if not self.compensar_pan_yaw:
             self.prev_stabilization_stamp_s = frame_stamp_s
             self.prev_stabilization_yaw = self.current_yaw_attitude
-            self.last_pan_delta_rad = 0.0
-            self.last_pan_delta_source = 'disabled'
+            with self.control_state_lock:
+                self.last_pan_delta_rad = 0.0
+                self.last_pan_delta_source = 'disabled'
             return 0.0, 'disabled'
 
         attitude_delta = None
@@ -1561,8 +1750,9 @@ class DroneOffboardNode(Node):
 
         self.prev_stabilization_stamp_s = frame_stamp_s
         self.prev_stabilization_yaw = self.current_yaw_attitude
-        self.last_pan_delta_rad = pan_compensado
-        self.last_pan_delta_source = source
+        with self.control_state_lock:
+            self.last_pan_delta_rad = pan_compensado
+            self.last_pan_delta_source = source
 
         return pan_compensado, source
 
@@ -1647,8 +1837,9 @@ class DroneOffboardNode(Node):
         """
 
         if not self.compensacao_imu_ativa:
-            self.last_pan_delta_rad = 0.0
-            self.last_pan_delta_source = 'disabled'
+            with self.control_state_lock:
+                self.last_pan_delta_rad = 0.0
+                self.last_pan_delta_source = 'disabled'
             return cv_image, cv_image[:, :, 3], cv_image.copy()
 
         H, pan_delta, pan_source = self.montar_homografia_compensacao_imu(msg)
@@ -1776,12 +1967,19 @@ class DroneOffboardNode(Node):
             smoothing_dt_s,
             self.nominal_visual_dt_s,
         )
-        self.obstacle_risk += alpha * (risk - self.obstacle_risk)
-        self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
-        self.avoid_brake += alpha * (brake - self.avoid_brake)
+        with self.control_state_lock:
+            self.obstacle_risk += alpha * (risk - self.obstacle_risk)
+            self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
+            self.avoid_brake += alpha * (brake - self.avoid_brake)
 
-        if abs(self.avoid_lateral_body) > 0.04:
-            self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
+            if self.avoidance_engaged:
+                if self.obstacle_risk <= self.risk_exit_threshold:
+                    self.avoidance_engaged = False
+            elif self.obstacle_risk >= self.risk_enter_threshold:
+                self.avoidance_engaged = True
+
+            if abs(self.avoid_lateral_body) > 0.04:
+                self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha, frame_stamp_s):
         """
@@ -1836,6 +2034,8 @@ class DroneOffboardNode(Node):
         if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            with self.control_state_lock:
+                self.last_visual_update_clock_s = self.get_clock().now().nanoseconds * 1e-9
             self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
             return debug, None
 
@@ -1854,7 +2054,7 @@ class DroneOffboardNode(Node):
         if next_points is None or status is None:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
+            self.registrar_falha_percepcao('lucas_kanade_sem_resultado')
             return debug, None
 
         old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
@@ -1870,12 +2070,20 @@ class DroneOffboardNode(Node):
         if len(new) < 12:
             self.prev_gray_avoidance = gray
             self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
-            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
+            self.registrar_falha_percepcao('poucos_pontos_rastreados')
             return debug, None
 
         valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
         old = old[valid_pixels]
         new = new[valid_pixels]
+
+        if len(new) < 12:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.registrar_falha_percepcao('poucos_pontos_na_regiao_valida')
+            return debug, None
+
+        self.registrar_percepcao_valida()
 
         flow = new - old
         radial = new - np.array([[cx, cy]])
@@ -1985,10 +2193,8 @@ class DroneOffboardNode(Node):
         ser visualizado e salvo em dataset junto com pose, atitude e IMU bruta, mas nao entra
         no calculo de evasao reativa.
 
-        A funcao tambem atualiza as janelas de depuracao visual usadas durante os testes:
-        a imagem original com a geometria do warping, a visualizacao da evasao reativa e,
-        quando disponivel, o mapa de profundidade ground truth colorizado. O waitKey(1) e
-        mantido para permitir que o OpenCV atualize as janelas a cada frame.
+        A janela de depuracao visual e opcional e fica desligada nas runs oficiais para nao
+        introduzir atraso variavel no callback da camera.
 
         Importante: esta compensacao reduz ego-rotacao visual, mas nao remove translacao da
         camera, porque translacao exige profundidade por pixel. A profundidade do Gazebo fica
@@ -2064,7 +2270,7 @@ class DroneOffboardNode(Node):
             )
 
             # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
-            if self.evasao_visual_ativa:
+            if self.obter_snapshot_evasao()['evasao_visual_ativa']:
                 visao_da_evasao, flow_interval = self.calcular_evasao_visual(
                     imagem_estabilizada,
                     mascara_alpha,
@@ -2088,9 +2294,9 @@ class DroneOffboardNode(Node):
             #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
             #if depth_gt_visual is not None:
                 #cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
-            cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
-            #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
-            cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
+            if self.show_debug_window:
+                cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
+                cv2.waitKey(1)
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
 
@@ -2133,6 +2339,7 @@ class DroneOffboardNode(Node):
         siny_cosp = 2.0 * (w * z + x * y)
         cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
         self.current_yaw_attitude = math.atan2(siny_cosp, cosy_cosp)
+        self.attitude_frames_received += 1
 
     def destroy_node(self):
         """
@@ -2156,4 +2363,6 @@ class DroneOffboardNode(Node):
             f'{self.depth_intervals_saved} intervalos salvos, {descartes} descartados, '
             f'{self.rgb_frames_rejected_nonmonotonic} RGB repetidos/nao monotonicos.'
         )
+        if self.show_debug_window:
+            cv2.destroyAllWindows()
         super().destroy_node()

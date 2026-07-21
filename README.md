@@ -64,7 +64,13 @@ PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p save_ground_truth_dataset:=true \
   -p ground_truth_depth_max_age_s:=0.08 \
   -p ground_truth_max_interval_s:=0.50 \
-  -p use_dt_normalized_control:=false
+  -p use_dt_normalized_control:=true \
+  -p nominal_visual_dt_s:=0.055 \
+  -p deterministic_cv:=true \
+  -p show_debug_window:=false \
+  -p velocidade_maxima_m_s:=6.0 \
+  -p avoidance_max_brake:=0.85 \
+  -p perception_failure_brake:=0.85
 ```
 
 O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam

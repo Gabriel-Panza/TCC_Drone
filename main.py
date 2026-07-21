@@ -121,6 +121,10 @@ class DataLogger(Node):
                 'attitude+gyro': 4,
             },
         }
+        if self.controller_node is not None:
+            manifesto['reproducibility_and_safety'] = (
+                self.controller_node.obter_configuracao_reprodutibilidade()
+            )
         with open(self.manifest_path, mode='w', encoding='utf-8') as fp:
             json.dump(manifesto, fp, indent=2)
 
@@ -138,12 +142,17 @@ class DataLogger(Node):
     def capturar_estado_odometria(self, msg):
         """Captura valores correntes apenas para calcular variacoes."""
 
-        obstacle_risk = getattr(self.controller_node, 'obstacle_risk', 0.0)
-        avoid_lateral_body = getattr(self.controller_node, 'avoid_lateral_body', 0.0)
-        avoid_brake = getattr(self.controller_node, 'avoid_brake', 0.0)
-        evasao_visual_ativa = int(bool(getattr(self.controller_node, 'evasao_visual_ativa', False)))
-        pan_comp_delta_rad = getattr(self.controller_node, 'last_pan_delta_rad', 0.0)
-        pan_comp_source = getattr(self.controller_node, 'last_pan_delta_source', 'none')
+        if self.controller_node is not None:
+            avoidance = self.controller_node.obter_snapshot_evasao()
+        else:
+            avoidance = {
+                'obstacle_risk': 0.0,
+                'avoid_lateral_body': 0.0,
+                'avoid_brake': 0.0,
+                'evasao_visual_ativa': False,
+                'last_pan_delta_rad': 0.0,
+                'last_pan_delta_source': 'none',
+            }
 
         return {
             'timestamp_s': msg.timestamp / 1_000_000.0,
@@ -153,12 +162,14 @@ class DataLogger(Node):
             'roll_speed': float(msg.angular_velocity[0]),
             'pitch_speed': float(msg.angular_velocity[1]),
             'yaw_speed': float(msg.angular_velocity[2]),
-            'obstacle_risk': float(obstacle_risk),
-            'avoid_lateral_body': float(avoid_lateral_body),
-            'avoid_brake': float(avoid_brake),
-            'evasao_visual_ativa': evasao_visual_ativa,
-            'pan_comp_delta_rad': float(pan_comp_delta_rad),
-            'pan_comp_source_code': self.codificar_pan_source(pan_comp_source),
+            'obstacle_risk': avoidance['obstacle_risk'],
+            'avoid_lateral_body': avoidance['avoid_lateral_body'],
+            'avoid_brake': avoidance['avoid_brake'],
+            'evasao_visual_ativa': int(avoidance['evasao_visual_ativa']),
+            'pan_comp_delta_rad': avoidance['last_pan_delta_rad'],
+            'pan_comp_source_code': self.codificar_pan_source(
+                avoidance['last_pan_delta_source']
+            ),
         }
 
     def odometry_callback(self, msg):
