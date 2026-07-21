@@ -107,39 +107,3 @@ Media treino,teste,delta_depth_p90_m,1.0240900642166402,2.188650699678007,,25,in
 Media treino,teste,delta_depth_close_2m_pp,1.1552804702062853,1.6347554086965088,,25,incremental_70_20_10_por_bateria
 Media treino,teste,delta_depth_close_5m_pp,1.7608231515156152,2.482858877491487,,25,incremental_70_20_10_por_bateria
 Media treino,teste,delta_depth_close_10m_pp,1.130707190067374,1.6246459328039258,,25,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_p10_m,0.04148162060803619,0.06572753982245311,0.9351408387462712,32,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_p50_m,0.0847747496757445,0.13104123346663377,0.9077807228723743,32,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_p90_m,0.6659855653176777,1.1501929573457055,0.8907008368168111,32,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_close_2m_pp,0.6286189710542834,0.9038996151757344,0.9030581093336917,32,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_close_5m_pp,0.6946819275859472,1.0331511462269258,0.9145495493395629,32,incremental_70_20_10_por_bateria
-MLP,treino,delta_depth_close_10m_pp,0.39245475312174155,0.600213270388915,0.8864063098187486,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_p10_m,0.08014843371987002,0.18552439461315007,,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_p50_m,0.2003539434566338,0.31241327992509604,,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_p90_m,1.158142766744627,2.530105620767147,,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_close_2m_pp,1.3156577247148074,2.104347221835919,,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_close_5m_pp,1.5970714472436192,2.5541994245219737,,32,incremental_70_20_10_por_bateria
-Media treino,treino,delta_depth_close_10m_pp,0.8767078133628663,1.296517354577218,,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_p10_m,0.16076525460394367,0.2779419472184021,0.20695181606497573,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_p50_m,0.4282166862334659,0.688438759631209,0.14933190495645682,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_p90_m,2.2864050683113697,3.97787362543358,-0.20526331108896997,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_close_2m_pp,2.9796924023150946,4.930178310882959,0.20788147239825394,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_close_5m_pp,3.5396060386517103,5.380421303811021,0.09993541440343884,32,incremental_70_20_10_por_bateria
-MLP,validacao,delta_depth_close_10m_pp,2.20695846062133,3.3691175933216493,0.0996013079774808,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_p10_m,0.08322726078539144,0.18777240299377046,,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_p50_m,0.20078369018561545,0.30159781354538034,,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_p90_m,0.9618146018325984,1.7848878755380957,,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_close_2m_pp,1.4496765461332697,2.284297775899453,,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_close_5m_pp,1.7414019369915608,2.541256500145751,,32,incremental_70_20_10_por_bateria
-Media treino,validacao,delta_depth_close_10m_pp,1.021619327618221,1.3569578953236519,,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_p10_m,0.17722328282577374,0.30335857434489844,0.32479594085511065,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_p50_m,0.4768273585512581,0.8426366431068064,0.19508590980129537,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_p90_m,2.1690163771794384,4.074815421221758,0.351955976236007,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_close_2m_pp,3.222916903616769,5.622250279474784,0.27097463828265017,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_close_5m_pp,3.7468386551514143,6.752150454417586,0.178171150932594,32,incremental_70_20_10_por_bateria
-MLP,teste,delta_depth_close_10m_pp,2.163365759323679,3.626961712421155,0.2107895305919963,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_p10_m,0.07734719556902692,0.1301256362096127,,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_p50_m,0.23056808455739902,0.32891138967960554,,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_p90_m,1.195340611813277,2.656459276839885,,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_close_2m_pp,1.2257308141498786,1.9066485049670006,,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_close_5m_pp,1.7873155504423672,2.5471256582037447,,32,incremental_70_20_10_por_bateria
-Media treino,teste,delta_depth_close_10m_pp,1.073403614043829,1.5503535210773884,,32,incremental_70_20_10_por_bateria
