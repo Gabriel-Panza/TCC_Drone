@@ -239,19 +239,19 @@ class DroneOffboardNode(Node):
         self.smooth_vy = 0.0
         self.velocity_smooth_alpha = 0.4
         self.yaw_smooth_alpha = 0.8
-        self.yaw_max_rate_rad_s = math.radians(60.0)
+        self.yaw_max_rate_rad_s = math.radians(90.0)
         self.last_control_tick_s = None
         self.control_dt_s = 0.04
 
         self.prev_gray_avoidance = None
         self.prev_points_avoidance = None
         self.prev_avoidance_stamp_s = None
-        self.obstacle_risk = 0.0
+        self.obstacle_risk = 0.1
         self.avoid_lateral_body = 0.0
         self.avoid_brake = 0.0
-        self.avoid_side_memory = 0.8
-        self.avoidance_max_brake = 0.4
-        self.raio_finalizacao = 2.0
+        self.avoid_side_memory = 0.9
+        self.avoidance_max_brake = 0.6
+        self.raio_finalizacao = 3.0
         self.raio_desativa_evasao_final = 8.0
         self.evasao_visual_ativa = True
         self.max_lateral_acceleration = 4.0
@@ -261,10 +261,10 @@ class DroneOffboardNode(Node):
         self.start_z = None
 
         self.waypoints_relativos = [
-            [-25.0, 25.0, -1.75],
-            [-48.0, 68.0, -1.75],
-            [-25.0, 25.0, -1.75],
-            [0.0, 0.0, -1.75]
+            [-25.0, 25.0, -1.65],
+            [-50.0, 70.0, -1.65],
+            [-25.0, 25.0, -1.65],
+            [0.0, 0.0, -1.65]
         ]
         
         self.lista_alvos_absolutos = []
@@ -275,10 +275,10 @@ class DroneOffboardNode(Node):
         self.missao_concluida = False
         self.encerrando = False
         
-        self.velocidade_maxima = 12.0    # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 6.0     # Raio de aceitação para mudar de waypoint
+        self.velocidade_maxima = 12.0
+        self.raio_de_aceitacao = 4.0
         
-        self.zona_frenagem_curva = 9.0
+        self.zona_frenagem_curva = 8.0
         self.angulo_curva_forte = math.radians(45)
 
         self.dt = 0.04  # Periodo nominal do controle (25 Hz).
@@ -518,8 +518,8 @@ class DroneOffboardNode(Node):
             if is_ultimo_wp:
                 dist_inicio_frenagem = velocidade_maxima_atual * 1.25
             else:
-                dist_inicio_frenagem = velocidade_maxima_atual * 0.65
-            velocidade_minima = velocidade_maxima_atual * 0.1
+                dist_inicio_frenagem = velocidade_maxima_atual
+            velocidade_minima = velocidade_maxima_atual * 0.15
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = velocidade_maxima_atual
@@ -556,7 +556,7 @@ class DroneOffboardNode(Node):
             self.avoid_lateral_body = 0.0
             self.avoid_brake = 0.0
 
-        if evasao_habilitada and self.obstacle_risk > 0.04:
+        if evasao_habilitada and self.obstacle_risk > 0.03:
             brake_scale = max(0.7, 1.0 - self.avoid_brake)
             vx *= brake_scale
             vy *= brake_scale
@@ -1780,7 +1780,7 @@ class DroneOffboardNode(Node):
         self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
         self.avoid_brake += alpha * (brake - self.avoid_brake)
 
-        if abs(self.avoid_lateral_body) > 0.04:
+        if abs(self.avoid_lateral_body) > 0.03:
             self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
 
     def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha, frame_stamp_s):
