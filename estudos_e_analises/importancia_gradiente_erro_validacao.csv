@@ -1,0 +1,265 @@
+alvo_delta,feature,grupo,importancia,importancia_pct,ranking_no_alvo
+delta_depth_p10_m,dt_s,Sincronizacao,0.009826716966927052,0.9826716966927052,43
+delta_depth_p10_m,depth_age_s,Sincronizacao,0.011520576663315296,1.1520576663315296,38
+delta_depth_p10_m,depth_dt_s,Sincronizacao,0.018208516761660576,1.8208516761660576,19
+delta_depth_p10_m,delta_x_m,Movimento,0.019761107861995697,1.9761107861995697,14
+delta_depth_p10_m,delta_y_m,Movimento,0.014371996745467186,1.4371996745467186,25
+delta_depth_p10_m,delta_z_m,Movimento,0.03788004443049431,3.788004443049431,4
+delta_depth_p10_m,delta_roll_rad,IMU e atitude,0.026890989392995834,2.6890989392995834,8
+delta_depth_p10_m,delta_pitch_rad,IMU e atitude,0.12714050710201263,12.714050710201263,1
+delta_depth_p10_m,delta_yaw_heading_rad,IMU e atitude,0.014046824537217617,1.4046824537217617,26
+delta_depth_p10_m,delta_yaw_attitude_rad,IMU e atitude,0.010908380150794983,1.0908380150794983,41
+delta_depth_p10_m,delta_gyro_x_rad_s,IMU e atitude,0.022047076374292374,2.2047076374292374,12
+delta_depth_p10_m,delta_gyro_y_rad_s,IMU e atitude,0.048539891839027405,4.8539891839027405,3
+delta_depth_p10_m,delta_gyro_z_rad_s,IMU e atitude,0.013140133582055569,1.3140133582055569,30
+delta_depth_p10_m,gyro_x_integral_rad,IMU e atitude,0.009580687619745731,0.9580687619745731,44
+delta_depth_p10_m,gyro_y_integral_rad,IMU e atitude,0.12531732022762299,12.531732022762299,2
+delta_depth_p10_m,gyro_z_integral_rad,IMU e atitude,0.011286255903542042,1.1286255903542042,39
+delta_depth_p10_m,delta_accel_x_m_s2,IMU e atitude,0.029299132525920868,2.929913252592087,6
+delta_depth_p10_m,delta_accel_y_m_s2,IMU e atitude,0.02479180507361889,2.479180507361889,9
+delta_depth_p10_m,delta_accel_z_m_s2,IMU e atitude,0.016410091891884804,1.6410091891884804,21
+delta_depth_p10_m,delta_smooth_vx_m_s,Movimento,0.013244325295090675,1.3244325295090675,29
+delta_depth_p10_m,delta_smooth_vy_m_s,Movimento,0.022066885605454445,2.2066885605454445,11
+delta_depth_p10_m,delta_obstacle_risk,Comandos reativos,0.014802352525293827,1.4802352525293827,24
+delta_depth_p10_m,delta_avoid_lateral_body,Comandos reativos,0.012622066773474216,1.2622066773474216,32
+delta_depth_p10_m,delta_avoid_brake,Comandos reativos,0.01197371818125248,1.197371818125248,36
+delta_depth_p10_m,pan_comp_delta_rad,Comandos reativos,0.015336471609771252,1.5336471609771252,22
+delta_depth_p10_m,flow_valid_points,Optical flow e risco,0.014827466569840908,1.4827466569840908,23
+delta_depth_p10_m,flow_active_points,Optical flow e risco,0.011224549263715744,1.1224549263715744,40
+delta_depth_p10_m,flow_track_retention_pct,Optical flow e risco,0.02051784098148346,2.051784098148346,13
+delta_depth_p10_m,flow_mean_x_px,Optical flow e risco,0.01826774701476097,1.826774701476097,17
+delta_depth_p10_m,flow_mean_y_px,Optical flow e risco,0.02996133081614971,2.996133081614971,5
+delta_depth_p10_m,flow_mag_mean_px,Optical flow e risco,0.026932451874017715,2.6932451874017715,7
+delta_depth_p10_m,flow_mag_p90_px,Optical flow e risco,0.01835269294679165,1.8352692946791649,16
+delta_depth_p10_m,radial_flow_mean_px,Optical flow e risco,0.013541452586650848,1.3541452586650848,27
+delta_depth_p10_m,radial_flow_p90_px,Optical flow e risco,0.01811889186501503,1.811889186501503,20
+delta_depth_p10_m,point_risk_mean_delta_basis,Optical flow e risco,0.01278818678110838,1.278818678110838,31
+delta_depth_p10_m,point_risk_p75_delta_basis,Optical flow e risco,0.019440695643424988,1.9440695643424988,15
+delta_depth_p10_m,img_delta_mean,Diferenca de imagem,0.012585844844579697,1.2585844844579697,33
+delta_depth_p10_m,img_delta_std,Diferenca de imagem,0.01822258159518242,1.8222581595182419,18
+delta_depth_p10_m,img_delta_abs_mean,Diferenca de imagem,0.013487177900969982,1.3487177900969982,28
+delta_depth_p10_m,img_delta_abs_p90,Diferenca de imagem,0.011549917981028557,1.1549917981028557,37
+delta_depth_p10_m,flow_vec_rel_std,Optical flow e risco,0.012026912532746792,1.2026912532746792,35
+delta_depth_p10_m,flow_vec_xy_mean,Optical flow e risco,0.012409769929945469,1.240976992994547,34
+delta_depth_p10_m,flow_vec_radial_mean,Optical flow e risco,0.024677084758877754,2.4677084758877754,10
+delta_depth_p10_m,flow_vec_risk_mean,Optical flow e risco,0.010053589008748531,1.0053589008748531,42
+delta_depth_p50_m,dt_s,Sincronizacao,0.013747790828347206,1.3747790828347206,25
+delta_depth_p50_m,depth_age_s,Sincronizacao,0.015903251245617867,1.5903251245617867,20
+delta_depth_p50_m,depth_dt_s,Sincronizacao,0.01407907996326685,1.407907996326685,23
+delta_depth_p50_m,delta_x_m,Movimento,0.027433820068836212,2.743382006883621,9
+delta_depth_p50_m,delta_y_m,Movimento,0.016566820442676544,1.6566820442676544,18
+delta_depth_p50_m,delta_z_m,Movimento,0.06290821731090546,6.290821731090546,3
+delta_depth_p50_m,delta_roll_rad,IMU e atitude,0.014552440494298935,1.4552440494298935,22
+delta_depth_p50_m,delta_pitch_rad,IMU e atitude,0.11476396769285202,11.476396769285202,2
+delta_depth_p50_m,delta_yaw_heading_rad,IMU e atitude,0.017606036737561226,1.7606036737561226,16
+delta_depth_p50_m,delta_yaw_attitude_rad,IMU e atitude,0.011598732322454453,1.1598732322454453,32
+delta_depth_p50_m,delta_gyro_x_rad_s,IMU e atitude,0.009429502300918102,0.9429502300918102,41
+delta_depth_p50_m,delta_gyro_y_rad_s,IMU e atitude,0.04676187038421631,4.676187038421631,4
+delta_depth_p50_m,delta_gyro_z_rad_s,IMU e atitude,0.010180520825088024,1.0180520825088024,38
+delta_depth_p50_m,gyro_x_integral_rad,IMU e atitude,0.011003071442246437,1.1003071442246437,35
+delta_depth_p50_m,gyro_y_integral_rad,IMU e atitude,0.12822459638118744,12.822459638118744,1
+delta_depth_p50_m,gyro_z_integral_rad,IMU e atitude,0.013815579935908318,1.3815579935908318,24
+delta_depth_p50_m,delta_accel_x_m_s2,IMU e atitude,0.031957339495420456,3.1957339495420456,7
+delta_depth_p50_m,delta_accel_y_m_s2,IMU e atitude,0.035150911659002304,3.5150911659002304,5
+delta_depth_p50_m,delta_accel_z_m_s2,IMU e atitude,0.012073488906025887,1.2073488906025887,29
+delta_depth_p50_m,delta_smooth_vx_m_s,Movimento,0.012318148277699947,1.2318148277699947,28
+delta_depth_p50_m,delta_smooth_vy_m_s,Movimento,0.022683285176753998,2.2683285176754,11
+delta_depth_p50_m,delta_obstacle_risk,Comandos reativos,0.011084571480751038,1.1084571480751038,34
+delta_depth_p50_m,delta_avoid_lateral_body,Comandos reativos,0.015358692966401577,1.5358692966401577,21
+delta_depth_p50_m,delta_avoid_brake,Comandos reativos,0.009134277701377869,0.9134277701377869,43
+delta_depth_p50_m,pan_comp_delta_rad,Comandos reativos,0.012358225882053375,1.2358225882053375,27
+delta_depth_p50_m,flow_valid_points,Optical flow e risco,0.019192874431610107,1.9192874431610107,15
+delta_depth_p50_m,flow_active_points,Optical flow e risco,0.016079600900411606,1.6079600900411606,19
+delta_depth_p50_m,flow_track_retention_pct,Optical flow e risco,0.017058484256267548,1.7058484256267548,17
+delta_depth_p50_m,flow_mean_x_px,Optical flow e risco,0.01192538347095251,1.192538347095251,30
+delta_depth_p50_m,flow_mean_y_px,Optical flow e risco,0.024168990552425385,2.4168990552425385,10
+delta_depth_p50_m,flow_mag_mean_px,Optical flow e risco,0.029195208102464676,2.9195208102464676,8
+delta_depth_p50_m,flow_mag_p90_px,Optical flow e risco,0.03464587405323982,3.4645874053239822,6
+delta_depth_p50_m,radial_flow_mean_px,Optical flow e risco,0.010174290277063847,1.0174290277063847,39
+delta_depth_p50_m,radial_flow_p90_px,Optical flow e risco,0.02007998339831829,2.007998339831829,13
+delta_depth_p50_m,point_risk_mean_delta_basis,Optical flow e risco,0.008719319477677345,0.8719319477677345,44
+delta_depth_p50_m,point_risk_p75_delta_basis,Optical flow e risco,0.013668595813214779,1.366859581321478,26
+delta_depth_p50_m,img_delta_mean,Diferenca de imagem,0.02124110981822014,2.124110981822014,12
+delta_depth_p50_m,img_delta_std,Diferenca de imagem,0.011713584885001183,1.1713584885001183,31
+delta_depth_p50_m,img_delta_abs_mean,Diferenca de imagem,0.019311152398586273,1.9311152398586273,14
+delta_depth_p50_m,img_delta_abs_p90,Diferenca de imagem,0.010631500743329525,1.0631500743329525,37
+delta_depth_p50_m,flow_vec_rel_std,Optical flow e risco,0.011517890729010105,1.1517890729010105,33
+delta_depth_p50_m,flow_vec_xy_mean,Optical flow e risco,0.009879129007458687,0.9879129007458687,40
+delta_depth_p50_m,flow_vec_radial_mean,Optical flow e risco,0.009280751459300518,0.9280751459300518,42
+delta_depth_p50_m,flow_vec_risk_mean,Optical flow e risco,0.01082200650125742,1.082200650125742,36
+delta_depth_p90_m,dt_s,Sincronizacao,0.014233835972845554,1.4233835972845554,36
+delta_depth_p90_m,depth_age_s,Sincronizacao,0.023115381598472595,2.3115381598472595,17
+delta_depth_p90_m,depth_dt_s,Sincronizacao,0.014547078870236874,1.4547078870236874,34
+delta_depth_p90_m,delta_x_m,Movimento,0.018557744100689888,1.8557744100689888,25
+delta_depth_p90_m,delta_y_m,Movimento,0.02001025341451168,2.001025341451168,23
+delta_depth_p90_m,delta_z_m,Movimento,0.024685487151145935,2.4685487151145935,13
+delta_depth_p90_m,delta_roll_rad,IMU e atitude,0.032061126083135605,3.2061126083135605,5
+delta_depth_p90_m,delta_pitch_rad,IMU e atitude,0.08750760555267334,8.750760555267334,1
+delta_depth_p90_m,delta_yaw_heading_rad,IMU e atitude,0.020062392577528954,2.0062392577528954,22
+delta_depth_p90_m,delta_yaw_attitude_rad,IMU e atitude,0.012478986755013466,1.2478986755013466,39
+delta_depth_p90_m,delta_gyro_x_rad_s,IMU e atitude,0.03183594346046448,3.1835943460464478,6
+delta_depth_p90_m,delta_gyro_y_rad_s,IMU e atitude,0.028178002685308456,2.8178002685308456,8
+delta_depth_p90_m,delta_gyro_z_rad_s,IMU e atitude,0.026071522384881973,2.6071522384881973,11
+delta_depth_p90_m,gyro_x_integral_rad,IMU e atitude,0.014451208524405956,1.4451208524405956,35
+delta_depth_p90_m,gyro_y_integral_rad,IMU e atitude,0.06602276861667633,6.602276861667633,2
+delta_depth_p90_m,gyro_z_integral_rad,IMU e atitude,0.011972850188612938,1.1972850188612938,42
+delta_depth_p90_m,delta_accel_x_m_s2,IMU e atitude,0.033342842012643814,3.3342842012643814,4
+delta_depth_p90_m,delta_accel_y_m_s2,IMU e atitude,0.02588307484984398,2.588307484984398,12
+delta_depth_p90_m,delta_accel_z_m_s2,IMU e atitude,0.020571494475007057,2.0571494475007057,20
+delta_depth_p90_m,delta_smooth_vx_m_s,Movimento,0.011177374981343746,1.1177374981343746,43
+delta_depth_p90_m,delta_smooth_vy_m_s,Movimento,0.017811782658100128,1.7811782658100128,27
+delta_depth_p90_m,delta_obstacle_risk,Comandos reativos,0.012243270874023438,1.2243270874023438,41
+delta_depth_p90_m,delta_avoid_lateral_body,Comandos reativos,0.023429812863469124,2.3429812863469124,15
+delta_depth_p90_m,delta_avoid_brake,Comandos reativos,0.026094067841768265,2.6094067841768265,10
+delta_depth_p90_m,pan_comp_delta_rad,Comandos reativos,0.020109718665480614,2.0109718665480614,21
+delta_depth_p90_m,flow_valid_points,Optical flow e risco,0.014854811131954193,1.4854811131954193,32
+delta_depth_p90_m,flow_active_points,Optical flow e risco,0.029869701713323593,2.9869701713323593,7
+delta_depth_p90_m,flow_track_retention_pct,Optical flow e risco,0.019979558885097504,1.9979558885097504,24
+delta_depth_p90_m,flow_mean_x_px,Optical flow e risco,0.027963675558567047,2.7963675558567047,9
+delta_depth_p90_m,flow_mean_y_px,Optical flow e risco,0.0166384968906641,1.66384968906641,28
+delta_depth_p90_m,flow_mag_mean_px,Optical flow e risco,0.014574544504284859,1.4574544504284859,33
+delta_depth_p90_m,flow_mag_p90_px,Optical flow e risco,0.033565230667591095,3.3565230667591095,3
+delta_depth_p90_m,radial_flow_mean_px,Optical flow e risco,0.021293364465236664,2.1293364465236664,19
+delta_depth_p90_m,radial_flow_p90_px,Optical flow e risco,0.01247046235948801,1.247046235948801,40
+delta_depth_p90_m,point_risk_mean_delta_basis,Optical flow e risco,0.01590973511338234,1.590973511338234,30
+delta_depth_p90_m,point_risk_p75_delta_basis,Optical flow e risco,0.022211842238903046,2.2211842238903046,18
+delta_depth_p90_m,img_delta_mean,Diferenca de imagem,0.015114199370145798,1.5114199370145798,31
+delta_depth_p90_m,img_delta_std,Diferenca de imagem,0.023361951112747192,2.3361951112747192,16
+delta_depth_p90_m,img_delta_abs_mean,Diferenca de imagem,0.013304837979376316,1.3304837979376316,38
+delta_depth_p90_m,img_delta_abs_p90,Diferenca de imagem,0.018055768683552742,1.8055768683552742,26
+delta_depth_p90_m,flow_vec_rel_std,Optical flow e risco,0.016166619956493378,1.6166619956493378,29
+delta_depth_p90_m,flow_vec_xy_mean,Optical flow e risco,0.013333342038094997,1.3333342038094997,37
+delta_depth_p90_m,flow_vec_radial_mean,Optical flow e risco,0.02418631687760353,2.418631687760353,14
+delta_depth_p90_m,flow_vec_risk_mean,Optical flow e risco,0.010689890012145042,1.0689890012145042,44
+delta_depth_close_2m_pp,dt_s,Sincronizacao,0.015151342377066612,1.5151342377066612,24
+delta_depth_close_2m_pp,depth_age_s,Sincronizacao,0.011123963631689548,1.1123963631689548,38
+delta_depth_close_2m_pp,depth_dt_s,Sincronizacao,0.01530681736767292,1.530681736767292,23
+delta_depth_close_2m_pp,delta_x_m,Movimento,0.02073013037443161,2.073013037443161,11
+delta_depth_close_2m_pp,delta_y_m,Movimento,0.012423827312886715,1.2423827312886715,34
+delta_depth_close_2m_pp,delta_z_m,Movimento,0.059128981083631516,5.9128981083631516,3
+delta_depth_close_2m_pp,delta_roll_rad,IMU e atitude,0.029911229386925697,2.9911229386925697,7
+delta_depth_close_2m_pp,delta_pitch_rad,IMU e atitude,0.11624132841825485,11.624132841825485,2
+delta_depth_close_2m_pp,delta_yaw_heading_rad,IMU e atitude,0.016163941472768784,1.6163941472768784,19
+delta_depth_close_2m_pp,delta_yaw_attitude_rad,IMU e atitude,0.010594584047794342,1.0594584047794342,39
+delta_depth_close_2m_pp,delta_gyro_x_rad_s,IMU e atitude,0.023217737674713135,2.3217737674713135,10
+delta_depth_close_2m_pp,delta_gyro_y_rad_s,IMU e atitude,0.04930999502539635,4.930999502539635,4
+delta_depth_close_2m_pp,delta_gyro_z_rad_s,IMU e atitude,0.008398923091590405,0.8398923091590405,44
+delta_depth_close_2m_pp,gyro_x_integral_rad,IMU e atitude,0.009530744515359402,0.9530744515359402,42
+delta_depth_close_2m_pp,gyro_y_integral_rad,IMU e atitude,0.12818582355976105,12.818582355976105,1
+delta_depth_close_2m_pp,gyro_z_integral_rad,IMU e atitude,0.015333517454564571,1.5333517454564571,22
+delta_depth_close_2m_pp,delta_accel_x_m_s2,IMU e atitude,0.015477236360311508,1.5477236360311508,21
+delta_depth_close_2m_pp,delta_accel_y_m_s2,IMU e atitude,0.018962476402521133,1.8962476402521133,13
+delta_depth_close_2m_pp,delta_accel_z_m_s2,IMU e atitude,0.019510803744196892,1.9510803744196892,12
+delta_depth_close_2m_pp,delta_smooth_vx_m_s,Movimento,0.013252150267362595,1.3252150267362595,32
+delta_depth_close_2m_pp,delta_smooth_vy_m_s,Movimento,0.02340502291917801,2.340502291917801,9
+delta_depth_close_2m_pp,delta_obstacle_risk,Comandos reativos,0.011635487899184227,1.1635487899184227,36
+delta_depth_close_2m_pp,delta_avoid_lateral_body,Comandos reativos,0.0142042962834239,1.42042962834239,27
+delta_depth_close_2m_pp,delta_avoid_brake,Comandos reativos,0.011822449043393135,1.1822449043393135,35
+delta_depth_close_2m_pp,pan_comp_delta_rad,Comandos reativos,0.015919707715511322,1.5919707715511322,20
+delta_depth_close_2m_pp,flow_valid_points,Optical flow e risco,0.025484735146164894,2.5484735146164894,8
+delta_depth_close_2m_pp,flow_active_points,Optical flow e risco,0.013063616119325161,1.306361611932516,33
+delta_depth_close_2m_pp,flow_track_retention_pct,Optical flow e risco,0.016934948042035103,1.6934948042035103,18
+delta_depth_close_2m_pp,flow_mean_x_px,Optical flow e risco,0.013834103010594845,1.3834103010594845,30
+delta_depth_close_2m_pp,flow_mean_y_px,Optical flow e risco,0.0331336185336113,3.3133618533611298,5
+delta_depth_close_2m_pp,flow_mag_mean_px,Optical flow e risco,0.029968740418553352,2.9968740418553352,6
+delta_depth_close_2m_pp,flow_mag_p90_px,Optical flow e risco,0.017181770876049995,1.7181770876049995,17
+delta_depth_close_2m_pp,radial_flow_mean_px,Optical flow e risco,0.010218512266874313,1.0218512266874313,41
+delta_depth_close_2m_pp,radial_flow_p90_px,Optical flow e risco,0.017843695357441902,1.7843695357441902,14
+delta_depth_close_2m_pp,point_risk_mean_delta_basis,Optical flow e risco,0.013851745054125786,1.3851745054125786,29
+delta_depth_close_2m_pp,point_risk_p75_delta_basis,Optical flow e risco,0.015107646584510803,1.5107646584510803,25
+delta_depth_close_2m_pp,img_delta_mean,Diferenca de imagem,0.0140483183786273,1.40483183786273,28
+delta_depth_close_2m_pp,img_delta_std,Diferenca de imagem,0.011488108895719051,1.1488108895719051,37
+delta_depth_close_2m_pp,img_delta_abs_mean,Diferenca de imagem,0.017760640010237694,1.7760640010237694,16
+delta_depth_close_2m_pp,img_delta_abs_p90,Diferenca de imagem,0.008895376697182655,0.8895376697182655,43
+delta_depth_close_2m_pp,flow_vec_rel_std,Optical flow e risco,0.013268901035189629,1.3268901035189629,31
+delta_depth_close_2m_pp,flow_vec_xy_mean,Optical flow e risco,0.01484680362045765,1.484680362045765,26
+delta_depth_close_2m_pp,flow_vec_radial_mean,Optical flow e risco,0.01782768778502941,1.7827687785029411,15
+delta_depth_close_2m_pp,flow_vec_risk_mean,Optical flow e risco,0.01029855664819479,1.029855664819479,40
+delta_depth_close_5m_pp,dt_s,Sincronizacao,0.013403894379734993,1.3403894379734993,26
+delta_depth_close_5m_pp,depth_age_s,Sincronizacao,0.012002158910036087,1.2002158910036087,34
+delta_depth_close_5m_pp,depth_dt_s,Sincronizacao,0.014350532554090023,1.4350532554090023,21
+delta_depth_close_5m_pp,delta_x_m,Movimento,0.02458188310265541,2.458188310265541,9
+delta_depth_close_5m_pp,delta_y_m,Movimento,0.01262677926570177,1.262677926570177,32
+delta_depth_close_5m_pp,delta_z_m,Movimento,0.05711524933576584,5.711524933576584,3
+delta_depth_close_5m_pp,delta_roll_rad,IMU e atitude,0.023370077833533287,2.3370077833533287,11
+delta_depth_close_5m_pp,delta_pitch_rad,IMU e atitude,0.12593720853328705,12.593720853328705,2
+delta_depth_close_5m_pp,delta_yaw_heading_rad,IMU e atitude,0.0158618725836277,1.58618725836277,18
+delta_depth_close_5m_pp,delta_yaw_attitude_rad,IMU e atitude,0.009610065259039402,0.9610065259039402,42
+delta_depth_close_5m_pp,delta_gyro_x_rad_s,IMU e atitude,0.014776011928915977,1.4776011928915977,20
+delta_depth_close_5m_pp,delta_gyro_y_rad_s,IMU e atitude,0.049124475568532944,4.912447556853294,4
+delta_depth_close_5m_pp,delta_gyro_z_rad_s,IMU e atitude,0.009281405247747898,0.9281405247747898,43
+delta_depth_close_5m_pp,gyro_x_integral_rad,IMU e atitude,0.010562730953097343,1.0562730953097343,41
+delta_depth_close_5m_pp,gyro_y_integral_rad,IMU e atitude,0.13487501442432404,13.487501442432404,1
+delta_depth_close_5m_pp,gyro_z_integral_rad,IMU e atitude,0.014100783504545689,1.4100783504545689,22
+delta_depth_close_5m_pp,delta_accel_x_m_s2,IMU e atitude,0.02431945875287056,2.431945875287056,10
+delta_depth_close_5m_pp,delta_accel_y_m_s2,IMU e atitude,0.02678689919412136,2.678689919412136,7
+delta_depth_close_5m_pp,delta_accel_z_m_s2,IMU e atitude,0.01627468317747116,1.627468317747116,16
+delta_depth_close_5m_pp,delta_smooth_vx_m_s,Movimento,0.011658098548650742,1.1658098548650742,35
+delta_depth_close_5m_pp,delta_smooth_vy_m_s,Movimento,0.01990162767469883,1.990162767469883,14
+delta_depth_close_5m_pp,delta_obstacle_risk,Comandos reativos,0.012914319522678852,1.2914319522678852,30
+delta_depth_close_5m_pp,delta_avoid_lateral_body,Comandos reativos,0.013265474699437618,1.3265474699437618,28
+delta_depth_close_5m_pp,delta_avoid_brake,Comandos reativos,0.009071904234588146,0.9071904234588146,44
+delta_depth_close_5m_pp,pan_comp_delta_rad,Comandos reativos,0.013356427662074566,1.3356427662074566,27
+delta_depth_close_5m_pp,flow_valid_points,Optical flow e risco,0.02037845179438591,2.037845179438591,13
+delta_depth_close_5m_pp,flow_active_points,Optical flow e risco,0.012567520141601562,1.2567520141601562,33
+delta_depth_close_5m_pp,flow_track_retention_pct,Optical flow e risco,0.01686945930123329,1.6869459301233292,15
+delta_depth_close_5m_pp,flow_mean_x_px,Optical flow e risco,0.013184253126382828,1.3184253126382828,29
+delta_depth_close_5m_pp,flow_mean_y_px,Optical flow e risco,0.02764292061328888,2.764292061328888,6
+delta_depth_close_5m_pp,flow_mag_mean_px,Optical flow e risco,0.03286593407392502,3.286593407392502,5
+delta_depth_close_5m_pp,flow_mag_p90_px,Optical flow e risco,0.02523646131157875,2.523646131157875,8
+delta_depth_close_5m_pp,radial_flow_mean_px,Optical flow e risco,0.010692693293094635,1.0692693293094635,40
+delta_depth_close_5m_pp,radial_flow_p90_px,Optical flow e risco,0.020761728286743164,2.0761728286743164,12
+delta_depth_close_5m_pp,point_risk_mean_delta_basis,Optical flow e risco,0.011298864148557186,1.1298864148557186,38
+delta_depth_close_5m_pp,point_risk_p75_delta_basis,Optical flow e risco,0.013900111429393291,1.3900111429393291,24
+delta_depth_close_5m_pp,img_delta_mean,Diferenca de imagem,0.014882000163197517,1.4882000163197517,19
+delta_depth_close_5m_pp,img_delta_std,Diferenca de imagem,0.013806026428937912,1.3806026428937912,25
+delta_depth_close_5m_pp,img_delta_abs_mean,Diferenca de imagem,0.015939736738801003,1.5939736738801003,17
+delta_depth_close_5m_pp,img_delta_abs_p90,Diferenca de imagem,0.010884097777307034,1.0884097777307034,39
+delta_depth_close_5m_pp,flow_vec_rel_std,Optical flow e risco,0.01282043382525444,1.282043382525444,31
+delta_depth_close_5m_pp,flow_vec_xy_mean,Optical flow e risco,0.011440681293606758,1.1440681293606758,37
+delta_depth_close_5m_pp,flow_vec_radial_mean,Optical flow e risco,0.014084392227232456,1.4084392227232456,23
+delta_depth_close_5m_pp,flow_vec_risk_mean,Optical flow e risco,0.01161521952599287,1.161521952599287,36
+delta_depth_close_10m_pp,dt_s,Sincronizacao,0.017458634451031685,1.7458634451031685,19
+delta_depth_close_10m_pp,depth_age_s,Sincronizacao,0.010756696574389935,1.0756696574389935,38
+delta_depth_close_10m_pp,depth_dt_s,Sincronizacao,0.015479214489459991,1.5479214489459991,24
+delta_depth_close_10m_pp,delta_x_m,Movimento,0.018883459270000458,1.8883459270000458,13
+delta_depth_close_10m_pp,delta_y_m,Movimento,0.012729930691421032,1.2729930691421032,31
+delta_depth_close_10m_pp,delta_z_m,Movimento,0.06728901714086533,6.728901714086533,3
+delta_depth_close_10m_pp,delta_roll_rad,IMU e atitude,0.012677396647632122,1.2677396647632122,32
+delta_depth_close_10m_pp,delta_pitch_rad,IMU e atitude,0.10295365750789642,10.295365750789642,2
+delta_depth_close_10m_pp,delta_yaw_heading_rad,IMU e atitude,0.016644950956106186,1.6644950956106186,21
+delta_depth_close_10m_pp,delta_yaw_attitude_rad,IMU e atitude,0.017024485394358635,1.7024485394358635,20
+delta_depth_close_10m_pp,delta_gyro_x_rad_s,IMU e atitude,0.00820163358002901,0.8201633580029011,43
+delta_depth_close_10m_pp,delta_gyro_y_rad_s,IMU e atitude,0.04573895037174225,4.573895037174225,4
+delta_depth_close_10m_pp,delta_gyro_z_rad_s,IMU e atitude,0.014543717727065086,1.4543717727065086,26
+delta_depth_close_10m_pp,gyro_x_integral_rad,IMU e atitude,0.02842116355895996,2.842116355895996,8
+delta_depth_close_10m_pp,gyro_y_integral_rad,IMU e atitude,0.11828247457742691,11.828247457742691,1
+delta_depth_close_10m_pp,gyro_z_integral_rad,IMU e atitude,0.012340596877038479,1.2340596877038479,34
+delta_depth_close_10m_pp,delta_accel_x_m_s2,IMU e atitude,0.041156478226184845,4.1156478226184845,5
+delta_depth_close_10m_pp,delta_accel_y_m_s2,IMU e atitude,0.028851047158241272,2.885104715824127,7
+delta_depth_close_10m_pp,delta_accel_z_m_s2,IMU e atitude,0.013996277935802937,1.3996277935802937,27
+delta_depth_close_10m_pp,delta_smooth_vx_m_s,Movimento,0.012554344721138477,1.2554344721138477,33
+delta_depth_close_10m_pp,delta_smooth_vy_m_s,Movimento,0.023031724616885185,2.3031724616885185,10
+delta_depth_close_10m_pp,delta_obstacle_risk,Comandos reativos,0.010740899480879307,1.0740899480879307,39
+delta_depth_close_10m_pp,delta_avoid_lateral_body,Comandos reativos,0.01879175938665867,1.8791759386658669,14
+delta_depth_close_10m_pp,delta_avoid_brake,Comandos reativos,0.012760878540575504,1.2760878540575504,30
+delta_depth_close_10m_pp,pan_comp_delta_rad,Comandos reativos,0.011979226022958755,1.1979226022958755,35
+delta_depth_close_10m_pp,flow_valid_points,Optical flow e risco,0.025075968354940414,2.5075968354940414,9
+delta_depth_close_10m_pp,flow_active_points,Optical flow e risco,0.011710886843502522,1.1710886843502522,36
+delta_depth_close_10m_pp,flow_track_retention_pct,Optical flow e risco,0.015362270176410675,1.5362270176410675,25
+delta_depth_close_10m_pp,flow_mean_x_px,Optical flow e risco,0.016475312411785126,1.6475312411785126,22
+delta_depth_close_10m_pp,flow_mean_y_px,Optical flow e risco,0.019672533497214317,1.9672533497214317,11
+delta_depth_close_10m_pp,flow_mag_mean_px,Optical flow e risco,0.0157943032681942,1.5794303268194199,23
+delta_depth_close_10m_pp,flow_mag_p90_px,Optical flow e risco,0.036289773881435394,3.6289773881435394,6
+delta_depth_close_10m_pp,radial_flow_mean_px,Optical flow e risco,0.008556712418794632,0.8556712418794632,42
+delta_depth_close_10m_pp,radial_flow_p90_px,Optical flow e risco,0.01859946921467781,1.859946921467781,15
+delta_depth_close_10m_pp,point_risk_mean_delta_basis,Optical flow e risco,0.011663834564387798,1.1663834564387798,37
+delta_depth_close_10m_pp,point_risk_p75_delta_basis,Optical flow e risco,0.019210580736398697,1.9210580736398697,12
+delta_depth_close_10m_pp,img_delta_mean,Diferenca de imagem,0.01817287877202034,1.817287877202034,17
+delta_depth_close_10m_pp,img_delta_std,Diferenca de imagem,0.013982836157083511,1.3982836157083511,28
+delta_depth_close_10m_pp,img_delta_abs_mean,Diferenca de imagem,0.01818164996802807,1.8181649968028069,16
+delta_depth_close_10m_pp,img_delta_abs_p90,Diferenca de imagem,0.010700611397624016,1.0700611397624016,40
+delta_depth_close_10m_pp,flow_vec_rel_std,Optical flow e risco,0.012818093411624432,1.2818093411624432,29
+delta_depth_close_10m_pp,flow_vec_xy_mean,Optical flow e risco,0.009291299618780613,0.9291299618780613,41
+delta_depth_close_10m_pp,flow_vec_radial_mean,Optical flow e risco,0.017543809488415718,1.7543809488415718,18
+delta_depth_close_10m_pp,flow_vec_risk_mean,Optical flow e risco,0.007608588319271803,0.7608588319271803,44
