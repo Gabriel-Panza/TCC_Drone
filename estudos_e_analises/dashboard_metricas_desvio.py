@@ -23,6 +23,11 @@ LOG_DIR = PROJECT_ROOT / "logs"
 NOTEBOOK_PATH = ANALYSIS_DIR / "estudo_das_metricas.ipynb"
 MLP_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_mlp_splits_fixos.csv"
 EVENT_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_eventos_splits_fixos.csv"
+ANGULAR_COMPARISON_PATH = ANALYSIS_DIR / "comparacao_representacao_angular_splits_fixos.csv"
+LOSS_CURVES_PATH = ANALYSIS_DIR / "curvas_loss_mlp.csv"
+GRADIENT_IMPORTANCE_PATH = ANALYSIS_DIR / "importancia_gradiente_erro_validacao.csv"
+GROUPED_GRADIENT_IMPORTANCE_PATH = ANALYSIS_DIR / "importancia_gradiente_erro_validacao_agrupada.csv"
+LARGEST_GRADIENT_ERRORS_PATH = ANALYSIS_DIR / "maiores_erros_gradiente_validacao.csv"
 
 
 def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
@@ -100,17 +105,20 @@ REFERENCE_RUN_ORDER = (
     "run_20260716_231600",
 )
 BATCH_SPECS = (
-    (7, "Primeiras 7 runs"),
-    (16, "Primeiras 16 runs"),
-    (25, "Todas (25 runs)"),
+    (9, "Primeiras 9 runs"),
+    (17, "Primeiras 17 runs"),
+    (25, "Primeiras 25 runs"),
+    (33, "Primeiras 33 runs"),
+    (40, "Todas (40 runs)"),
 )
 BATCH_LABELS = dict(BATCH_SPECS)
+# Mantem as referencias embutidas antigas importaveis quando os CSVs nao existem.
+BATCH_LABELS.update({7: "Primeiras 7 runs", 16: "Primeiras 16 runs"})
 BATCH_LABEL_ORDER = [label for _size, label in BATCH_SPECS]
 RUN_ORDER_INDEX = {run_id: index for index, run_id in enumerate(REFERENCE_RUN_ORDER)}
-BLOCK_LABELS = (
-    "Runs 1-7",
-    "Runs 8-16",
-    "Runs 17-25",
+BLOCK_LABELS = tuple(
+    f"Runs {1 if index == 0 else BATCH_SPECS[index - 1][0] + 1}-{size}"
+    for index, (size, _label) in enumerate(BATCH_SPECS)
 )
 
 REFERENCE_BATCH_STATS = [
@@ -238,15 +246,13 @@ COLORS = {
 }
 GRAPH_CONFIG = {"displaylogo": False}
 BATCH_COLORS = {
-    BATCH_LABELS[7]: COLORS["drone"],
-    BATCH_LABELS[16]: COLORS["accent"],
-    BATCH_LABELS[25]: COLORS["latest"],
+    label: color
+    for (_size, label), color in zip(
+        BATCH_SPECS,
+        (COLORS["drone"], "#0891b2", COLORS["accent"], "#a16207", COLORS["latest"]),
+    )
 }
-BLOCK_COLORS = {
-    BLOCK_LABELS[0]: COLORS["drone"],
-    BLOCK_LABELS[1]: COLORS["accent"],
-    BLOCK_LABELS[2]: COLORS["latest"],
-}
+BLOCK_COLORS = dict(zip(BLOCK_LABELS, BATCH_COLORS.values()))
 EMPTY_FLIGHT_COLUMNS = (
     "timestamp",
     "x",
@@ -576,12 +582,15 @@ def load_all_depth_intervals() -> pd.DataFrame:
 def run_block_label(run_id: str) -> str:
     index = RUN_ORDER_INDEX.get(run_id)
     if index is None:
-        return "Fora das 25 runs"
-    if index < 7:
-        return BLOCK_LABELS[0]
-    if index < 16:
-        return BLOCK_LABELS[1]
-    return BLOCK_LABELS[2]
+        return "Runs adicionais"
+    for block_index, (size, _label) in enumerate(BATCH_SPECS):
+        if index < size:
+            return BLOCK_LABELS[block_index]
+    return "Runs adicionais"
+
+
+def batch_label(size: int) -> str:
+    return BATCH_LABELS.get(size, f"Primeiras {size} runs")
 
 
 def ordered_run_ids(df: pd.DataFrame) -> list[str]:
@@ -1626,6 +1635,8 @@ def batch_interval_frames(df: pd.DataFrame) -> pd.DataFrame:
     frames = []
     run_ids = ordered_run_ids(df)
     for size, label in BATCH_SPECS:
+        if len(run_ids) < size:
+            continue
         part = df[df["run_id"].isin(run_ids[:size])].copy()
         if part.empty:
             continue
@@ -1643,6 +1654,8 @@ def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     run_ids = ordered_run_ids(df)
     for size, label in BATCH_SPECS:
+        if len(run_ids) < size:
+            continue
         part = df[df["run_id"].isin(run_ids[:size])]
         if part.empty:
             continue
@@ -1707,8 +1720,8 @@ def reference_mlp_df() -> pd.DataFrame:
     )
     if not fixed.empty:
         fixed = fixed[fixed["split"] == "teste"].copy()
-        fixed["leva"] = fixed["marco_runs"].map(BATCH_LABELS)
-        fixed = fixed[fixed["leva"].notna()]
+        fixed["marco_runs"] = pd.to_numeric(fixed["marco_runs"], errors="coerce")
+        fixed["leva"] = fixed["marco_runs"].map(lambda value: batch_label(int(value)))
         return fixed[["leva", "modelo", "alvo_delta", "MAE", "RMSE"]]
     return pd.DataFrame(
         REFERENCE_MLP_TEST,
@@ -1740,7 +1753,6 @@ def reference_event_df() -> pd.DataFrame:
         for _, result in fixed[fixed["split"] == "teste"].iterrows():
             group = f"{int(result['marco_runs'])} runs - classificador fixo"
             rows.extend((group, label, float(result[column])) for column, label in metrics.items())
-        rows.extend(row for row in REFERENCE_EVENT_RESULTS if row[0] == "25 runs - pos-gate")
         if rows:
             return pd.DataFrame(rows, columns=["grupo", "metrica", "valor"])
     return pd.DataFrame(
@@ -1764,62 +1776,65 @@ def batch_summary_cards(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> list[html.
     if stats.empty:
         return [metric_card("Comparacao", "-", "Sem dados ou referencias para comparar.")]
 
-    by_label = {row["leva"]: row for _, row in stats.iterrows()}
-    seven_row = by_label.get(BATCH_LABELS[7], stats.iloc[0])
-    sixteen_row = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
-    all_row = by_label.get(BATCH_LABELS[25], stats.iloc[-1])
+    stats = stats.sort_values("runs").reset_index(drop=True)
+    first_row = stats.iloc[0]
+    previous_row = stats.iloc[-2] if len(stats) > 1 else first_row
+    current_row = stats.iloc[-1]
+    current_label = str(current_row["leva"])
+    first_label = str(first_row["leva"])
 
-    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "MLP")]
-    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "Media treino")]
+    current_mlp = mlp_df[(mlp_df["leva"] == current_label) & (mlp_df["modelo"] == "MLP")]
+    current_base = mlp_df[(mlp_df["leva"] == current_label) & (mlp_df["modelo"] == "Media treino")]
     joined = current_mlp.merge(current_base, on="alvo_delta", suffixes=("_mlp", "_base"))
     beats_baseline = int((joined["MAE_mlp"] < joined["MAE_base"]).sum()) if not joined.empty else 0
 
-    mlp_7 = mlp_df[(mlp_df["leva"] == BATCH_LABELS[7]) & (mlp_df["modelo"] == "MLP")]
-    mlp_change = current_mlp.merge(mlp_7, on="alvo_delta", suffixes=("_25", "_7"))
-    improved_targets = int((mlp_change["MAE_25"] < mlp_change["MAE_7"]).sum()) if not mlp_change.empty else 0
+    first_mlp = mlp_df[(mlp_df["leva"] == first_label) & (mlp_df["modelo"] == "MLP")]
+    mlp_change = current_mlp.merge(first_mlp, on="alvo_delta", suffixes=("_current", "_first"))
+    improved_targets = int(
+        (mlp_change["MAE_current"] < mlp_change["MAE_first"]).sum()
+    ) if not mlp_change.empty else 0
 
     def incremental_event_rate(previous: pd.Series, current: pd.Series) -> float:
         interval_delta = int(current.get("intervalos", 0)) - int(previous.get("intervalos", 0))
         event_delta = int(current.get("eventos", 0)) - int(previous.get("eventos", 0))
         return event_delta / interval_delta * 100.0 if interval_delta > 0 else np.nan
 
-    event_17_25 = incremental_event_rate(sixteen_row, all_row)
-    added_intervals = int(all_row["intervalos"]) - int(sixteen_row["intervalos"])
+    latest_event_rate = incremental_event_rate(previous_row, current_row)
+    added_intervals = int(current_row["intervalos"]) - int(previous_row["intervalos"])
+    current_runs = int(current_row["runs"])
+    previous_runs = int(previous_row["runs"])
+    first_runs = int(first_row["runs"])
 
     return [
         metric_card(
             "Intervalos",
-            f"{int(all_row['intervalos'])}",
-            f"{int(seven_row['intervalos'])} -> {int(sixteen_row['intervalos'])} -> {int(all_row['intervalos'])}",
+            f"{int(current_row['intervalos'])}",
+            " -> ".join(str(int(value)) for value in stats["intervalos"]),
         ),
         metric_card(
-            "Runs 17-25",
+            f"Runs {previous_runs + 1}-{current_runs}",
             f"+{added_intervals}",
-            "intervalos validos sobre as primeiras 16",
+            f"intervalos validos sobre as primeiras {previous_runs}",
         ),
         metric_card(
-            "Eventos runs 17-25",
-            fmt_number(event_17_25, "%", 1),
-            "225 eventos em 310 intervalos",
+            "Eventos no bloco novo",
+            fmt_number(latest_event_rate, "%", 1),
+            "taxa incremental, sem misturar os blocos anteriores",
         ),
         metric_card(
             "MLP x baseline",
             f"{beats_baseline}/6 alvos",
-            "resultado atual com todas as 25 runs",
+            f"resultado atual com {current_runs} runs",
         ),
         metric_card(
-            "MLP 7 -> 25",
+            f"MLP {first_runs} -> {current_runs}",
             f"{improved_targets}/6 alvos",
-            (
-                "alvos com reducao de MAE no mesmo teste"
-                if MLP_FIXED_RESULTS_PATH.exists()
-                else "referencias antigas; rerode o notebook com o split fixo"
-            ),
+            "alvos com reducao de MAE no mesmo teste fixo",
         ),
         metric_card(
             "Eventos acumulados",
-            fmt_number(float(all_row["event_rate_pct"]), "%", 1),
-            f"7 runs {float(seven_row['event_rate_pct']):.1f}%; 16 runs {float(sixteen_row['event_rate_pct']):.1f}%",
+            fmt_number(float(current_row["event_rate_pct"]), "%", 1),
+            f"primeiro marco: {float(first_row['event_rate_pct']):.1f}%",
         ),
     ]
 
@@ -1832,31 +1847,42 @@ def analysis_note(title: str, paragraphs: list[str], tone: str = "") -> html.Div
     )
 
 
-def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[html.Div, ...]:
+def batch_analysis_notes(
+    stats: pd.DataFrame, mlp_df: pd.DataFrame, event_df: pd.DataFrame
+) -> tuple[html.Div, ...]:
     """Gera os blocos textuais de interpretacao exibidos na aba comparativa."""
 
-    by_label = {row["leva"]: row for _, row in stats.iterrows()}
-    row_7 = by_label.get(BATCH_LABELS[7], stats.iloc[0])
-    row_16 = by_label.get(BATCH_LABELS[16], stats.iloc[-1])
-    row_25 = by_label.get(BATCH_LABELS[25], stats.iloc[-1])
-
-    current_mlp = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "MLP")]
-    current_base = mlp_df[(mlp_df["leva"] == BATCH_LABELS[25]) & (mlp_df["modelo"] == "Media treino")]
+    stats = stats.sort_values("runs").reset_index(drop=True)
+    first_row, current_row = stats.iloc[0], stats.iloc[-1]
+    previous_row = stats.iloc[-2] if len(stats) > 1 else first_row
+    first_runs, current_runs = int(first_row["runs"]), int(current_row["runs"])
+    current_label = str(current_row["leva"])
+    current_mlp = mlp_df[(mlp_df["leva"] == current_label) & (mlp_df["modelo"] == "MLP")]
+    current_base = mlp_df[(mlp_df["leva"] == current_label) & (mlp_df["modelo"] == "Media treino")]
     joined = current_mlp.merge(current_base, on="alvo_delta", suffixes=("_mlp", "_base"))
     worst_target = "indisponivel"
     if not joined.empty:
         joined["gap"] = joined["MAE_mlp"] - joined["MAE_base"]
         worst_target = str(joined.sort_values("gap", ascending=False).iloc[0]["alvo_delta"])
+    balanced = event_df[event_df["metrica"] == "balanced accuracy"].copy()
+    classifier_summary = "As metricas do classificador nao estao disponiveis."
+    if not balanced.empty:
+        best = balanced.loc[balanced["valor"].idxmax()]
+        latest = balanced.iloc[-1]
+        classifier_summary = (
+            f"A balanced accuracy atual e {float(latest['valor']):.3f}; o melhor marco foi "
+            f"{best['grupo']} com {float(best['valor']):.3f}."
+        )
 
     growth = analysis_note(
         "Comparar o desempenho conforme o conjunto cresce",
         [
             (
-                f"Os intervalos validos cresceram de {int(row_7['intervalos'])} para "
-                f"{int(row_16['intervalos'])} e {int(row_25['intervalos'])}. As runs 17-25 adicionaram "
-                f"{int(row_25['intervalos']) - int(row_16['intervalos'])} intervalos validos."
+                f"Os intervalos validos cresceram de {int(first_row['intervalos'])} para "
+                f"{int(current_row['intervalos'])} entre {first_runs} e {current_runs} runs. "
+                f"O ultimo bloco adicionou {int(current_row['intervalos']) - int(previous_row['intervalos'])} intervalos."
             ),
-            "O ultimo bloco teve 72,6% de eventos; as cinco runs mais recentes somaram 166 intervalos, com 73,5% de eventos.",
+            "Os graficos abaixo mantem os mesmos marcos do notebook e se atualizam a partir dos CSVs e memmaps disponiveis.",
         ],
         "ok",
     )
@@ -1864,25 +1890,23 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
         "Verificar se a melhora continua ou comeca a estabilizar",
         [
             (
-                f"A taxa acumulada de eventos passou de {float(row_7['event_rate_pct']):.1f}% para "
-                f"{float(row_16['event_rate_pct']):.1f}% e {float(row_25['event_rate_pct']):.1f}%. "
-                "Essa variacao pequena indica estabilizacao da distribuicao dos eventos."
+                f"A taxa acumulada de eventos passou de {float(first_row['event_rate_pct']):.1f}% para "
+                f"{float(current_row['event_rate_pct']):.1f}%. A curva por marco permite verificar se a distribuicao estabilizou."
             ),
             (
-                f"O P90 do delta absoluto caiu de {float(row_16['delta_abs_p90']):.2f} para "
-                f"{float(row_25['delta_abs_p90']):.2f} p.p., enquanto os zeros cairam para "
-                f"{float(row_25.get('zero_rate_pct', np.nan)):.1f}%. A distribuicao esta mais consistente, mas segue concentrada em eventos."
+                f"No ultimo incremento, o P90 do delta absoluto foi de {float(current_row['delta_abs_p90']):.2f} p.p. "
+                f"e os deltas zerados representaram {float(current_row.get('zero_rate_pct', np.nan)):.1f}%."
             ),
         ],
     )
     split = analysis_note(
         "Separar ganho real de variacao causada pela divisao treino/teste",
         [
-            "O notebook agora fixa a validacao na run 20260710_192442 e o teste nas runs 20260624_211302 e 20260710_193015 desde o marco de 7 runs. Apenas o treino cresce em 7, 16 e 25 runs.",
+            "A validacao usa duas runs fixas e o teste usa tres runs fixas desde o primeiro marco. Apenas o conjunto de treino cresce em 9, 17, 25, 33 e 40 runs.",
             (
                 "Os CSVs controlados foram carregados pelo dashboard. Assim, a variacao atual de MAE e balanced accuracy nao inclui mudanca na composicao do teste."
                 if has_fixed_comparison_results()
-                else "Reexecute o notebook com as 25 runs para gerar os CSVs da curva controlada."
+                else "Reexecute o notebook para gerar os CSVs da curva controlada."
             ),
         ],
         "warning",
@@ -1890,9 +1914,9 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
     errors = analysis_note(
         "Identificar quais alvos e eventos ainda concentram os erros",
         [
-            f"Com 25 runs, a MLP continua sem superar a media do treino nos seis alvos. O maior gap atual esta em {worst_target}.",
-            "No teste fixo, a MLP de 25 runs melhora cinco dos seis alvos em relacao a 16 e todos os seis em relacao a 7. Para pixels abaixo de 5 m, o MAE cai de 2,89 para 1,39 p.p.",
-            "O classificador nao segue a mesma curva: a balanced accuracy no teste passa de 0,656 para 0,700 e depois 0,667. O melhor marco observado para classificacao continua sendo 16 runs.",
+            f"No marco atual, o maior gap entre MLP e media do treino esta em {worst_target}.",
+            classifier_summary,
+            "A aba de modelo detalha separadamente a curva de loss, a representacao angular e as entradas associadas aos maiores erros.",
         ],
         "warning",
     )
@@ -1900,13 +1924,12 @@ def batch_analysis_notes(stats: pd.DataFrame, mlp_df: pd.DataFrame) -> tuple[htm
         "Resposta sugerida ao professor",
         [
             (
-                "Professor, reorganizei a comparacao em 7, 16 e 25 runs. O conjunto atual tem 720 intervalos validos, "
-                "com taxa acumulada de eventos de 70,3% e poucos intervalos zerados."
+                f"Professor, atualizei a comparacao controlada para {', '.join(str(size) for size, _ in BATCH_SPECS)} runs. "
+                f"O conjunto atual tem {int(current_row['intervalos'])} intervalos validos e mantem validacao e teste fixos."
             ),
             (
-                "Com o teste fixo, a MLP apresentou melhora clara conforme o treino cresceu: no alvo de pixels abaixo de 5 m, "
-                "o MAE caiu de 2,89 para 2,17 e depois 1,39 p.p. O classificador teve seu melhor resultado com 16 runs, "
-                "entao a regressao continua se beneficiando dos dados, mas a classificacao parece ter estabilizado antes."
+                "Tambem passei a acompanhar as curvas de loss e a explicabilidade por gradiente na validacao. "
+                "A comparacao angular mostrou menor dependencia das entradas angulares, mas sem ganho consistente de MAE no teste fixo."
             ),
         ],
         "professor",
@@ -1940,12 +1963,13 @@ def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
         "As curvas de MLP e classificacao com splits fixos foram carregadas dos CSVs gerados pelo notebook."
         if has_fixed_comparison_results()
         else (
-            "O notebook ja esta configurado para treinar 7, 16 e 25 com validacao e teste fixos; "
+            "O notebook esta configurado para treinar 9, 17, 25, 33 e 40 runs com validacao e teste fixos; "
             "rerode-o com todas as pastas para atualizar a curva controlada."
         )
     )
     text = (
-        f"Comparacao cumulativa 7 -> 16 -> 25: {interval_count} intervalos em {run_count} runs"
+        f"Comparacao cumulativa {' -> '.join(str(size) for size, _ in BATCH_SPECS)}: "
+        f"{interval_count} intervalos em {run_count} runs"
         f"{source_text}. As metricas cumulativas descrevem a evolucao dos dados. {model_text}"
     )
     return html.Div(text, className="notice notice-ok")
@@ -1956,6 +1980,8 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
         return apply_layout(go.Figure(), "Resumo estatistico por leva")
 
     plot_df = stats[stats["leva"].isin(BATCH_LABEL_ORDER)].copy()
+    if plot_df.empty:
+        plot_df = stats.copy()
     plot_df["leva"] = pd.Categorical(plot_df["leva"], categories=BATCH_LABEL_ORDER, ordered=True)
     plot_df = plot_df.sort_values("leva")
     metrics = [
@@ -1988,7 +2014,7 @@ def figure_batch_metric_facets(stats: pd.DataFrame) -> go.Figure:
         )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Evolucao cumulativa das metricas: 7, 16 e 25 runs", 620)
+    return apply_layout(fig, "Evolucao cumulativa das metricas por marco", 620)
 
 
 def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
@@ -2026,7 +2052,7 @@ def figure_batch_distributions(batch_df: pd.DataFrame) -> go.Figure:
             )
         fig.update_yaxes(title=unit, row=row, col=subplot_col)
 
-    return apply_layout(fig, "Distribuicoes cumulativas: 7, 16 e 25 runs", 700)
+    return apply_layout(fig, "Distribuicoes cumulativas por marco", 700)
 
 
 def figure_batch_event_rates(intervals_df: pd.DataFrame) -> go.Figure:
@@ -2038,7 +2064,17 @@ def figure_batch_event_rates(intervals_df: pd.DataFrame) -> go.Figure:
             .groupby("run_id", as_index=False)
             .agg(intervalos=("evento", "size"), eventos=("evento", "sum"), taxa_evento=("evento", "mean"))
         )
-        summary["leva"] = summary["run_id"].map(run_block_label)
+        run_ids = ordered_run_ids(intervals_df)
+        run_positions = {run_id: index for index, run_id in enumerate(run_ids)}
+
+        def block_for_run(run_id: str) -> str:
+            position = run_positions.get(run_id, len(run_positions))
+            for block_index, (size, _label) in enumerate(BATCH_SPECS):
+                if position < size:
+                    return BLOCK_LABELS[block_index]
+            return "Runs adicionais"
+
+        summary["leva"] = summary["run_id"].map(block_for_run)
     summary = summary.sort_values("run_id")
     fig = go.Figure()
     for block_label in BLOCK_LABELS:
@@ -2076,12 +2112,14 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
         "delta_depth_close_10m_pp",
     ]
     fig = go.Figure()
+    available_labels = [label for _size, label in BATCH_SPECS if label in set(mlp_df["leva"])]
+    if not available_labels:
+        available_labels = list(dict.fromkeys(mlp_df["leva"]))
     series = [
-        (BATCH_LABELS[7], "MLP", COLORS["drone"]),
-        (BATCH_LABELS[16], "MLP", COLORS["accent"]),
-        (BATCH_LABELS[25], "MLP", COLORS["latest"]),
-        (BATCH_LABELS[25], "Media treino", COLORS["risk"]),
+        (label, "MLP", BATCH_COLORS.get(label, COLORS["drone"]))
+        for label in available_labels
     ]
+    series.append((available_labels[-1], "Media treino", COLORS["risk"]))
     for leva, modelo, color in series:
         part = mlp_df[(mlp_df["leva"] == leva) & (mlp_df["modelo"] == modelo)].set_index("alvo_delta")
         values = [float(part.loc[target, "MAE"]) if target in part.index else np.nan for target in target_order]
@@ -2099,7 +2137,7 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
         text=(
             "Validacao e teste fixos; apenas o treino cresce"
             if MLP_FIXED_RESULTS_PATH.exists()
-            else "Referencias anteriores; rerode o notebook para gerar 7, 16 e 25 no teste fixo"
+            else "Referencias anteriores; rerode o notebook para atualizar o teste fixo"
         ),
         xref="paper",
         yref="paper",
@@ -2111,7 +2149,7 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
     )
     fig.update_xaxes(title="Alvo delta", tickangle=-20)
     fig.update_yaxes(title="MAE no teste")
-    title = "MAE no teste fixo: MLP com 7, 16 e 25 runs" if MLP_FIXED_RESULTS_PATH.exists() else "MAE registrado: MLP com 16 e 25 runs"
+    title = "MAE no teste fixo por marco de runs"
     return apply_layout(fig, title, 520)
 
 
@@ -2130,39 +2168,36 @@ def figure_mlp_reference_table(mlp_df: pd.DataFrame) -> go.Figure:
         ]
         return float(part["MAE"].iloc[0]) if not part.empty else np.nan
 
+    labels = [label for _size, label in BATCH_SPECS if label in set(mlp_df["leva"])]
+    sizes = [size for size, label in BATCH_SPECS if label in labels]
+    if not labels:
+        labels = list(dict.fromkeys(mlp_df["leva"]))
+        sizes = list(range(1, len(labels) + 1))
     for target in targets:
-        mlp_7 = mae_value(target, BATCH_LABELS[7], "MLP")
-        mlp_16 = mae_value(target, BATCH_LABELS[16], "MLP")
-        mlp_25 = mae_value(target, BATCH_LABELS[25], "MLP")
-        base_25 = mae_value(target, BATCH_LABELS[25], "Media treino")
-        change = (mlp_25 / mlp_7 - 1.0) * 100.0 if mlp_7 > 0 else np.nan
-        gap = mlp_25 - base_25
-        rows.append(
-            [
-                target,
-                f"{mlp_7:.3f}",
-                f"{mlp_16:.3f}",
-                f"{mlp_25:.3f}",
-                f"{change:+.1f}%",
-                f"{base_25:.3f}",
-                f"{gap:+.3f}",
-            ]
-        )
+        mlp_values = [mae_value(target, label, "MLP") for label in labels]
+        baseline = mae_value(target, labels[-1], "Media treino")
+        change = (mlp_values[-1] / mlp_values[0] - 1.0) * 100.0 if mlp_values[0] > 0 else np.nan
+        gap = mlp_values[-1] - baseline
+        rows.append([
+            target,
+            *[f"{value:.3f}" for value in mlp_values],
+            f"{change:+.1f}%",
+            f"{baseline:.3f}",
+            f"{gap:+.3f}",
+        ])
 
     headers = [
         "Alvo",
-        "MLP 7",
-        "MLP 16",
-        "MLP 25",
-        "Variacao 7-25",
-        "Media 25",
+        *[f"MLP {size}" for size in sizes],
+        f"Variacao {sizes[0]}-{sizes[-1]}",
+        f"Media {sizes[-1]}",
         "Gap atual",
     ]
     return table_figure(
         headers,
         rows_to_columns(rows, len(headers)),
         (
-            "Curva de erro no teste fixo: 7, 16 e 25 runs"
+            "Curva de erro no teste fixo por marco"
             if MLP_FIXED_RESULTS_PATH.exists()
             else "Erros registrados antes da curva com split fixo"
         ),
@@ -2182,7 +2217,7 @@ def figure_event_reference_table(event_df: pd.DataFrame) -> go.Figure:
     return table_figure(
         ["Grupo", "Metrica", "Valor no teste atual"],
         values,
-        "Modelo em duas etapas e classificador: 16 x 25 runs",
+        "Classificador de eventos no teste fixo por marco",
         620,
     )
 
@@ -2224,6 +2259,182 @@ def figure_batch_stats_table(stats: pd.DataFrame) -> go.Figure:
         rows_to_columns(rows, len(headers)),
         "Tabela estatistica das levas",
         340,
+    )
+
+
+def load_model_diagnostics() -> dict[str, pd.DataFrame]:
+    """Carrega os artefatos de treino e explicabilidade exportados pelo notebook."""
+
+    return {
+        "angular": load_validated_csv(
+            ANGULAR_COMPARISON_PATH,
+            {"modelo", "split", "alvo_delta", "MAE", "marco_runs", "representacao_angular"},
+        ),
+        "loss": load_validated_csv(
+            LOSS_CURVES_PATH,
+            {"epoca", "split", "mse_padronizado", "marco_runs"},
+        ),
+        "importance": load_validated_csv(
+            GRADIENT_IMPORTANCE_PATH,
+            {"alvo_delta", "feature", "grupo", "importancia_pct"},
+        ),
+        "grouped_importance": load_validated_csv(
+            GROUPED_GRADIENT_IMPORTANCE_PATH,
+            {"alvo_delta", "feature", "grupo", "importancia_pct"},
+        ),
+        "errors": load_validated_csv(
+            LARGEST_GRADIENT_ERRORS_PATH,
+            {
+                "run_id", "sample_id", "real", "predito", "erro_absoluto",
+                "feature_1", "importancia_1_pct", "feature_2", "importancia_2_pct",
+                "feature_3", "importancia_3_pct",
+            },
+        ),
+    }
+
+
+def model_diagnostic_cards(data: dict[str, pd.DataFrame]) -> list[html.Div]:
+    """Resume configuracao, parada do treino e cobertura das explicacoes."""
+
+    loss_df = data["loss"]
+    errors_df = data["errors"]
+    latest_mark = int(loss_df["marco_runs"].max()) if not loss_df.empty else 0
+    validation = loss_df[loss_df["split"] == "validacao"]
+    best_epoch = int(validation.loc[validation["mse_padronizado"].idxmin(), "epoca"]) if not validation.empty else 0
+    stopped_epoch = int(loss_df["epoca"].max()) if not loss_df.empty else 0
+    zero_gradients = 0
+    if not errors_df.empty:
+        importance_cols = ["importancia_1_pct", "importancia_2_pct", "importancia_3_pct"]
+        zero_gradients = int((errors_df[importance_cols].fillna(0.0).abs().sum(axis=1) <= 1e-12).sum())
+    return [
+        metric_card("Marco atual", f"{latest_mark} runs", "validacao e teste fixos"),
+        metric_card("Arquitetura", "64 -> 16", "ReLU e dropout entre camadas"),
+        metric_card("Dropout", "0,30", "aplicado nas duas camadas ocultas"),
+        metric_card("Early stopping", f"epoca {best_epoch}", f"interrompido na epoca {stopped_epoch}; patience 50"),
+        metric_card("Criterio", "loss validacao", "melhora minima de 0,0001"),
+        metric_card("Gradiente zero", str(zero_gradients), "maiores erros sem ranking local valido"),
+    ]
+
+
+def figure_loss_curves(loss_df: pd.DataFrame) -> go.Figure:
+    """Mostra as losses por epoca e a epoca restaurada pelo early stopping."""
+
+    if loss_df.empty:
+        return apply_layout(go.Figure(), "Curvas de loss indisponiveis")
+    latest = int(loss_df["marco_runs"].max())
+    plot_df = loss_df[loss_df["marco_runs"] == latest].sort_values("epoca")
+    colors = {"treino": COLORS["drone"], "validacao": COLORS["risk"], "teste": COLORS["accent"]}
+    fig = go.Figure()
+    for split in ("treino", "validacao", "teste"):
+        part = plot_df[plot_df["split"] == split]
+        if part.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=part["epoca"], y=part["mse_padronizado"], mode="lines",
+            name=split.capitalize(), line=dict(color=colors[split], width=2),
+            hovertemplate="epoca=%{x}<br>MSE=%{y:.4f}<extra>" + split + "</extra>",
+        ))
+    validation = plot_df[plot_df["split"] == "validacao"]
+    if not validation.empty:
+        best = validation.loc[validation["mse_padronizado"].idxmin()]
+        fig.add_vline(x=float(best["epoca"]), line_dash="dash", line_color=COLORS["risk"])
+        fig.add_annotation(
+            x=float(best["epoca"]), y=float(best["mse_padronizado"]),
+            text=f"melhor validacao: epoca {int(best['epoca'])}", showarrow=True,
+            arrowhead=2, bgcolor="white",
+        )
+    fig.update_xaxes(title="Epoca")
+    fig.update_yaxes(title="MSE padronizado")
+    return apply_layout(fig, f"Curvas de loss com {latest} runs", 470)
+
+
+def figure_angular_comparison(angular_df: pd.DataFrame, split: str) -> go.Figure:
+    """Compara valor angular e seno/cosseno no mesmo split e marco."""
+
+    if angular_df.empty:
+        return apply_layout(go.Figure(), "Comparacao angular indisponivel")
+    latest = int(pd.to_numeric(angular_df["marco_runs"], errors="coerce").max())
+    plot_df = angular_df[
+        (angular_df["split"] == split)
+        & (pd.to_numeric(angular_df["marco_runs"], errors="coerce") == latest)
+        & (angular_df["modelo"] == "MLP")
+    ].copy()
+    target_order = [
+        "delta_depth_p10_m", "delta_depth_p50_m", "delta_depth_p90_m",
+        "delta_depth_close_2m_pp", "delta_depth_close_5m_pp", "delta_depth_close_10m_pp",
+    ]
+    titles = ["P10", "P50", "P90", "Pixels < 2 m", "Pixels < 5 m", "Pixels < 10 m"]
+    fig = make_subplots(rows=2, cols=3, subplot_titles=titles)
+    representations = (("Valor angular", COLORS["drone"]), ("Seno/cosseno", "#f59e42"))
+    for index, target in enumerate(target_order):
+        row, col = index // 3 + 1, index % 3 + 1
+        part = plot_df[plot_df["alvo_delta"] == target]
+        for representation, color in representations:
+            value = part.loc[part["representacao_angular"] == representation, "MAE"]
+            if value.empty:
+                continue
+            fig.add_trace(go.Bar(
+                x=[representation], y=[float(value.iloc[0])], name=representation,
+                legendgroup=representation, showlegend=index == 0, marker_color=color,
+                text=[f"{float(value.iloc[0]):.3f}"], textposition="outside",
+                hovertemplate=f"{representation}<br>MAE=%{{y:.4f}}<extra></extra>",
+            ), row=row, col=col)
+        fig.update_yaxes(title="MAE", row=row, col=col)
+    fig = apply_layout(fig, f"Representacao angular na {split} fixa ({latest} runs)", 650)
+    fig.update_layout(
+        margin=dict(l=48, r=28, t=105, b=46),
+        legend=dict(y=1.08, yanchor="bottom", x=0.5, xanchor="center"),
+    )
+    return fig
+
+
+def figure_gradient_importance(importance_df: pd.DataFrame, target: str) -> go.Figure:
+    """Exibe as features e grupos mais sensiveis no erro de validacao."""
+
+    part = importance_df[importance_df["alvo_delta"] == target].copy()
+    if part.empty:
+        return apply_layout(go.Figure(), "Importancia por gradiente indisponivel")
+    top = part.nlargest(12, "importancia_pct").sort_values("importancia_pct")
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Features", "Grupos"), column_widths=[0.65, 0.35])
+    fig.add_trace(go.Bar(
+        x=top["importancia_pct"], y=top["feature"], orientation="h",
+        marker_color=COLORS["drone"], showlegend=False,
+        hovertemplate="%{y}<br>%{x:.2f}%<extra></extra>",
+    ), row=1, col=1)
+    groups = part.groupby("grupo", as_index=False)["importancia_pct"].sum().sort_values("importancia_pct")
+    fig.add_trace(go.Bar(
+        x=groups["importancia_pct"], y=groups["grupo"], orientation="h",
+        marker_color=COLORS["accent"], showlegend=False,
+        hovertemplate="%{y}<br>%{x:.2f}%<extra></extra>",
+    ), row=1, col=2)
+    fig.update_xaxes(title="Importancia no gradiente (%)")
+    return apply_layout(fig, f"Entradas associadas ao erro de validacao: {target}", 560)
+
+
+def figure_largest_gradient_errors(errors_df: pd.DataFrame) -> go.Figure:
+    """Lista maiores erros sem inventar ranking quando o gradiente local e zero."""
+
+    if errors_df.empty:
+        return apply_layout(go.Figure(), "Maiores erros indisponiveis")
+    rows = []
+    for _, row in errors_df.sort_values("erro_absoluto", ascending=False).iterrows():
+        importances = [float(row[f"importancia_{index}_pct"]) for index in range(1, 4)]
+        if sum(abs(value) for value in importances) <= 1e-12:
+            explanation = "Gradiente local zero - sem ranking valido"
+        else:
+            explanation = " | ".join(
+                f"{row[f'feature_{index}']} ({row[f'importancia_{index}_pct']:.2f}%)"
+                for index in range(1, 4)
+            )
+        rows.append([
+            str(row["run_id"]).replace("run_", ""), int(row["sample_id"]),
+            f"{float(row['real']):.2f}", f"{float(row['predito']):.2f}",
+            f"{float(row['erro_absoluto']):.2f}", explanation,
+        ])
+    headers = ["Run", "Amostra", "Real", "Predito", "Erro abs.", "Entradas mais influentes no erro local"]
+    return table_figure(
+        headers, rows_to_columns(rows, len(headers)),
+        "Maiores erros de validacao em pixels < 5 m", 560,
     )
 
 
@@ -2393,6 +2604,62 @@ def batch_tab() -> dcc.Tab:
     )
 
 
+def model_tab() -> dcc.Tab:
+    targets = [
+        "delta_depth_p10_m", "delta_depth_p50_m", "delta_depth_p90_m",
+        "delta_depth_close_2m_pp", "delta_depth_close_5m_pp", "delta_depth_close_10m_pp",
+    ]
+    return dashboard_tab(
+        "Modelo e explicabilidade",
+        "model-tab",
+        [
+            html.Div(id="model-diagnostic-metrics", className="metrics-grid"),
+            analysis_section(
+                "Treino, validacao e teste",
+                "model-loss-note",
+                [graph("model-loss-curves")],
+            ),
+            analysis_section(
+                "Representacao das entradas angulares",
+                "model-angular-note",
+                [
+                    dcc.RadioItems(
+                        id="angular-split-select",
+                        options=[
+                            {"label": "Validacao", "value": "validacao"},
+                            {"label": "Teste", "value": "teste"},
+                        ],
+                        value="validacao",
+                        inline=True,
+                        className="inline-options",
+                    ),
+                    graph("model-angular-comparison"),
+                ],
+            ),
+            analysis_section(
+                "Entradas relacionadas ao erro",
+                "model-gradient-note",
+                [
+                    html.Div(
+                        className="selector selector-inline",
+                        children=[
+                            html.Label("Alvo explicado"),
+                            dcc.Dropdown(
+                                id="gradient-target-select",
+                                options=[{"label": target, "value": target} for target in targets],
+                                value="delta_depth_close_5m_pp",
+                                clearable=False,
+                            ),
+                        ],
+                    ),
+                    graph("model-gradient-importance"),
+                    graph("model-largest-errors"),
+                ],
+            ),
+        ],
+    )
+
+
 def dropdown_options(
     paths: list[Path], label_factory: Callable[[Path], str]
 ) -> list[dict[str, str]]:
@@ -2433,7 +2700,7 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                             html.H1("Dashboard de metricas do desvio reativo"),
                             html.P(
                                 "Analise organizada por trajetoria/IMU, evasao, "
-                                "depth ground truth e comparacao das levas."
+                                "depth ground truth, comparacao das levas e diagnostico do modelo."
                             ),
                         ]
                     ),
@@ -2455,7 +2722,10 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                 id="dashboard-tabs",
                 value="overview-tab",
                 className="tabs",
-                children=[overview_tab(), reactive_tab(), depth_tab(depth_options, depth_default), batch_tab()],
+                children=[
+                    overview_tab(), reactive_tab(), depth_tab(depth_options, depth_default),
+                    batch_tab(), model_tab(),
+                ],
             ),
             dcc.Interval(id="refresh-data", interval=10000, n_intervals=0),
         ],
@@ -2652,6 +2922,14 @@ INDEX_TEMPLATE = """
                     border-radius: 8px;
                     overflow: hidden;
                 }
+                .inline-options {
+                    display: flex;
+                    gap: 18px;
+                    margin: 8px 0 14px;
+                    color: #43515b;
+                    font-size: 14px;
+                }
+                .inline-options label { margin-right: 16px; }
                 @media (max-width: 1180px) {
                     .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
                     .graph-grid-three { grid-template-columns: 1fr; }
@@ -2802,7 +3080,7 @@ def register_callbacks(app: Dash) -> None:
         batch_df = batch_interval_frames(intervals_df)
         mlp_df = reference_mlp_df()
         event_df = reference_event_df()
-        notes = batch_analysis_notes(stats_df, mlp_df)
+        notes = batch_analysis_notes(stats_df, mlp_df, event_df)
 
         return (
             batch_notice(intervals_df),
@@ -2815,6 +3093,76 @@ def register_callbacks(app: Dash) -> None:
             figure_batch_stats_table(stats_df),
             figure_event_reference_table(event_df),
             *notes,
+        )
+
+    @app.callback(
+        Output("model-diagnostic-metrics", "children"),
+        Output("model-loss-curves", "figure"),
+        Output("model-angular-comparison", "figure"),
+        Output("model-gradient-importance", "figure"),
+        Output("model-largest-errors", "figure"),
+        Output("model-loss-note", "children"),
+        Output("model-angular-note", "children"),
+        Output("model-gradient-note", "children"),
+        Input("refresh-data", "n_intervals"),
+        Input("angular-split-select", "value"),
+        Input("gradient-target-select", "value"),
+    )
+    def update_model_diagnostics(
+        _n_intervals: int, angular_split: str, gradient_target: str
+    ):
+        data = load_model_diagnostics()
+        loss_df = data["loss"]
+        angular_df = data["angular"]
+        importance_df = (
+            data["grouped_importance"]
+            if not data["grouped_importance"].empty
+            else data["importance"]
+        )
+        errors_df = data["errors"]
+
+        validation = loss_df[loss_df["split"] == "validacao"]
+        best_epoch = int(validation.loc[validation["mse_padronizado"].idxmin(), "epoca"]) if not validation.empty else 0
+        stopped_epoch = int(loss_df["epoca"].max()) if not loss_df.empty else 0
+        loss_note = analysis_note(
+            "Como interpretar",
+            [
+                f"O early stopping escolheu a epoca {best_epoch} pela menor loss de validacao e o treino terminou na epoca {stopped_epoch}.",
+                "A curva de teste e apenas diagnostica: ela nao participa da escolha da epoca nem dos pesos restaurados.",
+            ],
+            "warning",
+        )
+
+        angular_note = analysis_note(
+            "Leitura do experimento angular",
+            [
+                "Valor angular e seno/cosseno usam as mesmas runs, splits, semente, dropout e early stopping.",
+                "A representacao ciclica reduziu a importancia conjunta de algumas entradas angulares, mas nao melhorou de forma consistente o MAE no teste fixo.",
+            ],
+        )
+
+        zero_gradients = 0
+        if not errors_df.empty:
+            cols = ["importancia_1_pct", "importancia_2_pct", "importancia_3_pct"]
+            zero_gradients = int((errors_df[cols].fillna(0.0).abs().sum(axis=1) <= 1e-12).sum())
+        gradient_note = analysis_note(
+            "Limite da explicacao local",
+            [
+                "As importancias sao calculadas somente na validacao fixa; o teste permanece reservado para avaliacao final.",
+                f"Em {zero_gradients} dos maiores erros, o gradiente local e zero. Nesses casos o dashboard informa que nao existe ranking valido, em vez de exibir nomes arbitrarios com 0%.",
+            ],
+            "warning" if zero_gradients else "ok",
+        )
+
+        return (
+            model_diagnostic_cards(data),
+            figure_loss_curves(loss_df),
+            figure_angular_comparison(angular_df, angular_split or "validacao"),
+            figure_gradient_importance(importance_df, gradient_target or "delta_depth_close_5m_pp"),
+            figure_largest_gradient_errors(errors_df),
+            loss_note,
+            angular_note,
+            gradient_note,
         )
 
 def create_app() -> Dash:
