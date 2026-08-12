@@ -8,10 +8,10 @@
 
 \usepackage{array}
 \usepackage{subfig}
+\usepackage{graphicx}
 \usepackage[utf8]{inputenc}
 \usepackage{indentfirst}
 \usepackage{hyperref}
-\usepackage[hyphenbreaks]{breakurl}
 \usepackage[alf,abnt-etal-text=it]{abntex2cite}
 \usepackage[brazil]{babel}
 \usepackage[space]{grffile}
@@ -91,10 +91,10 @@
 }
 \makeatother
 
-\titulo{TÍTULO DO TRABALHO}
+\titulo{Análise de Métricas de Visão Monocular e Fluxo Óptico para Estimativa de Proximidade na Navegação Reativa de VANTs}
 \autor{Gabriel Justino Panza}
 \local{Niterói}
-\data{Ano de entrega}
+\data{2026}
 \orientador[Orientador: ]{Leandro Augusto Frata Fernandes}
 \coorientador[Coorientador: ]{Eduardo Charles Vasconcellos}
 \instituicao{%
@@ -112,7 +112,7 @@
 
 %\imprimircapa
 
-\imprimirfolhaderosto*
+\imprimirfolhaderosto
 
 %\input{elementos-pretextuais/errata}
 \input{elementos-pretextuais/folha-aprovacao}
@@ -122,9 +122,9 @@
 \pagebreak
 \textual
 \begin{center}
-\Large {Título em português\\
+\Large {Análise de Métricas de Visão Monocular e Fluxo Óptico para Estimativa de Proximidade na Navegação Reativa de VANTs\\
 %\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
-\textit{Título em inglês}}
+\textit{Analysis of Monocular Vision and Optical Flow Metrics for Proximity Estimation in Reactive UAV Navigation}}
 \end{center}
 \vspace{.2cm} 
 
@@ -144,12 +144,12 @@ Eduardo Charles Vasconcellos\footnote{Coorientador.}
 
 \vspace{-.3cm}
 
-\noindent Apresentação concisa dos pontos relevantes de um documento. O resumo deve ressaltar o objetivo, o método, os resultados e as conclusões do documento. A ordem e a extensão destes itens dependem do tratamento que cada item recebe no documento original. O resumo deve ser composto de uma sequência de frases concisas, afirmativas e não de enumeração de tópicos. Recomenda-se o uso de parágrafo único. As palavras-chave devem figurar logo abaixo do resumo.
+\noindent
 
 \vspace{.4cm}
  
 \noindent
-\textbf{Palavras-chaves}: Assunto1; Assunto2; Assunto3. 
+\textbf{Palavras-chave}: Veículos aéreos não tripulados (VANTs); visão monocular; fluxo óptico; detecção de obstáculos; navegação reativa.
  
 \vspace{\onelineskip}
 
@@ -159,11 +159,11 @@ Eduardo Charles Vasconcellos\footnote{Coorientador.}
 
 \vspace{-.3cm}
 \begin{hyphenrules}{english}
-\noindent Concise presentation of relevant points in a document. The summary should highlight the purpose, method, results and conclusions of the document. The order and extent of these items depend on the treatment each item receives in the original document. The abstract should be composed of a sequence of concise, affirmative and non-topic phrases. It is recommended to use single paragraph. Keywords should appear just below the abstract.
+\noindent
 \end{hyphenrules}
 \vspace{.4cm}
  
-\noindent \textbf{Keywords}: Subject1; Subject2; Subject3.
+\noindent \textbf{Keywords}: Unmanned aerial vehicles (UAVs); monocular vision; optical flow; obstacle detection; reactive navigation.
 
 \vspace{.4cm}
 
@@ -171,82 +171,120 @@ Eduardo Charles Vasconcellos\footnote{Coorientador.}
 
 \section{Introdução}
 
-Veículos aéreos não tripulados, especialmente quadricópteros, têm sido utilizados em aplicações de inspeção, monitoramento, busca e navegação autônoma em regiões de difícil acesso. Em cenários complexos e densos, como florestas, áreas com árvores, galhos, postes, estruturas urbanas e obstáculos próximos entre si, a navegação autônoma depende de uma percepção rápida e confiável do ambiente. Quando o drone opera em velocidade elevada, essa exigência se torna ainda maior, pois o tempo disponível para detectar um obstáculo, estimar risco e corrigir a trajetória é reduzido.
+Veículos aéreos não tripulados são usados em tarefas como inspeção, monitoramento, busca e navegação em locais de difícil acesso. Para operar de forma autônoma em ambientes com árvores, galhos, postes e construções próximas, o drone precisa detectar riscos e corrigir a trajetória antes de uma colisão. Quanto maior a velocidade, menor é o tempo disponível para perceber o obstáculo e executar o desvio.
 
-A literatura recente mostra que o voo autônomo rápido em ambientes complexos ainda é um problema desafiador. Em muitos sistemas tradicionais, a navegação é dividida em etapas sucessivas de percepção, mapeamento, planejamento e controle. Embora essa divisão seja útil para organizar o sistema, ela pode aumentar a latência e acumular erros, principalmente quando a aeronave precisa reagir rapidamente a obstáculos próximos \cite{Loquercio2021}. Em ambientes desconhecidos, também existe incerteza sobre regiões ainda não observadas, o que dificulta a escolha de trajetórias rápidas e seguras \cite{BayesianLearning2015}.
+Alguns sistemas dividem a navegação em percepção, mapeamento, planejamento e controle. Essa organização facilita o desenvolvimento, mas pode aumentar a demora entre a captura da imagem e a ação do veículo \cite{Loquercio2021}. Em ambientes desconhecidos, a incerteza sobre regiões ainda não observadas também dificulta a escolha de trajetórias seguras \cite{BayesianLearning2015}.
 
-Neste trabalho, o foco está na percepção visual para navegação reativa de drones. O objetivo é estudar como técnicas de visão computacional podem auxiliar a detecção de obstáculos em tempo real ou quase tempo real, mantendo a possibilidade de voo em velocidades elevadas. A proposta considera o uso de câmera monocular como principal fonte de percepção, por ser uma alternativa leve, de baixo custo e compatível com plataformas embarcadas. Ao mesmo tempo, essa escolha impõe desafios, pois a profundidade e a proximidade dos obstáculos precisam ser inferidas a partir de pistas visuais e variações temporais da imagem \cite{Vyas2022,RealTimeMonocular2022}.
+Este trabalho investiga se medidas extraídas de uma câmera monocular, combinadas com dados de movimento e IMU, permitem estimar mudanças de proximidade. A câmera monocular apresenta baixo peso e custo, mas não fornece diretamente a distância dos objetos. Essa informação precisa ser obtida a partir da imagem e do movimento entre quadros \cite{Vyas2022,RealTimeMonocular2022}.
 
-O problema tratado não se limita à detecção semântica de objetos. Em uma situação de voo, o mais importante é identificar se uma região da cena representa risco para a trajetória atual do drone. Assim, obstáculos de diferentes classes, formatos e texturas podem ser relevantes mesmo quando não são classificados explicitamente. Por isso, este estudo se concentra em métricas visuais de movimento, proximidade e variação entre frames consecutivos, explorando sinais como fluxo óptico e variações de profundidade de referência.
+O objetivo não é classificar cada objeto da cena, mas estimar se uma região representa risco para a trajetória. Para isso, são usados fluxo óptico esparso, dados da IMU, deslocamento, comandos reativos e estatísticas da diferença entre imagens. Uma câmera de profundidade do simulador fornece somente a referência usada para criar os alvos. Ela não participa do cálculo do desvio nem é fornecida como entrada ao modelo.
 
-Além das métricas de visão, também é considerada a investigação inicial de modelos de aprendizado de máquina. Redes neurais multicamadas (MLPs) podem ser usadas para avaliar se atributos tabulares extraídos dos intervalos visuais carregam informação suficiente para estimar variações de profundidade/proximidade. Redes convolucionais (CNNs), por sua vez, aparecem como uma possibilidade natural para explorar a estrutura espacial das imagens e mapas de variação. Nesta etapa, esses modelos são tratados como apoio ao estudo das métricas, e não como uma solução final já validada.
+Os dados são representados por variações entre intervalos visuais. A versão analisada contém 40 execuções e 1.234 intervalos válidos. Uma MLP estima as mudanças dos percentis de profundidade e da porcentagem de pixels próximos. A comparação usa as mesmas execuções de validação e teste em todos os tamanhos de conjunto, enquanto somente o treino cresce. O estudo também analisa o sobreajuste, os eventos de proximidade e a sensibilidade dos erros em relação às entradas. Essa análise permite avaliar o desempenho do modelo e as limitações da representação usada.
 
 \section{Fundamentação Teórica e Trabalhos Relacionados}
 
 \subsection{Navegação visual em drones}
 
-A navegação autônoma de quadricópteros exige a integração entre percepção, decisão e controle. Em ambientes complexos, a aeronave precisa interpretar rapidamente o que está à sua frente e ajustar sua trajetória antes que a colisão ocorra. Essa necessidade é ainda mais forte em voos rápidos, nos quais pequenas latências podem tornar uma manobra inviável.
+A navegação autônoma de quadricópteros depende da integração entre percepção, decisão e controle. Em voos rápidos, essas etapas também precisam respeitar o tempo disponível para reagir. Loquercio et al. aproximam percepção e planejamento para realizar voos em ambientes naturais e artificiais \cite{Loquercio2021}. Richter, Vega-Brown e Roy consideram a incerteza sobre regiões desconhecidas durante o planejamento \cite{BayesianLearning2015}. Esses trabalhos estudam o sistema de navegação como um todo, enquanto esta pesquisa se concentra nos sinais visuais usados para representar mudanças de proximidade.
 
-Trabalhos recentes investigam estratégias para reduzir a distância entre percepção e ação. Loquercio et al. propõem uma abordagem de voo rápido em ambientes naturais e artificiais complexos, treinada em simulação e baseada no mapeamento direto de observações sensoriais para trajetórias livres de colisão \cite{Loquercio2021}. O trabalho demonstra a relevância de reduzir a latência de pipelines tradicionais em cenários de alta velocidade. De forma complementar, Richter, Vega-Brown e Roy discutem navegação rápida e segura em ambientes desconhecidos, considerando a incerteza sobre regiões ainda não mapeadas \cite{BayesianLearning2015}.
-
-Em sistemas baseados em visão, a câmera fornece uma representação rica do ambiente, mas também introduz desafios como iluminação variável, borramento de movimento, oclusões e restrições de processamento. Revisões sobre detecção e rastreamento em imagens de VANTs destacam que altitude, ângulo de câmera, movimento e oclusão tornam a interpretação visual mais difícil do que em imagens estáticas convencionais \cite{Ramachandran2021}.
+O ambiente experimental usa o Gazebo para simular a física e os sensores \cite{Koenig7803} e o PX4 como piloto automático \cite{Meier8092}. A simulação permite obter a profundidade usada como referência, mas ainda pode apresentar pequenas diferenças no tempo de execução dos processos. Por isso, cada voo completo é tratado como uma execução independente.
 
 \subsection{Visão monocular e profundidade}
 
-A câmera monocular é uma escolha atrativa para drones por reduzir custo, peso e consumo de energia. No entanto, estimar profundidade com apenas uma câmera é um problema mal posto, pois a imagem bidimensional não contém diretamente a distância métrica dos objetos. A profundidade precisa ser inferida por pistas de perspectiva, textura, tamanho relativo, sombreamento, movimento ou aprendizado a partir de dados \cite{Vyas2022,Arampatzakis2024}.
-
-Revisões sobre estimativa de profundidade monocular mostram avanços importantes com redes neurais profundas, especialmente em tarefas de inferência de profundidade a partir de uma única imagem \cite{RealTimeMonocular2022,Dhanushkodi2025}. Ainda assim, a aplicação em robótica exige atenção ao custo computacional, à generalização para ambientes externos e à robustez em situações de movimento. Em drones, uma predição visual precisa ser útil dentro do intervalo de decisão do sistema, não apenas precisa em uma análise offline.
-
-Também há trabalhos que tratam a profundidade estimada como uma variável incerta. Liu et al. argumentam que a profundidade monocular pode apresentar ambiguidades relevantes e propõem modelar distribuições sobre profundidade em vez de apenas valores pontuais \cite{Liu2023}. Essa perspectiva é importante para este projeto, pois reforça a análise de variações e tendências de proximidade, evitando depender exclusivamente de valores absolutos de distância.
+A câmera monocular tem baixo peso e custo, mas não fornece diretamente a distância dos objetos. Trabalhos recentes apresentam avanços na estimativa monocular de profundidade, mas ainda apontam problemas de generalização e de custo computacional em aplicações robóticas \cite{Vyas2022,Arampatzakis2024,RealTimeMonocular2022}. A incerteza dessas estimativas também precisa ser considerada \cite{Liu2023}. Neste trabalho, a profundidade sintética serve apenas para calcular a variação real de proximidade. Ela não é usada como entrada da navegação.
 
 \subsection{Fluxo óptico e variação visual}
 
-O fluxo óptico representa o movimento aparente de pontos da imagem entre frames consecutivos. Para um drone em deslocamento, esse movimento aparente está relacionado à velocidade da câmera, à direção de movimento e à distância dos objetos observados. Obstáculos próximos tendem a produzir deslocamentos visuais maiores, o que permite extrair indícios de proximidade e risco.
+O fluxo óptico descreve o movimento aparente entre quadros. Lucas--Kanade estima o deslocamento dos pontos \cite{LucasKanade1981}, enquanto Shi--Tomasi seleciona regiões adequadas para o rastreamento \cite{ShiTomasi1994}. Como a rotação do drone, sua translação e a estrutura da cena influenciam o fluxo, uma magnitude alta não significa necessariamente que exista um obstáculo próximo. Resolução, frequência, borramento e erros nas correspondências também afetam o resultado \cite{SimoneGodio2022,Peidong2021,Estimation2109}.
 
-Trabalhos de odometria visual monocular exploram essas relações para estimar movimento e apoiar navegação. Tarrio e Pedre apresentam uma abordagem de odometria visual monocular em tempo real baseada em bordas, com aplicação em veículos aéreos não tripulados \cite{Tarrio2015}. Garcia et al. discutem o uso de câmera monocular e fusão sensorial para suporte à navegação de micro veículos aéreos \cite{Garcia2016}. Esses estudos reforçam que a informação temporal entre imagens pode ser usada para inferir movimento e estrutura do ambiente.
-
-Em aplicações embarcadas, a resolução e a frequência das imagens influenciam diretamente o custo computacional e a robustez. Godio et al. analisam os efeitos desses parâmetros em odometria visual-inercial para VANTs, mostrando que a configuração visual afeta tanto a precisão quanto o uso de CPU \cite{SimoneGodio2022}. Em voos rápidos, o borramento de movimento também é um fator importante, como discutido em estudos sobre odometria visual sensível a motion blur \cite{Peidong2021}.
+Alguns trabalhos usam fluxo e informação inercial para prevenir colisões \cite{Xiao2021}, treinam o desvio a partir do movimento dos pixels de uma única câmera \cite{PixelMotion2025} ou combinam fluxo translacional com uma máscara de incerteza \cite{Deng2026}. Nesta pesquisa, o modelo não aprende diretamente o comando de desvio. O objetivo é verificar quais medidas de fluxo, IMU, movimento e diferença de imagem ajudam a explicar a variação de proximidade.
 
 \subsection{Aprendizado aplicado à percepção e desvio de obstáculos}
 
-Modelos de aprendizado têm sido explorados para aproximar percepção visual e decisão em drones. Em voo rápido, Loquercio et al. mostram que políticas treinadas em simulação podem mapear observações sensoriais para trajetórias de forma mais direta do que pipelines tradicionais \cite{Loquercio2021}. Bhattacharya et al. investigam desvio de obstáculos com visão monocular baseada em eventos, mostrando que sensores visuais e modelos aprendidos podem apoiar navegação reativa em ambientes internos e externos \cite{Bhattacharya2024}.
+Uma MLP permite testar primeiro os atributos resumidos, sem processar as imagens completas. No entanto, modelos baseados em árvores muitas vezes obtêm resultados melhores em dados tabulares de tamanho moderado \cite{OyallonandGaelVaroquaux5220}. Por isso, a MLP é usada como modelo inicial, e não como a melhor arquitetura já definida. O \textit{dropout} e a parada antecipada (\textit{early stopping}) ajudam a reduzir o sobreajuste \cite{Srivastava2014,Prechelt1998}. A divisão por execução completa evita que intervalos muito parecidos da mesma trajetória apareçam no treino e no teste \cite{Kapoor2023}.
 
-No contexto de profundidade, CNNs são frequentemente utilizadas por sua capacidade de extrair padrões espaciais diretamente das imagens \cite{Dhanushkodi2025}. Para este trabalho, elas são relevantes como alternativa para explorar mapas de variação visual ou imagens consecutivas. Já MLPs podem ser úteis como modelos iniciais sobre atributos resumidos, permitindo avaliar se métricas agregadas de fluxo, movimento e variação de imagem carregam sinal suficiente para estimar mudanças de proximidade.
+Para entender melhor os erros da rede, são usados gradientes que mostram a sensibilidade do erro em relação às entradas. Integrated Gradients é uma das referências para esse tipo de análise \cite{Sundararajan2017}, e trabalhos posteriores discutem suas propriedades e o problema da saturação \cite{Walker5289,Axiomatic2025}. Como as entradas deste modelo são tabulares, a análise é feita sobre os atributos, e não por mapas de imagem como no Grad-CAM.
 
 \subsection{Posicionamento da proposta}
 
-Os trabalhos relacionados indicam que a navegação segura de drones em ambientes densos depende de percepção rápida, representação adequada da proximidade e integração entre sinais visuais e ação. A proposta deste trabalho se posiciona nesse espaço ao estudar métricas visuais calculadas entre intervalos consecutivos, com foco em sinais de aproximação de obstáculos. A profundidade simulada é utilizada como referência de análise, enquanto a proposta de navegação permanece centrada em visão monocular e variações temporais da cena.
+O desvio monocular baseado em fluxo já foi estudado em outros trabalhos. Neste projeto, a contribuição está na organização e na análise dos dados: fluxo esparso, IMU, movimento, comandos e profundidade de referência são sincronizados no mesmo intervalo. As observações são representadas por variações, o conjunto de treino cresce sem trocar as execuções de validação e teste e os gradientes são usados para analisar quais entradas mais influenciam os erros.
+
+\section{Metodologia}
+
+\subsection{Ambiente, coleta e sincronização}
+
+Os experimentos são executados em \textit{Software in the Loop} com PX4, Gazebo e ROS~2. O quadricóptero simulado possui uma câmera RGB frontal, usada na estabilização da imagem, no cálculo do fluxo óptico e no desvio. Uma câmera de profundidade alinhada fornece somente os valores de referência. Esses valores não são usados pelo controlador nem entram no modelo.
+
+Os experimentos foram executados em um computador com processador Intel Core i7-14700K, 64~GB de memória RAM e GPU NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo. O ambiente utilizou Ubuntu 22.04.5 LTS no WSL~2, PX4 baseado no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. O modelo simulado foi o \texttt{x500\_mono\_cam}, no cenário \texttt{baylands}.
+
+O controlador opera a 25~Hz e limita a velocidade a 12~m/s. A missão percorre quatro pontos relativos no sistema NED: $(-25,25,-1{,}65)$, $(-50,70,-1{,}65)$, $(-25,25,-1{,}65)$ e $(0,0,-1{,}65)$ metros. Um ponto intermediário é aceito dentro de um raio de 4~m. Ao retornar a menos de 3~m do ponto final, o veículo inicia o encerramento da missão, pousa e é desarmado.
+
+A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas ao longo da coleta. A Figura~\ref{fig:artigo-imu} apresenta as variações das velocidades angulares nas mesmas execuções, usadas para caracterizar a atitude e o movimento do veículo.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_trajetorias.png}
+    \caption{Trajetórias acumuladas de quatro execuções representativas.}
+    \label{fig:artigo-trajetorias}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_imu.png}
+    \caption{Variações das velocidades angulares em quatro execuções representativas.}
+    \label{fig:artigo-imu}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida, tempos não positivos, intervalos RGB ou de profundidade acima de 0,5~s e diferenças temporais entre RGB e profundidade acima de 0,08~s. A versão analisada contém 40 execuções e 1.234 intervalos válidos.
+
+A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas 40 execuções. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.png}
+    \caption{Distribuição do intervalo temporal entre atualizações visuais nas 40 execuções.}
+    \label{fig:artigo-intervalos}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_sincronizacao.png}
+    \caption{Sequência sincronizada do fluxo visual e da variação de proximidade usada como referência.}
+    \label{fig:artigo-sincronizacao}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\subsection{Representação dos intervalos}
+
+A imagem é estabilizada com os dados de atitude e IMU e convertida para uma saída de $640\times480$ pixels. Até 180 pontos Shi--Tomasi são acompanhados pelo Lucas--Kanade piramidal, com janela $21\times21$ e três níveis adicionais. Para cada intervalo, são registrados quantidade e retenção de pontos, magnitude e componente radial do fluxo, risco por ponto, deltas de posição e atitude, dados da IMU, comandos reativos e estatísticas da diferença entre imagens.
+
+Os alvos são as variações dos percentis P10, P50 e P90 da profundidade e da porcentagem de pixels abaixo de 2, 5 e 10~m. Também é feito um teste em que os ângulos são substituídos por seus valores de seno e cosseno. As demais configurações são mantidas iguais nessa comparação.
+
+\subsection{Modelo e protocolo de avaliação}
+
+A MLP possui duas camadas ocultas, com 64 e 16 unidades, ativação ReLU, \textit{dropout} de 0,30 e uma saída linear para cada alvo. As entradas e os alvos são padronizados somente com os dados de treino. O treinamento usa Adam, taxa $10^{-3}$, regularização $L_2=10^{-4}$, lotes de 64 amostras, no máximo 300 épocas e semente 42. A parada antecipada acompanha a MSE da validação. Quando não ocorre uma melhora mínima de $10^{-4}$ durante 50 épocas, o treinamento para e recupera os pesos da melhor época.
+
+A separação é feita por execução. Duas execuções de validação e três de teste permanecem fixas, enquanto o treino cresce nos marcos de 9, 17, 25, 33 e 40 execuções. O modelo é comparado com a previsão da média do treino por MAE e RMSE. Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
+
+\subsection{Explicabilidade}
+
+O gradiente do erro quadrático é calculado em relação às entradas padronizadas. O módulo desses valores é reunido na validação por atributo e por grupo de entradas. Nos maiores erros, são mostradas as três entradas mais sensíveis. Quando todos os gradientes são zero, nenhum ranking é apresentado. Essa análise indica sensibilidade perto de cada amostra, mas não permite afirmar que uma entrada seja a causa do erro.
+
+O código e o notebook estão no \href{https://github.com/Gabriel-Panza/TCC_Drone}{repositório do projeto no GitHub}, na branch \texttt{reactive\_approach}.
+
+\section{Resultados e discussão}
 
 \section{Conclusão}
-
-Parte final do artigo, na qual se apresentam as considerações correspondentes aos objetivos e/ou hipóteses.
 
 \newpage
 \bibliography{references}
 
 \newpage
-\renewcommand{\listfigurename}{APÊNDICE A - Lista de ilustrações}
-\listoffigures
-
-\newpage
-\renewcommand{\listtablename}{APÊNDICE B - Lista de tabelas}
-\listoftables
-
-\begin{appendices}
-\newpage
-\chapter* {APÊNDICE C}
-\noindent
-Os apêndices A e B devem conter a lista de ilustrações e tabelas, respectivamente. Os apêndices seguintes podem ser usados para apresentar textos elaborados pelo próprio autor, a fim de complementar a sua argumentação. Por exemplo, no caso de desenvolvimento de sistemas, podem constar nos apêndices os artefatos gerados da análise de sistemas, como protótipos de telas, casos de uso, diagramas UML, ou a lista de requisitos de negócio e de usuário.
-
-\newpage
-\chapter*{ANEXO A}
-\noindent
-Seção opcional. Anexos são os documentos de autoria externa, ou não elaborados pelo autor, que servem de fundamentação, comprovação ou ilustração.
-\end{appendices}
-
-\newpage
 \chapter*{Agradecimentos}
 \noindent
-Seção opcional. Oportunidade para o(s) autor(es) registrar(em) os agradecimentos, em especial, quando o artigo recebeu ajuda financeira de alguma instituição de fomento, ou represente o resultado de um trabalho colaborativo ou multidisciplinar, envolvendo áreas externas ao Instituto de Computação.
+Agradeço à minha família, por todo o apoio ao longo da graduação e por sempre acreditar em mim. Agradeço também aos professores que fizeram parte da minha formação e contribuíram para construir o pesquisador que sou hoje, em especial ao professor Leandro Augusto Frata Fernandes, meu orientador, por ter acompanhado este trabalho de perto durante todo o processo. Por fim, agradeço aos meus amigos, que nunca largaram a minha mão e caminharam ao meu lado durante estes cinco anos de UFF.
 
 \end{document}

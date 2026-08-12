@@ -2,11 +2,9 @@
 % FICHA BIBLIOGRAFICA
 % ----------------------------------------------------------
 
-%
-%
-\begin{fichacatalografica}
-\begin{center}Inserir aqui a ficha gerada a partir do Sistema de Geração Automática de Fichas Catalográficas, disponível no endereço
-https://bibliotecas.uff.br/bee/fichacatalografica
-\end{center}
-\end{fichacatalografica}
-
+\IfFileExists{figuras/ficha_catalografica.pdf}{%
+  \begin{fichacatalografica}
+    \centering
+    \includegraphics[width=\textwidth]{figuras/ficha_catalografica.pdf}
+  \end{fichacatalografica}
+}{}
