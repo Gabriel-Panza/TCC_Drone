@@ -72,8 +72,6 @@ MicroXRCEAgent udp4 -p 8888 &
 
 ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
 
-ros2 run ros_gz_bridge parameter_bridge /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
-
 wait
 ```
 
@@ -82,12 +80,7 @@ wait
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
-PYTHONNOUSERSITE=1 python3 main.py --ros-args \
-  -p ground_truth_depth_topic:=/sim_depth_ground_truth \
-  -p save_ground_truth_dataset:=true \
-  -p ground_truth_depth_max_age_s:=0.08 \
-  -p ground_truth_max_interval_s:=0.50 \
-  -p use_dt_normalized_control:=false
+PYTHONNOUSERSITE=1 python3 main.py
 ```
 
 O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam
