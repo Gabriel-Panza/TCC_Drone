@@ -182,3 +182,9 @@ cython_debug/
 
 # Arquivos de Ambiente
 ws_ros2/
+
+datasets/
+logs/
+.sim_env/
+
+Parte_Escrita/

@@ -1,14 +1,23 @@
 import os
 import time
+import json
 import numpy as np
 import math
 import cv2
+import rclpy
+import threading
+from pathlib import Path
+from datetime import datetime
 from cv_bridge import CvBridge
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import QoSProfile, qos_profile_sensor_data, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
+
+try:
+    from px4_msgs.msg import SensorCombined
+except ImportError:
+    SensorCombined = None
 
 class DroneOffboardNode(Node):
     """
@@ -19,6 +28,10 @@ class DroneOffboardNode(Node):
     O nó publica mensagens de controle Offboard para o PX4, envia setpoints de trajetória
     pelo tópico /fmu/in/trajectory_setpoint, envia comandos de veículo pelo tópico
     /fmu/in/vehicle_command e recebe posição local, atitude e imagem da câmera simulada.
+    A imagem monocular pode ser compensada por IMU/atitude para reduzir tilt, roll e pan
+    antes do fluxo optico. Opcionalmente, também recebe o mapa de profundidade renderizado
+    pelo Gazebo apenas como ground truth sintético para treino/validação, sem usá-lo como
+    entrada da evasão visual.
     
     Também são configurados parâmetros de voo adaptativo, como velocidade máxima,
     raio de aceitação reduzido, zona de frenagem por curvatura, aceleração lateral máxima
@@ -31,6 +44,8 @@ class DroneOffboardNode(Node):
     [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
     [ROS 2 QoS] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
     [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+    [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
+    [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
     ======================================================================================
     """
     
@@ -57,11 +72,143 @@ class DroneOffboardNode(Node):
         # Inicializa a ponte de conversão ROS -> OpenCV
         self.bridge = CvBridge()
 
+        self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
+        self.depth_gt_max_age_s = float(self.declare_parameter('ground_truth_depth_max_age_s', 0.08).value)
+        self.ground_truth_max_interval_s = max(
+            self.depth_gt_max_age_s,
+            float(self.declare_parameter('ground_truth_max_interval_s', 0.5).value)
+        )
+        self.save_ground_truth_dataset = bool(self.declare_parameter('save_ground_truth_dataset', False).value)
+        self.ground_truth_dataset_dir = str(
+            self.declare_parameter(
+                'ground_truth_dataset_dir',
+                os.path.expanduser('~/TCC_Drone/datasets/depth_ground_truth')
+            ).value
+        )
+        self.ground_truth_save_every_n = max(
+            1,
+            int(self.declare_parameter('ground_truth_save_every_n', 1).value)
+        )
+        self.ground_truth_flush_every_n = max(
+            1,
+            int(self.declare_parameter('ground_truth_flush_every_n', 40).value)
+        )
+        self.ground_truth_memmap_capacity = max(
+            16,
+            int(self.declare_parameter('ground_truth_memmap_capacity', 4096).value)
+        )
+        self.ground_truth_rgb_width = max(
+            16,
+            int(self.declare_parameter('ground_truth_rgb_width', 160).value)
+        )
+        self.ground_truth_rgb_height = max(
+            16,
+            int(self.declare_parameter('ground_truth_rgb_height', 120).value)
+        )
+        self.ground_truth_depth_width = max(
+            8,
+            int(self.declare_parameter('ground_truth_depth_width', 40).value)
+        )
+        self.ground_truth_depth_height = max(
+            8,
+            int(self.declare_parameter('ground_truth_depth_height', 30).value)
+        )
+        self.ground_truth_depth_max_m = float(
+            self.declare_parameter('ground_truth_depth_max_m', 50.0).value
+        )
+        self.ground_truth_max_flow_points = max(
+            16,
+            int(self.declare_parameter('ground_truth_max_flow_points', 180).value)
+        )
+        self.use_imu_raw = bool(self.declare_parameter('use_imu_raw', True).value)
+        self.imu_raw_topic = str(self.declare_parameter('imu_raw_topic', '/fmu/out/sensor_combined').value)
+        self.compensacao_imu_ativa = bool(self.declare_parameter('compensacao_imu_ativa', True).value)
+        self.compensar_tilt_roll = bool(self.declare_parameter('compensar_tilt_roll', True).value)
+        self.compensar_pan_yaw = bool(self.declare_parameter('compensar_pan_yaw', True).value)
+        self.stabilization_zoom = float(self.declare_parameter('stabilization_zoom', 1.25).value)
+        self.stabilization_output_width = int(self.declare_parameter('stabilization_output_width', 640).value)
+        self.stabilization_output_height = int(self.declare_parameter('stabilization_output_height', 480).value)
+        self.pan_gyro_weight = float(self.declare_parameter('pan_gyro_weight', 0.35).value)
+        self.pan_gyro_weight = max(0.0, min(1.0, self.pan_gyro_weight))
+        self.pan_yaw_gain = float(self.declare_parameter('pan_yaw_gain', 1.0).value)
+        self.pan_max_delta_rad = float(
+            self.declare_parameter('pan_max_delta_rad', math.radians(12.0)).value
+        )
+        self.yaw_velocity_min_m_s = max(
+            0.05,
+            float(self.declare_parameter('yaw_velocity_min_m_s', 0.35).value)
+        )
+
+        self.latest_depth_gt = None
+        self.latest_depth_gt_stamp_s = None
+        self.latest_depth_gt_sequence = 0
+        self.latest_depth_gt_encoding = ''
+        self.sensor_state_lock = threading.Lock()
+        self.last_rgb_stamp_s = None
+        self.depth_gt_frames = 0
+        self.depth_gt_frames_received = 0
+        self.depth_gt_frames_rejected_nonmonotonic = 0
+        self.rgb_frames_seen = 0
+        self.rgb_frames_received = 0
+        self.rgb_frames_rejected_nonmonotonic = 0
+        self.visual_intervals_seen = 0
+        self.depth_intervals_saved = 0
+        self.dataset_intervals_rejected = {
+            'missing_depth': 0,
+            'missing_flow': 0,
+            'invalid_rgb_dt': 0,
+            'rgb_dt_too_large': 0,
+            'reused_depth': 0,
+            'invalid_depth_dt': 0,
+            'depth_dt_too_large': 0,
+        }
+        self.depth_gt_run_dir = None
+        self.depth_gt_manifest_path = None
+        self.depth_gt_intervals = None
+        self.depth_gt_image_delta = None
+        self.depth_gt_depth_delta = None
+        self.depth_gt_depth_mask = None
+        self.depth_gt_flow_vectors = None
+        self.depth_gt_capacity_warned = False
+        self.prev_depth_interval_ref = None
+        self.depth_gt_shape_warned = False
+
+        self.current_gyro_rad_s = np.zeros(3, dtype=float)
+        self.current_accel_m_s2 = np.zeros(3, dtype=float)
+        self.last_imu_timestamp_s = None
+        self.prev_stabilization_stamp_s = None
+        self.prev_stabilization_yaw = None
+        self.last_pan_delta_rad = 0.0
+        self.last_pan_delta_source = 'none'
+
         self.camera_sub = self.create_subscription(
             Image, 
             '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image',
             self.image_callback, 
             qos_profile_sensor_data)
+
+        if self.depth_gt_topic:
+            self.depth_gt_sub = self.create_subscription(
+                Image,
+                self.depth_gt_topic,
+                self.depth_ground_truth_callback,
+                qos_profile_sensor_data)
+            self.get_logger().info(
+                f'Ground truth de profundidade habilitado em {self.depth_gt_topic}. '
+                'A navegacao continua usando somente a camera monocular RGB.'
+            )
+        else:
+            self.depth_gt_sub = None
+
+        if self.use_imu_raw and SensorCombined is not None:
+            self.imu_raw_sub = self.create_subscription(
+                SensorCombined,
+                self.imu_raw_topic,
+                self.imu_raw_callback,
+                qos_profile_sensor_data)
+            self.get_logger().info(f'IMU bruto habilitado em {self.imu_raw_topic}.')
+        else:
+            self.imu_raw_sub = None
         
         # --- MATRIZ INTRÍNSECA DA CÂMERA (K) ---
         fov_rad = 1.74
@@ -85,27 +232,39 @@ class DroneOffboardNode(Node):
         self.current_z = None
         self.current_roll = 0.0
         self.current_pitch = 0.0
-        self.current_yaw = 0.0        
-        self.smooth_yaw = 0.0
+        self.current_yaw = 0.0
+        self.current_yaw_attitude = 0.0
+        self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
-        self.velocity_smooth_alpha = 0.3
-        self.yaw_smooth_alpha = 0.3
+        self.velocity_smooth_alpha = 0.4
+        self.yaw_smooth_alpha = 0.8
+        self.yaw_max_rate_rad_s = math.radians(90.0)
+        self.last_control_tick_s = None
+        self.control_dt_s = 0.04
+
+        self.prev_gray_avoidance = None
+        self.prev_points_avoidance = None
+        self.prev_avoidance_stamp_s = None
+        self.obstacle_risk = 0.1
+        self.avoid_lateral_body = 0.0
+        self.avoid_brake = 0.0
+        self.avoid_side_memory = 0.9
+        self.avoidance_max_brake = 0.6
+        self.raio_finalizacao = 3.0
+        self.raio_desativa_evasao_final = 8.0
+        self.evasao_visual_ativa = True
+        self.max_lateral_acceleration = 4.0
 
         self.start_x = None
         self.start_y = None
         self.start_z = None
 
         self.waypoints_relativos = [
-            [54.0, -24.0, -1.75],
-            [48.0, -32.0, -1.75],
-            [48.0, -40.0, -1.75],
-            [48.0, -48.0, -1.75],
-            [36.0, -33.0, -1.75],
-            [44.0, -58.0, -1.75],
-            [28.0, -33.0, -1.75],
-            [12.0, -12.0, -3.5],
-            [0.0, 0.0, -5.0]
+            [-25.0, 25.0, -1.65],
+            [-50.0, 70.0, -1.65],
+            [-25.0, 25.0, -1.65],
+            [0.0, 0.0, -1.65]
         ]
         
         self.lista_alvos_absolutos = []
@@ -116,16 +275,37 @@ class DroneOffboardNode(Node):
         self.missao_concluida = False
         self.encerrando = False
         
-        self.velocidade_maxima = 12.0               # Velocidade do vetor m/s
-        self.raio_de_aceitacao = 4.5                # Raio de aceitação para mudar de waypoint
+        self.velocidade_maxima = 12.0
+        self.raio_de_aceitacao = 4.0
         
-        self.zona_frenagem_curva = 6.0
+        self.zona_frenagem_curva = 8.0
         self.angulo_curva_forte = math.radians(45)
 
-        self.max_lateral_acceleration = 8.0
-
-        self.dt = 0.04  # (25Hz)
+        self.dt = 0.04  # Periodo nominal do controle (25 Hz).
+        self.control_dt_s = self.dt
+        self.nominal_visual_dt_s = max(
+            1e-3,
+            float(self.declare_parameter('nominal_visual_dt_s', self.dt).value)
+        )
+        self.use_dt_normalized_control = bool(
+            self.declare_parameter('use_dt_normalized_control', False).value
+        )
         self.timer = self.create_timer(self.dt, self.timer_callback)
+
+    @staticmethod
+    def alpha_ajustado_por_dt(alpha_nominal, dt_s, dt_nominal_s):
+        """Mantem a mesma constante de tempo quando o intervalo real varia."""
+
+        alpha_nominal = float(np.clip(alpha_nominal, 0.0, 1.0))
+        if alpha_nominal in (0.0, 1.0):
+            return alpha_nominal
+
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            dt_s = dt_nominal_s
+        if not np.isfinite(dt_nominal_s) or dt_nominal_s <= 0.0:
+            return alpha_nominal
+
+        return float(1.0 - (1.0 - alpha_nominal) ** (dt_s / dt_nominal_s))
 
     def pos_callback(self, msg):
         """
@@ -173,13 +353,25 @@ class DroneOffboardNode(Node):
         gerar os setpoints de velocidade, posição vertical e yaw. Quando a missão termina,
         uma thread separada executa o procedimento de encerramento para não bloquear o timer.
         
-        A Fonte: 
+        Fontes:
         [PX4 ROS 2 Offboard Control Example] https://docs.px4.io/main/en/ros2/offboard_control
         [PX4 OffboardControlMode] https://docs.px4.io/main/en/msg_docs/OffboardControlMode
         [ROS 2 Node Timers] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
         ==================================================================================
         """
         
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        if not self.use_dt_normalized_control or self.last_control_tick_s is None:
+            self.control_dt_s = self.dt
+        else:
+            measured_dt_s = now_s - self.last_control_tick_s
+            self.control_dt_s = (
+                measured_dt_s
+                if np.isfinite(measured_dt_s) and 0.0 < measured_dt_s <= 0.5
+                else self.dt
+            )
+        self.last_control_tick_s = now_s
+
         if self.current_x is None:
             return
 
@@ -191,7 +383,7 @@ class DroneOffboardNode(Node):
             self.voo_iniciado = True
 
         if self.voo_iniciado:
-            self.navegar_por_waypoints()
+            self.navegar_por_waypoints(self.control_dt_s)
             
             if self.missao_concluida and not self.encerrando:
                 self.encerrando = True
@@ -245,7 +437,7 @@ class DroneOffboardNode(Node):
 
         return math.acos(cos_angle)
 
-    def navegar_por_waypoints(self):
+    def navegar_por_waypoints(self, control_dt_s=None):
         """
         ==================================================================================
         Executa a lógica principal de navegação por waypoints.
@@ -264,6 +456,9 @@ class DroneOffboardNode(Node):
         pelo eixo z, e velocity = [vx, vy, NaN], usando velocidade horizontal como comando
         principal. No PX4, valores NaN indicam campos não comandados; valores não-NaN de
         velocidade podem atuar como feedforward ou setpoint conforme a combinação enviada.
+
+        Os comandos laterais de evasão são aplicados no referencial do corpo do drone:
+        avoid_lateral_body positivo desloca o drone para a direita.
         
         Fontes:
         [PX4 Offboard Mode - TrajectorySetpoint] https://docs.px4.io/main/en/flight_modes/offboard
@@ -272,23 +467,25 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
+        if control_dt_s is None or not np.isfinite(control_dt_s) or control_dt_s <= 0.0:
+            control_dt_s = self.dt
+
         alvo_atual = self.lista_alvos_absolutos[self.wp_atual_index]
         target_x, target_y, target_z = alvo_atual[0], alvo_atual[1], alvo_atual[2]
         
-        # Calcula a distância Euclidiana até o alvo
         pos_x = target_x - self.current_x
         pos_y = target_y - self.current_y
         pos_z = target_z - self.current_z
         distancia = math.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
         
         vx, vy = 0.0, 0.0
-        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+        if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
         
         is_ultimo_wp = (self.wp_atual_index == len(self.lista_alvos_absolutos) - 1)
-        distancia_corte = 0.3 if is_ultimo_wp else self.raio_de_aceitacao
+        distancia_corte = self.raio_finalizacao if is_ultimo_wp else self.raio_de_aceitacao
 
-        # --- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ---
+        # ---- VELOCIDADE ADAPTATIVA BASEADA EM CURVATURA ----
         velocidade_maxima_atual = self.velocidade_maxima
 
         if not is_ultimo_wp:
@@ -304,13 +501,11 @@ class DroneOffboardNode(Node):
                     min(velocidade_segura_curva, 6.0)
                 )
 
-                # Quanto mais perto do waypoint, mais reduz a velocidade
                 t = (distancia - self.raio_de_aceitacao) / (
                     self.zona_frenagem_curva - self.raio_de_aceitacao
                 )
                 t = max(0.0, min(1.0, t))
 
-                # Smoothstep: transição suave, sem queda brusca de velocidade
                 t = t * t * (3.0 - 2.0 * t)
 
                 velocidade_maxima_atual = (
@@ -318,13 +513,13 @@ class DroneOffboardNode(Node):
                     (self.velocidade_maxima - velocidade_segura_curva) * t
                 )
 
-        # --- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ---
+        # ---- LÓGICA DE VELOCIDADE DINÂMICA PARA CADA WAYPOINT ----
         if distancia > distancia_corte:
             if is_ultimo_wp:
-                dist_inicio_frenagem = velocidade_maxima_atual * 1.2
+                dist_inicio_frenagem = velocidade_maxima_atual * 1.25
             else:
-                dist_inicio_frenagem = velocidade_maxima_atual * 0.6
-            velocidade_minima = velocidade_maxima_atual * 0.1
+                dist_inicio_frenagem = velocidade_maxima_atual
+            velocidade_minima = velocidade_maxima_atual * 0.15
             
             if distancia > dist_inicio_frenagem:
                 velocidade_dinamica = velocidade_maxima_atual
@@ -337,7 +532,6 @@ class DroneOffboardNode(Node):
 
                 velocidade_dinamica = velocidade_minima + (velocidade_maxima_atual - velocidade_minima) * proporcao
 
-            # Normalização do vetor de velocidade
             vx = (pos_x / distancia) * velocidade_dinamica
             vy = (pos_y / distancia) * velocidade_dinamica
             
@@ -350,27 +544,67 @@ class DroneOffboardNode(Node):
                     self.get_logger().info('MISSÃO FINALIZADA! Estabilizando e descendo...')
                     self.missao_concluida = True
 
-        # --- LIMITAÇÃO DE ACELERAÇÃO LATERAL ---
-        accel_x = (vx - self.smooth_vx) / (self.dt * 4)
-        accel_y = (vy - self.smooth_vy) / (self.dt * 4)
+        # ---- EVASAO REATIVA POR VISAO ----
+        evasao_habilitada = (
+            not self.missao_concluida and
+            not (is_ultimo_wp and distancia <= self.raio_desativa_evasao_final)
+        )
+        self.evasao_visual_ativa = evasao_habilitada
+
+        if not evasao_habilitada:
+            self.obstacle_risk = 0.0
+            self.avoid_lateral_body = 0.0
+            self.avoid_brake = 0.0
+
+        if evasao_habilitada and self.obstacle_risk > 0.03:
+            brake_scale = max(0.7, 1.0 - self.avoid_brake)
+            vx *= brake_scale
+            vy *= brake_scale
+
+            right_x = -math.sin(self.current_yaw)
+            right_y = math.cos(self.current_yaw)
+            vx += right_x * self.avoid_lateral_body
+            vy += right_y * self.avoid_lateral_body
+
+            velocidade_cmd = math.sqrt(vx**2 + vy**2)
+            if velocidade_cmd > velocidade_maxima_atual:
+                escala = velocidade_maxima_atual / velocidade_cmd
+                vx *= escala
+                vy *= escala
+
+        # ---- LIMITAÇÃO DE ACELERAÇÃO LATERAL ----
+        accel_x = (vx - self.smooth_vx) / (control_dt_s * 4)
+        accel_y = (vy - self.smooth_vy) / (control_dt_s * 4)
         accel_lateral = math.sqrt(accel_x**2 + accel_y**2)
         if accel_lateral > self.max_lateral_acceleration:
             scale = self.max_lateral_acceleration / accel_lateral
-            vx = self.smooth_vx + accel_x * scale * (self.dt * 4)
-            vy = self.smooth_vy + accel_y * scale * (self.dt * 4)
+            vx = self.smooth_vx + accel_x * scale * (control_dt_s * 5)
+            vy = self.smooth_vy + accel_y * scale * (control_dt_s * 3)
 
-        # --- FILTRAGEM DE VELOCIDADE ---
-        self.smooth_vx += self.velocity_smooth_alpha * (vx - self.smooth_vx)
-        self.smooth_vy += self.velocity_smooth_alpha * (vy - self.smooth_vy)
+        # ---- FILTRAGEM DE VELOCIDADE ----
+        velocity_alpha = self.alpha_ajustado_por_dt(
+            self.velocity_smooth_alpha,
+            control_dt_s,
+            self.dt,
+        )
+        self.smooth_vx += velocity_alpha * (vx - self.smooth_vx)
+        self.smooth_vy += velocity_alpha * (vy - self.smooth_vy)
 
-        # --- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ---
-        if self.smooth_yaw is None or self.smooth_yaw == 0.0:
+        # ---- AJUSTE DE DIREÇÃO (YAW) COM LOOK-AHEAD ----
+        if self.smooth_yaw is None:
             self.smooth_yaw = self.current_yaw
 
         yaw_alvo = self.calcular_yaw_com_look_ahead(target_x, target_y)
-        erro_yaw = math.atan2(math.sin(yaw_alvo - self.smooth_yaw), math.cos(yaw_alvo - self.smooth_yaw))
-        yaw_gain = self.yaw_smooth_alpha * (0.8 if abs(erro_yaw) > 0.8 else 1.2)  # Aumentado para resposta mais rápida
-        self.smooth_yaw += (erro_yaw * yaw_gain)
+        erro_yaw = self.normalizar_angulo_rad(yaw_alvo - self.smooth_yaw)
+        yaw_alpha = self.alpha_ajustado_por_dt(
+            self.yaw_smooth_alpha,
+            control_dt_s,
+            self.dt,
+        )
+        yaw_step = yaw_alpha * erro_yaw
+        max_yaw_step = self.yaw_max_rate_rad_s * control_dt_s
+        yaw_step = max(-max_yaw_step, min(max_yaw_step, yaw_step))
+        self.smooth_yaw = self.normalizar_angulo_rad(self.smooth_yaw + yaw_step)
 
         msg = TrajectorySetpoint()
         msg.position = [float('nan'), float('nan'), target_z] 
@@ -403,11 +637,10 @@ class DroneOffboardNode(Node):
         
         distancia_atual = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
         
-        # Se próximo waypoint existe e estamos próximos do atual, mira no próximo
-        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 4.0:
+        if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1 and distancia_atual < 10.0:
             next_wp = self.lista_alvos_absolutos[self.wp_atual_index + 1]
             yaw_next = math.atan2(next_wp[1] - self.current_y, next_wp[0] - self.current_x)
-            blend_factor = max(0.0, (4.0 - distancia_atual) / 4.0)
+            blend_factor = max(0.0, (4.0 - distancia_atual) / 5.0)
             yaw_base = math.atan2(target_y - self.current_y, target_x - self.current_x)
             erro = math.atan2(math.sin(yaw_next - yaw_base), math.cos(yaw_next - yaw_base))
             return yaw_base + erro * blend_factor
@@ -415,6 +648,17 @@ class DroneOffboardNode(Node):
             return math.atan2(target_y - self.current_y, target_x - self.current_x)
 
     def publish_offboard_control_mode(self):
+        """
+        Publica o modo de controle Offboard usado pelo PX4 nesta missão.
+
+        A combinação atual habilita setpoints de posição e velocidade, mantendo aceleração,
+        atitude e body rate desabilitados.
+
+        Fontes:
+        [PX4 OffboardControlMode] https://docs.px4.io/main/en/msg_docs/OffboardControlMode
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        """
+
         msg = OffboardControlMode()
         msg.position = True
         msg.velocity = True
@@ -425,18 +669,53 @@ class DroneOffboardNode(Node):
         self.offboard_control_mode_publisher.publish(msg)
 
     def arm(self):
+        """
+        Envia o comando MAVLink/PX4 para armar o drone.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [MAVLink MAV_CMD_COMPONENT_ARM_DISARM] https://mavlink.io/en/messages/common.html#MAV_CMD_COMPONENT_ARM_DISARM
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
         self.get_logger().info('Rotores ligados.')
 
     def engage_offboard_mode(self):
+        """
+        Solicita ao PX4 a entrada no modo Offboard antes do envio contínuo dos setpoints.
+
+        Fontes:
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        [MAVLink MAV_CMD_DO_SET_MODE] https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_MODE
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
         self.get_logger().info('Modo Feedforward (Posição + Velocidade) Ativado.')
 
     def force_disarm(self):
+        """
+        Envia o comando de desarme forçado usado no encerramento da missão.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [MAVLink MAV_CMD_COMPONENT_ARM_DISARM] https://mavlink.io/en/messages/common.html#MAV_CMD_COMPONENT_ARM_DISARM
+        """
+
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=0.0, param2=21196.0)
         self.get_logger().info('CORTANDO MOTORES...')
 
     def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
+        """
+        Monta e publica uma mensagem VehicleCommand para o PX4.
+
+        Os campos de sistema/componente seguem o padrão do exemplo Offboard em ROS 2,
+        com from_external=True para indicar origem externa ao autopiloto.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [PX4 ROS 2 Offboard Control] https://docs.px4.io/main/en/ros2/offboard_control
+        """
+
         msg = VehicleCommand()
         msg.command = command
         msg.param1 = float(param1)
@@ -450,15 +729,956 @@ class DroneOffboardNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def comando_exit(self):
-        self.get_logger().info("Encerrando a missão em 5s... Iniciando pouso!")
+        """
+        Executa o encerramento da missão fora do timer principal.
+
+        O waypoint final é ajustado para o nível do chão, aguarda-se uma breve estabilização
+        e então é enviado o desarme forçado antes de finalizar o processo.
+
+        Fontes:
+        [PX4 VehicleCommand] https://docs.px4.io/main/en/msg_docs/VehicleCommand
+        [Python threading] https://docs.python.org/3/library/threading.html
+        """
+
+        self.get_logger().info("Encerrando a missão em 3s... Iniciando pouso!")
         
-        # Altera o eixo Z do waypoint alvo final para o chão
         self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
         
-        time.sleep(5)
+        time.sleep(3)
         self.force_disarm()
         time.sleep(1)
-        os._exit(0)
+        if rclpy.ok():
+            rclpy.shutdown()
+
+    def image_timestamp_s(self, msg):
+        """
+        ==================================================================================
+        Retorna o timestamp ROS de uma mensagem de imagem em segundos.
+
+        A funcao usa preferencialmente o campo header.stamp preenchido pelo ROS/Gazebo
+        Bridge. Quando esse campo nao esta disponivel, ou vem zerado, usa o relogio local
+        do no como fallback para permitir sincronizacao aproximada em testes de bancada.
+
+        Esse timestamp e usado para parear a imagem RGB monocular com o mapa de profundidade
+        sintetico do Gazebo. O pareamento serve apenas para montar dataset e visualizacao de
+        ground truth; a evasao reativa continua usando a imagem monocular estabilizada.
+
+        Fontes:
+        [sensor_msgs/Image] https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
+        [ROS 2 Clock] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Time.html
+        ==================================================================================
+        """
+
+        stamp = getattr(getattr(msg, 'header', None), 'stamp', None)
+        if stamp is not None and (stamp.sec != 0 or stamp.nanosec != 0):
+            return stamp.sec + stamp.nanosec * 1e-9
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def converter_depth_gt_para_metros(self, msg):
+        """
+        ==================================================================================
+        Converte a imagem de profundidade do Gazebo para matriz float32 em metros.
+
+        O Gazebo/bridge pode entregar o depth como float, normalmente ja em metros, ou como
+        uint16, frequentemente em milimetros. A funcao normaliza esses formatos para uma
+        matriz NumPy float32, remove valores nao finitos e preserva zeros como pixels sem
+        profundidade valida.
+
+        O resultado e tratado como ground truth sintetico do simulador. Ele pode ser salvo
+        junto da imagem RGB para treino offline, mas nao e usado diretamente pela logica de
+        navegacao ou pela evasao visual em tempo real.
+
+        Fontes:
+        [Gazebo DepthCamera] https://gazebosim.org/api/rendering/7/classgz_1_1rendering_1_1DepthCamera.html
+        [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
+        [NumPy astype] https://numpy.org/doc/stable/reference/generated/numpy.ndarray.astype.html
+        ==================================================================================
+        """
+
+        depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        depth = np.asarray(depth)
+
+        if depth.ndim == 3:
+            depth = depth[:, :, 0]
+
+        if depth.dtype == np.uint16:
+            depth_m = depth.astype(np.float32) / 1000.0
+        else:
+            depth_m = depth.astype(np.float32)
+
+        depth_m[~np.isfinite(depth_m)] = 0.0
+        return depth_m
+
+    def depth_ground_truth_callback(self, msg):
+        """
+        ==================================================================================
+        Recebe e armazena o ultimo mapa de profundidade sintetico publicado pelo Gazebo.
+
+        A funcao converte a mensagem ROS Image para profundidade em metros, guarda o
+        timestamp correspondente e registra estatisticas basicas no primeiro frame recebido.
+        A sincronizacao efetiva com o RGB acontece em image_callback(), mantendo a imagem
+        monocular como referencia principal de cada amostra do dataset.
+
+        Importante: este callback nao injeta profundidade no controlador. O depth existe
+        apenas como ground truth externo para validacao, treinamento supervisionado e
+        depuracao visual do que o simulador renderizou.
+
+        Fontes:
+        [Gazebo DepthCameraSensor] https://gazebosim.org/api/sensors/7/classgz_1_1sensors_1_1DepthCameraSensor.html
+        [ROS 2 QoS sensor data] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
+        [NumPy min] https://numpy.org/doc/stable/reference/generated/numpy.min.html
+        ==================================================================================
+        """
+
+        try:
+            depth_m = self.converter_depth_gt_para_metros(msg)
+            depth_stamp_s = self.image_timestamp_s(msg)
+            self.depth_gt_frames_received += 1
+
+            with self.sensor_state_lock:
+                if (
+                    self.latest_depth_gt_stamp_s is not None
+                    and depth_stamp_s <= self.latest_depth_gt_stamp_s
+                ):
+                    self.depth_gt_frames_rejected_nonmonotonic += 1
+                    if (
+                        self.depth_gt_frames_rejected_nonmonotonic == 1
+                        or self.depth_gt_frames_rejected_nonmonotonic % 100 == 0
+                    ):
+                        self.get_logger().warning(
+                            'Frame depth descartado por timestamp repetido ou nao monotonico; '
+                            f'total={self.depth_gt_frames_rejected_nonmonotonic}.'
+                        )
+                    return
+
+                self.latest_depth_gt = depth_m
+                self.latest_depth_gt_stamp_s = depth_stamp_s
+                self.latest_depth_gt_sequence += 1
+                self.latest_depth_gt_encoding = msg.encoding
+                self.depth_gt_frames += 1
+
+            if self.depth_gt_frames == 1:
+                valid = depth_m[depth_m > 0.0]
+                if valid.size > 0:
+                    self.get_logger().info(
+                        f'Primeiro depth GT recebido: {depth_m.shape}, '
+                        f'encoding={msg.encoding}, min={float(np.min(valid)):.2f}m, '
+                        f'max={float(np.max(valid)):.2f}m.'
+                    )
+                else:
+                    self.get_logger().info(
+                        f'Primeiro depth GT recebido: {depth_m.shape}, '
+                        f'encoding={msg.encoding}, sem pixels validos positivos.'
+                    )
+        except Exception as e:
+            self.get_logger().error(f'Erro ao converter ground truth de profundidade: {e}')
+
+    def imu_raw_callback(self, msg):
+        """
+        ==================================================================================
+        Guarda as leituras brutas de giroscopio e acelerometro publicadas pelo PX4.
+
+        A mensagem SensorCombined fornece velocidade angular em rad/s e aceleracao linear
+        em m/s^2. O eixo z do giroscopio e usado como apoio de alta frequencia para estimar
+        o pan/yaw entre frames; o acelerometro fica registrado no dataset porque a correcao
+        de translacao da imagem depende da profundidade por pixel.
+
+        A implementacao atual nao usa o acelerometro para alterar a navegacao. A compensacao
+        visual combina atitude estimada por VehicleAttitude com o giroscopio, e a navegacao
+        continua recebendo apenas o fluxo residual calculado na imagem monocular.
+
+        Fontes:
+        [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        ==================================================================================
+        """
+
+        self.current_gyro_rad_s = np.array(getattr(msg, 'gyro_rad', [0.0, 0.0, 0.0]), dtype=float)
+        self.current_accel_m_s2 = np.array(getattr(msg, 'accelerometer_m_s2', [0.0, 0.0, 0.0]), dtype=float)
+        self.last_imu_timestamp_s = getattr(msg, 'timestamp', 0) / 1_000_000.0
+
+    def obter_depth_gt_sincronizado(self, rgb_msg, rgb_stamp_s=None):
+        """
+        ==================================================================================
+        Retorna o mapa de profundidade ground truth mais proximo do frame RGB atual.
+
+        A funcao compara o timestamp da imagem monocular com o timestamp do ultimo depth
+        recebido. Se a diferenca absoluta for maior que depth_gt_max_age_s, o depth e
+        descartado para evitar salvar pares desalinhados temporalmente.
+
+        O retorno inclui o depth em metros, o timestamp do RGB e a diferenca temporal entre
+        RGB e depth. Quando nao existe par confiavel, retorna None no lugar do mapa de
+        profundidade.
+
+        Fontes:
+        [ROS 2 Time] https://docs.ros.org/en/humble/Concepts/Intermediate/About-Time.html
+        [sensor_msgs/Image] https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html
+        ==================================================================================
+        """
+
+        with self.sensor_state_lock:
+            depth_gt = self.latest_depth_gt
+            depth_stamp_s = self.latest_depth_gt_stamp_s
+            depth_sequence = self.latest_depth_gt_sequence
+
+        if depth_gt is None or depth_stamp_s is None:
+            return None, rgb_stamp_s, None, None, None
+
+        if rgb_stamp_s is None:
+            rgb_stamp_s = self.image_timestamp_s(rgb_msg)
+        depth_age_s = abs(rgb_stamp_s - depth_stamp_s)
+
+        if depth_age_s > self.depth_gt_max_age_s:
+            return None, rgb_stamp_s, depth_age_s, depth_stamp_s, depth_sequence
+
+        return depth_gt, rgb_stamp_s, depth_age_s, depth_stamp_s, depth_sequence
+
+    def dtype_intervalos_ground_truth(self):
+        """
+        Retorna o schema numerico salvo no memmap de intervalos visuais.
+
+        Os campos representam variacoes entre duas atualizacoes consecutivas da
+        logica de optical flow. Valores absolutos de pose/atitude nao sao gravados.
+        """
+
+        return np.dtype([
+            ('sample_id', 'i4'),
+            ('dt_s', 'f4'),
+            ('depth_age_s', 'f4'),
+            ('depth_dt_s', 'f4'),
+            ('delta_x_m', 'f4'),
+            ('delta_y_m', 'f4'),
+            ('delta_z_m', 'f4'),
+            ('delta_roll_rad', 'f4'),
+            ('delta_pitch_rad', 'f4'),
+            ('delta_yaw_heading_rad', 'f4'),
+            ('delta_yaw_attitude_rad', 'f4'),
+            ('delta_gyro_x_rad_s', 'f4'),
+            ('delta_gyro_y_rad_s', 'f4'),
+            ('delta_gyro_z_rad_s', 'f4'),
+            ('gyro_x_integral_rad', 'f4'),
+            ('gyro_y_integral_rad', 'f4'),
+            ('gyro_z_integral_rad', 'f4'),
+            ('delta_accel_x_m_s2', 'f4'),
+            ('delta_accel_y_m_s2', 'f4'),
+            ('delta_accel_z_m_s2', 'f4'),
+            ('delta_smooth_vx_m_s', 'f4'),
+            ('delta_smooth_vy_m_s', 'f4'),
+            ('delta_obstacle_risk', 'f4'),
+            ('delta_avoid_lateral_body', 'f4'),
+            ('delta_avoid_brake', 'f4'),
+            ('pan_comp_delta_rad', 'f4'),
+            ('flow_valid_points', 'i4'),
+            ('flow_active_points', 'i4'),
+            ('flow_track_retention_pct', 'f4'),
+            ('flow_mean_x_px', 'f4'),
+            ('flow_mean_y_px', 'f4'),
+            ('flow_mag_mean_px', 'f4'),
+            ('flow_mag_p90_px', 'f4'),
+            ('radial_flow_mean_px', 'f4'),
+            ('radial_flow_p90_px', 'f4'),
+            ('point_risk_mean_delta_basis', 'f4'),
+            ('point_risk_p75_delta_basis', 'f4'),
+            ('delta_depth_min_m', 'f4'),
+            ('delta_depth_mean_m', 'f4'),
+            ('delta_depth_p10_m', 'f4'),
+            ('delta_depth_p50_m', 'f4'),
+            ('delta_depth_p90_m', 'f4'),
+            ('delta_depth_close_2m_pp', 'f4'),
+            ('delta_depth_close_5m_pp', 'f4'),
+            ('delta_depth_close_10m_pp', 'f4'),
+            ('delta_valid_px_pct', 'f4'),
+        ])
+
+    def preparar_dataset_ground_truth(self):
+        """
+        Prepara os memmaps do dataset sincronizado por intervalo visual.
+
+        Cada linha valida representa o mesmo intervalo usado pelo optical flow que desenha
+        as flechas de proximidade. O dataset salva deltas de estado, deltas de depth,
+        diferenca de imagem estabilizada e vetores de flow relativos ao centro da imagem.
+        """
+
+        base_dir = Path(os.path.expanduser(self.ground_truth_dataset_dir))
+        self.depth_gt_run_dir = base_dir / datetime.now().strftime('run_%Y%m%d_%H%M%S')
+        self.depth_gt_run_dir.mkdir(parents=True, exist_ok=True)
+        self.depth_gt_manifest_path = self.depth_gt_run_dir / 'manifest.json'
+
+        capacidade = self.ground_truth_memmap_capacity
+        rgb_shape = (
+            capacidade,
+            self.ground_truth_rgb_height,
+            self.ground_truth_rgb_width,
+            3,
+        )
+        depth_shape = (
+            capacidade,
+            self.ground_truth_depth_height,
+            self.ground_truth_depth_width,
+        )
+        flow_shape = (capacidade, self.ground_truth_max_flow_points, 6)
+
+        self.depth_gt_intervals = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'intervals.npy',
+            mode='w+',
+            dtype=self.dtype_intervalos_ground_truth(),
+            shape=(capacidade,),
+        )
+        self.depth_gt_image_delta = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'image_delta_bgr.npy',
+            mode='w+',
+            dtype=np.int16,
+            shape=rgb_shape,
+        )
+        self.depth_gt_depth_delta = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'depth_delta_log.npy',
+            mode='w+',
+            dtype=np.float32,
+            shape=depth_shape,
+        )
+        self.depth_gt_depth_mask = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'depth_delta_mask.npy',
+            mode='w+',
+            dtype=np.uint8,
+            shape=depth_shape,
+        )
+        self.depth_gt_flow_vectors = np.lib.format.open_memmap(
+            self.depth_gt_run_dir / 'flow_vectors.npy',
+            mode='w+',
+            dtype=np.float32,
+            shape=flow_shape,
+        )
+
+        self.atualizar_manifesto_depth_gt()
+        self.get_logger().info(
+            f'Dataset de intervalos depth/flow sendo salvo em memmap: {self.depth_gt_run_dir}'
+        )
+
+    def atualizar_manifesto_depth_gt(self):
+        """Atualiza o manifesto que descreve os memmaps validos da run."""
+
+        if self.depth_gt_manifest_path is None:
+            return
+
+        manifesto = {
+            'schema_version': 'depth_interval_memmap_v1',
+            'description': (
+                'Cada amostra representa a variacao entre duas atualizacoes consecutivas '
+                'da logica de proximidade visual por optical flow.'
+            ),
+            'num_samples': int(self.depth_intervals_saved),
+            'capacity': int(self.ground_truth_memmap_capacity),
+            'save_every_n_visual_intervals': int(self.ground_truth_save_every_n),
+            'rgb_delta_shape': [
+                int(self.ground_truth_rgb_height),
+                int(self.ground_truth_rgb_width),
+                3,
+            ],
+            'depth_delta_shape': [
+                int(self.ground_truth_depth_height),
+                int(self.ground_truth_depth_width),
+            ],
+            'depth_max_m': float(self.ground_truth_depth_max_m),
+            'max_flow_points': int(self.ground_truth_max_flow_points),
+            'flush_every_n_samples': int(self.ground_truth_flush_every_n),
+            'quality_filters': {
+                'require_monotonic_rgb_timestamp': True,
+                'require_new_depth_frame': True,
+                'max_rgb_interval_s': float(self.ground_truth_max_interval_s),
+                'max_depth_interval_s': float(self.ground_truth_max_interval_s),
+                'max_rgb_depth_age_s': float(self.depth_gt_max_age_s),
+            },
+            'quality_counters': {
+                'rgb_frames_received': int(self.rgb_frames_received),
+                'rgb_frames_processed': int(self.rgb_frames_seen),
+                'rgb_frames_rejected_nonmonotonic': int(
+                    self.rgb_frames_rejected_nonmonotonic
+                ),
+                'depth_frames_received': int(self.depth_gt_frames_received),
+                'depth_frames_accepted': int(self.depth_gt_frames),
+                'depth_frames_rejected_nonmonotonic': int(
+                    self.depth_gt_frames_rejected_nonmonotonic
+                ),
+                'visual_intervals_evaluated': int(self.visual_intervals_seen),
+                'intervals_saved': int(self.depth_intervals_saved),
+                'intervals_rejected': {
+                    key: int(value)
+                    for key, value in self.dataset_intervals_rejected.items()
+                },
+            },
+            'risk_flow_normalization': {
+                'camera_timestamp_source': 'sensor_msgs/Image.header.stamp',
+                'enabled': bool(self.use_dt_normalized_control),
+                'nominal_interval_s': float(self.nominal_visual_dt_s),
+                'stored_flow_unit': 'pixels_per_observed_interval',
+                'risk_flow_unit': 'equivalent_pixels_per_nominal_interval',
+            },
+            'arrays': {
+                'intervals': 'intervals.npy',
+                'image_delta_bgr': 'image_delta_bgr.npy',
+                'depth_delta_log': 'depth_delta_log.npy',
+                'depth_delta_mask': 'depth_delta_mask.npy',
+                'flow_vectors': 'flow_vectors.npy',
+            },
+            'flow_vector_columns': [
+                'x_center_norm',
+                'y_center_norm',
+                'flow_x_px',
+                'flow_y_px',
+                'radial_flow_px',
+                'point_risk_delta_basis',
+            ],
+            'interval_fields': list(self.dtype_intervalos_ground_truth().names),
+        }
+
+        with open(self.depth_gt_manifest_path, mode='w', encoding='utf-8') as fp:
+            json.dump(manifesto, fp, indent=2)
+
+    def capturar_estado_intervalo(
+        self,
+        frame_stamp_s,
+        depth_age_s,
+        depth_stamp_s=None,
+        depth_sequence=None,
+    ):
+        """Captura o estado atual apenas para calcular deltas antes do salvamento."""
+
+        def numero(valor):
+            return float(valor) if valor is not None else float('nan')
+
+        return {
+            'frame_stamp_s': numero(frame_stamp_s),
+            'depth_stamp_s': numero(depth_stamp_s),
+            'depth_sequence': int(depth_sequence or 0),
+            'depth_age_s': numero(depth_age_s),
+            'x': numero(self.current_x),
+            'y': numero(self.current_y),
+            'z': numero(self.current_z),
+            'roll': float(self.current_roll),
+            'pitch': float(self.current_pitch),
+            'yaw_heading': float(self.current_yaw),
+            'yaw_attitude': float(self.current_yaw_attitude),
+            'gyro': np.asarray(self.current_gyro_rad_s, dtype=float).copy(),
+            'accel': np.asarray(self.current_accel_m_s2, dtype=float).copy(),
+            'smooth_vx': float(self.smooth_vx),
+            'smooth_vy': float(self.smooth_vy),
+            'obstacle_risk': float(self.obstacle_risk),
+            'avoid_lateral_body': float(self.avoid_lateral_body),
+            'avoid_brake': float(self.avoid_brake),
+            'pan_comp_delta_rad': float(self.last_pan_delta_rad),
+        }
+
+    def metricas_depth_memmap(self, depth_m):
+        """Calcula metricas internas de depth usadas somente para gravar variacoes."""
+
+        valid_mask = np.isfinite(depth_m) & (depth_m > 0.0)
+        valores = np.asarray(depth_m[valid_mask], dtype=float)
+        if valores.size == 0:
+            return {
+                'min': float('nan'),
+                'mean': float('nan'),
+                'p10': float('nan'),
+                'p50': float('nan'),
+                'p90': float('nan'),
+                'close_2': float('nan'),
+                'close_5': float('nan'),
+                'close_10': float('nan'),
+                'valid_pct': 0.0,
+            }
+
+        return {
+            'min': float(np.min(valores)),
+            'mean': float(np.mean(valores)),
+            'p10': float(np.percentile(valores, 10)),
+            'p50': float(np.percentile(valores, 50)),
+            'p90': float(np.percentile(valores, 90)),
+            'close_2': float((valores < 2.0).mean() * 100.0),
+            'close_5': float((valores < 5.0).mean() * 100.0),
+            'close_10': float((valores < 10.0).mean() * 100.0),
+            'valid_pct': float(valid_mask.mean() * 100.0),
+        }
+
+    def preparar_delta_imagem_memmap(self, prev_bgr, curr_bgr):
+        """Reduz a imagem estabilizada e salva apenas a diferenca entre frames."""
+
+        tamanho = (self.ground_truth_rgb_width, self.ground_truth_rgb_height)
+        prev_small = cv2.resize(prev_bgr, tamanho, interpolation=cv2.INTER_AREA).astype(np.int16)
+        curr_small = cv2.resize(curr_bgr, tamanho, interpolation=cv2.INTER_AREA).astype(np.int16)
+        return curr_small - prev_small
+
+    def preparar_delta_depth_memmap(self, prev_depth_m, curr_depth_m):
+        """Gera o alvo dense como delta de log-depth e mascara valida do intervalo."""
+
+        tamanho = (self.ground_truth_depth_width, self.ground_truth_depth_height)
+        prev_valid = np.isfinite(prev_depth_m) & (prev_depth_m > 0.0)
+        curr_valid = np.isfinite(curr_depth_m) & (curr_depth_m > 0.0)
+
+        prev_clip = np.where(
+            prev_valid,
+            np.clip(prev_depth_m, 0.1, self.ground_truth_depth_max_m),
+            self.ground_truth_depth_max_m,
+        ).astype(np.float32)
+        curr_clip = np.where(
+            curr_valid,
+            np.clip(curr_depth_m, 0.1, self.ground_truth_depth_max_m),
+            self.ground_truth_depth_max_m,
+        ).astype(np.float32)
+
+        prev_small = cv2.resize(prev_clip, tamanho, interpolation=cv2.INTER_AREA)
+        curr_small = cv2.resize(curr_clip, tamanho, interpolation=cv2.INTER_AREA)
+        prev_mask = cv2.resize(prev_valid.astype(np.float32), tamanho, interpolation=cv2.INTER_AREA) > 0.5
+        curr_mask = cv2.resize(curr_valid.astype(np.float32), tamanho, interpolation=cv2.INTER_AREA) > 0.5
+
+        mask = (prev_mask & curr_mask).astype(np.uint8)
+        delta_log = (np.log1p(curr_small) - np.log1p(prev_small)).astype(np.float32)
+        delta_log[mask == 0] = 0.0
+        return delta_log, mask
+
+    def preparar_vetores_flow_memmap(self, flow_interval, largura, altura):
+        """Prepara vetores de flow com coordenadas relativas ao centro da imagem."""
+
+        matriz = np.zeros((self.ground_truth_max_flow_points, 6), dtype=np.float32)
+        if flow_interval is None:
+            return matriz
+
+        new = np.asarray(flow_interval.get('new_points', []), dtype=np.float32)
+        flow = np.asarray(flow_interval.get('flow', []), dtype=np.float32)
+        radial_flow = np.asarray(flow_interval.get('radial_flow', []), dtype=np.float32)
+        point_risk = np.asarray(flow_interval.get('point_risk', []), dtype=np.float32)
+        n = min(len(new), len(flow), len(radial_flow), len(point_risk), self.ground_truth_max_flow_points)
+        if n <= 0:
+            return matriz
+
+        centro = np.array([largura * 0.5, altura * 0.5], dtype=np.float32)
+        escala = np.array([max(largura * 0.5, 1.0), max(altura * 0.5, 1.0)], dtype=np.float32)
+        rel = (new[:n] - centro) / escala
+        matriz[:n, 0:2] = rel
+        matriz[:n, 2:4] = flow[:n]
+        matriz[:n, 4] = radial_flow[:n]
+        matriz[:n, 5] = point_risk[:n]
+        return matriz
+
+    def registrar_descarte_intervalo(self, motivo):
+        """Contabiliza descartes e alerta quando a coleta permanece degradada."""
+
+        self.dataset_intervals_rejected[motivo] += 1
+        total_descartado = sum(self.dataset_intervals_rejected.values())
+        if total_descartado == 1 or total_descartado % 100 == 0:
+            self.get_logger().warning(
+                'Dataset descartou '
+                f'{total_descartado} intervalos; ultimo motivo: {motivo}. '
+                'Verifique os timestamps RGB/depth se esse numero continuar crescendo.'
+            )
+
+    def registrar_intervalo_ground_truth(self, imagem_estabilizada_bgr, depth_m, estado_atual, flow_interval):
+        """
+        Salva uma amostra sincronizada com o intervalo usado pelo optical flow.
+
+        A funcao nunca grava pose/atitude absolutas: usa o estado anterior apenas em memoria
+        para calcular deltas e, em seguida, substitui a referencia pelo frame atual.
+        """
+
+        if not self.save_ground_truth_dataset:
+            return
+
+        referencia_atual = {
+            'imagem_bgr': imagem_estabilizada_bgr.copy(),
+            'depth_m': None if depth_m is None else np.asarray(depth_m, dtype=np.float32).copy(),
+            'estado': estado_atual,
+        }
+
+        referencia_anterior = self.prev_depth_interval_ref
+        self.prev_depth_interval_ref = referencia_atual
+
+        if referencia_anterior is None:
+            return
+
+        if flow_interval is None:
+            self.registrar_descarte_intervalo('missing_flow')
+            return
+
+        self.visual_intervals_seen += 1
+
+        if referencia_anterior['depth_m'] is None or referencia_atual['depth_m'] is None:
+            self.registrar_descarte_intervalo('missing_depth')
+            return
+
+        prev_estado = referencia_anterior['estado']
+        curr_estado = referencia_atual['estado']
+        dt_s = curr_estado['frame_stamp_s'] - prev_estado['frame_stamp_s']
+        depth_dt_s = curr_estado['depth_stamp_s'] - prev_estado['depth_stamp_s']
+
+        if not np.isfinite(dt_s) or dt_s <= 0.0:
+            self.registrar_descarte_intervalo('invalid_rgb_dt')
+            return
+        if dt_s > self.ground_truth_max_interval_s:
+            self.registrar_descarte_intervalo('rgb_dt_too_large')
+            return
+        if curr_estado['depth_sequence'] <= prev_estado['depth_sequence']:
+            self.registrar_descarte_intervalo('reused_depth')
+            return
+        if not np.isfinite(depth_dt_s) or depth_dt_s <= 0.0:
+            self.registrar_descarte_intervalo('invalid_depth_dt')
+            return
+        if depth_dt_s > self.ground_truth_max_interval_s:
+            self.registrar_descarte_intervalo('depth_dt_too_large')
+            return
+
+        if self.visual_intervals_seen % self.ground_truth_save_every_n != 0:
+            return
+
+        if self.depth_gt_intervals is None:
+            self.preparar_dataset_ground_truth()
+
+        if self.depth_intervals_saved >= self.ground_truth_memmap_capacity:
+            if not self.depth_gt_capacity_warned:
+                self.get_logger().warning(
+                    'Capacidade do memmap de depth/flow esgotada. '
+                    'Aumente ground_truth_memmap_capacity para runs maiores.'
+                )
+                self.depth_gt_capacity_warned = True
+            return
+
+        idx = self.depth_intervals_saved
+        prev_depth_metricas = self.metricas_depth_memmap(referencia_anterior['depth_m'])
+        curr_depth_metricas = self.metricas_depth_memmap(referencia_atual['depth_m'])
+
+        def delta(campo):
+            return float(curr_estado[campo] - prev_estado[campo])
+
+        def delta_angulo(campo):
+            return self.normalizar_angulo_rad(delta(campo))
+
+        def delta_depth(campo):
+            return float(curr_depth_metricas[campo] - prev_depth_metricas[campo])
+
+        flow = np.asarray(flow_interval.get('flow', []), dtype=float)
+        radial_flow = np.asarray(flow_interval.get('radial_flow', []), dtype=float)
+        point_risk = np.asarray(flow_interval.get('point_risk', []), dtype=float)
+        flow_mag = np.linalg.norm(flow, axis=1) if flow.size else np.array([], dtype=float)
+        prev_points_total = max(1, int(flow_interval.get('prev_points_total', 0)))
+        valid_points = int(flow_interval.get('valid_points', len(flow_mag)))
+        active_points = int(flow_interval.get('active_points', 0))
+
+        linha = np.zeros(1, dtype=self.dtype_intervalos_ground_truth())
+        linha['sample_id'][0] = idx + 1
+        linha['dt_s'][0] = dt_s
+        linha['depth_age_s'][0] = curr_estado['depth_age_s']
+        linha['depth_dt_s'][0] = depth_dt_s
+        linha['delta_x_m'][0] = delta('x')
+        linha['delta_y_m'][0] = delta('y')
+        linha['delta_z_m'][0] = delta('z')
+        linha['delta_roll_rad'][0] = delta_angulo('roll')
+        linha['delta_pitch_rad'][0] = delta_angulo('pitch')
+        linha['delta_yaw_heading_rad'][0] = delta_angulo('yaw_heading')
+        linha['delta_yaw_attitude_rad'][0] = delta_angulo('yaw_attitude')
+        linha['delta_gyro_x_rad_s'][0] = curr_estado['gyro'][0] - prev_estado['gyro'][0]
+        linha['delta_gyro_y_rad_s'][0] = curr_estado['gyro'][1] - prev_estado['gyro'][1]
+        linha['delta_gyro_z_rad_s'][0] = curr_estado['gyro'][2] - prev_estado['gyro'][2]
+        if np.isfinite(dt_s):
+            linha['gyro_x_integral_rad'][0] = 0.5 * (curr_estado['gyro'][0] + prev_estado['gyro'][0]) * dt_s
+            linha['gyro_y_integral_rad'][0] = 0.5 * (curr_estado['gyro'][1] + prev_estado['gyro'][1]) * dt_s
+            linha['gyro_z_integral_rad'][0] = 0.5 * (curr_estado['gyro'][2] + prev_estado['gyro'][2]) * dt_s
+        else:
+            linha['gyro_x_integral_rad'][0] = float('nan')
+            linha['gyro_y_integral_rad'][0] = float('nan')
+            linha['gyro_z_integral_rad'][0] = float('nan')
+        linha['delta_accel_x_m_s2'][0] = curr_estado['accel'][0] - prev_estado['accel'][0]
+        linha['delta_accel_y_m_s2'][0] = curr_estado['accel'][1] - prev_estado['accel'][1]
+        linha['delta_accel_z_m_s2'][0] = curr_estado['accel'][2] - prev_estado['accel'][2]
+        linha['delta_smooth_vx_m_s'][0] = delta('smooth_vx')
+        linha['delta_smooth_vy_m_s'][0] = delta('smooth_vy')
+        linha['delta_obstacle_risk'][0] = delta('obstacle_risk')
+        linha['delta_avoid_lateral_body'][0] = delta('avoid_lateral_body')
+        linha['delta_avoid_brake'][0] = delta('avoid_brake')
+        linha['pan_comp_delta_rad'][0] = curr_estado['pan_comp_delta_rad']
+        linha['flow_valid_points'][0] = valid_points
+        linha['flow_active_points'][0] = active_points
+        linha['flow_track_retention_pct'][0] = valid_points / prev_points_total * 100.0
+        linha['flow_mean_x_px'][0] = float(np.mean(flow[:, 0])) if len(flow_mag) else 0.0
+        linha['flow_mean_y_px'][0] = float(np.mean(flow[:, 1])) if len(flow_mag) else 0.0
+        linha['flow_mag_mean_px'][0] = float(np.mean(flow_mag)) if len(flow_mag) else 0.0
+        linha['flow_mag_p90_px'][0] = float(np.percentile(flow_mag, 90)) if len(flow_mag) else 0.0
+        linha['radial_flow_mean_px'][0] = float(np.mean(radial_flow)) if radial_flow.size else 0.0
+        linha['radial_flow_p90_px'][0] = float(np.percentile(radial_flow, 90)) if radial_flow.size else 0.0
+        linha['point_risk_mean_delta_basis'][0] = float(np.mean(point_risk)) if point_risk.size else 0.0
+        linha['point_risk_p75_delta_basis'][0] = float(np.percentile(point_risk, 75)) if point_risk.size else 0.0
+        linha['delta_depth_min_m'][0] = delta_depth('min')
+        linha['delta_depth_mean_m'][0] = delta_depth('mean')
+        linha['delta_depth_p10_m'][0] = delta_depth('p10')
+        linha['delta_depth_p50_m'][0] = delta_depth('p50')
+        linha['delta_depth_p90_m'][0] = delta_depth('p90')
+        linha['delta_depth_close_2m_pp'][0] = delta_depth('close_2')
+        linha['delta_depth_close_5m_pp'][0] = delta_depth('close_5')
+        linha['delta_depth_close_10m_pp'][0] = delta_depth('close_10')
+        linha['delta_valid_px_pct'][0] = delta_depth('valid_pct')
+
+        delta_depth_log, depth_mask = self.preparar_delta_depth_memmap(
+            referencia_anterior['depth_m'],
+            referencia_atual['depth_m'],
+        )
+        self.depth_gt_intervals[idx] = linha[0]
+        self.depth_gt_image_delta[idx] = self.preparar_delta_imagem_memmap(
+            referencia_anterior['imagem_bgr'],
+            referencia_atual['imagem_bgr'],
+        )
+        self.depth_gt_depth_delta[idx] = delta_depth_log
+        self.depth_gt_depth_mask[idx] = depth_mask
+        self.depth_gt_flow_vectors[idx] = self.preparar_vetores_flow_memmap(
+            flow_interval,
+            imagem_estabilizada_bgr.shape[1],
+            imagem_estabilizada_bgr.shape[0],
+        )
+        self.depth_intervals_saved += 1
+
+        if self.depth_intervals_saved % self.ground_truth_flush_every_n == 0:
+            self.flush_ground_truth_memmaps()
+
+    def flush_ground_truth_memmaps(self):
+        """Descarrega em lote os memmaps de depth/flow e atualiza o manifesto."""
+
+        for memmap_array in (
+            self.depth_gt_intervals,
+            self.depth_gt_image_delta,
+            self.depth_gt_depth_delta,
+            self.depth_gt_depth_mask,
+            self.depth_gt_flow_vectors,
+        ):
+            if memmap_array is not None:
+                memmap_array.flush()
+        self.atualizar_manifesto_depth_gt()
+
+    def criar_visualizacao_depth_gt(self, depth_m):
+        """
+        ==================================================================================
+        Gera uma visualizacao colorida do mapa de profundidade ground truth.
+
+        A funcao usa apenas pixels positivos e finitos para calcular uma normalizacao robusta
+        entre os percentis 2 e 98. Em seguida, inverte a escala para destacar objetos proximos
+        e aplica o colormap TURBO do OpenCV.
+
+        A imagem resultante serve somente para inspecao em cv2.imshow(). Ela nao e salva como
+        label de treino e nao participa da evasao visual.
+
+        Fontes:
+        [OpenCV applyColorMap] https://docs.opencv.org/4.x/d3/d50/group__imgproc__colormap.html
+        [NumPy percentile] https://numpy.org/doc/stable/reference/generated/numpy.percentile.html
+        ==================================================================================
+        """
+
+        valid = np.isfinite(depth_m) & (depth_m > 0.0)
+        if np.count_nonzero(valid) == 0:
+            return np.zeros((*depth_m.shape[:2], 3), dtype=np.uint8)
+
+        p2, p98 = np.percentile(depth_m[valid], [2, 98])
+        if p98 <= p2:
+            p98 = p2 + 1.0
+
+        depth_norm = np.clip((depth_m - p2) / (p98 - p2), 0.0, 1.0)
+        depth_norm = ((1.0 - depth_norm) * 255).astype(np.uint8)
+        depth_norm[~valid] = 0
+        return cv2.applyColorMap(depth_norm, cv2.COLORMAP_TURBO)
+
+    def normalizar_angulo_rad(self, angulo):
+        """
+        ==================================================================================
+        Normaliza um angulo em radianos para o intervalo [-pi, pi].
+
+        Essa normalizacao e usada no calculo do delta de yaw entre frames consecutivos.
+        Sem ela, pequenas passagens pela descontinuidade de -pi/pi poderiam ser vistas como
+        giros quase completos, gerando um warp incorreto na compensacao de pan.
+
+        Fontes:
+        [Python atan2] https://docs.python.org/3/library/math.html#math.atan2
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
+        ==================================================================================
+        """
+
+        return math.atan2(math.sin(angulo), math.cos(angulo))
+
+    def calcular_delta_pan_imu(self, frame_stamp_s):
+        """
+        ==================================================================================
+        Estima o delta de pan/yaw da camera entre frames para compensacao visual.
+
+        A funcao combina duas fontes inerciais: a diferenca de yaw estimada por
+        VehicleAttitude e a integracao curta do eixo z do giroscopio bruto. O peso do
+        giroscopio e controlado por pan_gyro_weight. O resultado e invertido antes de ser
+        aplicado na homografia, pois a imagem atual precisa ser projetada de volta para
+        reduzir o pan aparente entre frames consecutivos.
+
+        O acelerometro nao e subtraido diretamente da imagem porque a compensacao de
+        translacao depende da profundidade de cada pixel. Por isso, a translacao fica como
+        fluxo residual para a evasao/estimativa de profundidade, e o acelerometro e salvo no
+        dataset para o modelo futuro.
+
+        Fontes:
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [PX4 SensorCombined] https://docs.px4.io/main/en/msg_docs/SensorCombined.html
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
+        ==================================================================================
+        """
+
+        if not self.compensar_pan_yaw:
+            self.prev_stabilization_stamp_s = frame_stamp_s
+            self.prev_stabilization_yaw = self.current_yaw_attitude
+            self.last_pan_delta_rad = 0.0
+            self.last_pan_delta_source = 'disabled'
+            return 0.0, 'disabled'
+
+        attitude_delta = None
+        if self.prev_stabilization_yaw is not None:
+            attitude_delta = self.normalizar_angulo_rad(
+                self.current_yaw_attitude - self.prev_stabilization_yaw
+            )
+
+        gyro_delta = None
+        if self.prev_stabilization_stamp_s is not None:
+            dt = frame_stamp_s - self.prev_stabilization_stamp_s
+            if 0.0 < dt <= 0.25 and np.all(np.isfinite(self.current_gyro_rad_s)):
+                gyro_delta = float(self.current_gyro_rad_s[2]) * dt
+
+        if attitude_delta is not None and gyro_delta is not None:
+            yaw_delta = (
+                (1.0 - self.pan_gyro_weight) * attitude_delta +
+                self.pan_gyro_weight * gyro_delta
+            )
+            source = 'attitude+gyro'
+        elif attitude_delta is not None:
+            yaw_delta = attitude_delta
+            source = 'attitude'
+        elif gyro_delta is not None:
+            yaw_delta = gyro_delta
+            source = 'gyro'
+        else:
+            yaw_delta = 0.0
+            source = 'none'
+
+        yaw_delta = max(-self.pan_max_delta_rad, min(self.pan_max_delta_rad, yaw_delta))
+        pan_compensado = -yaw_delta * self.pan_yaw_gain
+
+        self.prev_stabilization_stamp_s = frame_stamp_s
+        self.prev_stabilization_yaw = self.current_yaw_attitude
+        self.last_pan_delta_rad = pan_compensado
+        self.last_pan_delta_source = source
+
+        return pan_compensado, source
+
+    def montar_homografia_compensacao_imu(self, msg):
+        """
+        ==================================================================================
+        Monta a homografia usada para estabilizar a imagem com base na IMU/atitude.
+
+        A parte absoluta da compensacao usa roll e pitch para reduzir tilt e inclinacao da
+        camera, preservando a ideia de gimbal virtual ja existente no projeto. A parte
+        incremental usa o delta de pan/yaw entre frames para remover o giro horizontal
+        aparente antes do calculo de fluxo optico.
+
+        A homografia segue a forma H = K_saida * R * K_entrada^-1, em que R representa a
+        rotacao 3D equivalente da camera. Esse modelo e adequado para compensar rotacao
+        pura da camera; translacoes continuam dependentes da profundidade da cena e sao
+        deixadas para o fluxo residual ou para o modelo de profundidade a ser treinado.
+
+        Fontes:
+        [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
+        [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        ==================================================================================
+        """
+
+        frame_stamp_s = self.image_timestamp_s(msg)
+        theta_x = self.current_pitch if self.compensar_tilt_roll else 0.0
+        theta_z = self.current_roll if self.compensar_tilt_roll else 0.0
+        theta_y, source = self.calcular_delta_pan_imu(frame_stamp_s)
+
+        Rx = np.array([
+            [1, 0, 0],
+            [0, math.cos(theta_x), -math.sin(theta_x)],
+            [0, math.sin(theta_x), math.cos(theta_x)]
+        ])
+
+        Ry = np.array([
+            [math.cos(theta_y), 0, math.sin(theta_y)],
+            [0, 1, 0],
+            [-math.sin(theta_y), 0, math.cos(theta_y)]
+        ])
+
+        Rz = np.array([
+            [math.cos(theta_z), -math.sin(theta_z), 0],
+            [math.sin(theta_z), math.cos(theta_z), 0],
+            [0, 0, 1]
+        ])
+
+        R = Rx @ Ry @ Rz
+
+        K_saida = np.array([
+            [self.K[0, 0] * self.stabilization_zoom, 0, self.stabilization_output_width * 0.5],
+            [0, self.K[1, 1] * self.stabilization_zoom, self.stabilization_output_height * 0.5],
+            [0, 0, 1]
+        ])
+
+        H = K_saida @ R @ np.linalg.inv(self.K)
+        return H, theta_y, source
+
+    def aplicar_compensacao_imu(self, cv_image, msg):
+        """
+        ==================================================================================
+        Aplica a compensacao visual por IMU/atitude antes da evasao por fluxo optico.
+
+        Quando compensacao_imu_ativa esta desligado, a funcao devolve a imagem original e
+        uma mascara alfa equivalente. Quando esta ligado, calcula a homografia de roll,
+        pitch e pan/yaw, desenha a geometria do recorte no frame original e gera a imagem
+        estabilizada por cv2.warpPerspective.
+
+        A imagem estabilizada e usada pelo Lucas-Kanade para reduzir fluxo causado por
+        ego-rotacao da camera. O fluxo que sobra tende a representar translacao, paralaxe e
+        objetos proximos, que sao exatamente os sinais uteis para estimativa de risco e para
+        o futuro treino supervisionado com depth ground truth do Gazebo.
+
+        Fontes:
+        [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [OpenCV Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        ==================================================================================
+        """
+
+        if not self.compensacao_imu_ativa:
+            self.last_pan_delta_rad = 0.0
+            self.last_pan_delta_source = 'disabled'
+            return cv_image, cv_image[:, :, 3], cv_image.copy()
+
+        H, pan_delta, pan_source = self.montar_homografia_compensacao_imu(msg)
+        img_geometria = self.desenhar_telemetria_geometria(
+            cv_image,
+            H,
+            self.stabilization_output_width,
+            self.stabilization_output_height
+        )
+
+        cv2.putText(
+            img_geometria,
+            f"IMU pan={pan_delta:.4f} rad ({pan_source})",
+            (12, 46),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 255),
+            1
+        )
+
+        imagem_estabilizada = cv2.warpPerspective(
+            cv_image,
+            H,
+            (self.stabilization_output_width, self.stabilization_output_height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0)
+        )
+        mascara_alpha = imagem_estabilizada[:, :, 3]
+        return imagem_estabilizada, mascara_alpha, img_geometria
 
     def desenhar_telemetria_geometria(self, frame_original, H, largura_out=640, altura_out=480):
         """
@@ -482,13 +1702,11 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
-        # Criamos uma cópia da imagem original para servir de fundo
         canvas = cv2.resize(frame_original, (0, 0), fx=1, fy=1)
         cantos_saida = np.array([
             [0, 0], [largura_out, 0], [largura_out, altura_out], [0, altura_out]
         ], dtype='float32').reshape(-1, 1, 2)
 
-        # Aplicamos a Homografia para saber onde esses pontos de 640x480 "moram" dentro da imagem original de 1280x960
         H_inv = np.linalg.inv(H)
         cantos_na_origem = cv2.perspectiveTransform(cantos_saida, H_inv).reshape(-1, 2)
 
@@ -504,33 +1722,304 @@ class DroneOffboardNode(Node):
         
         return canvas
 
+    def detectar_pontos_evasao(self, gray, valid_mask):
+        """
+        Detecta pontos em bordas/cantos dentro da regiao valida da imagem estabilizada.
+
+        A ideia vem de VO semi-denso/edge-based: nao reconstruimos a cena inteira,
+        apenas rastreamos pontos visuais bons o suficiente para estimar risco local.
+
+        Fontes:
+        [OpenCV goodFeaturesToTrack] https://docs.opencv.org/4.x/dd/d1a/group__imgproc__feature.html
+        [OpenCV Canny] https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.html
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
+        """
+
+        altura, largura = gray.shape
+        roi_mask = np.zeros_like(valid_mask)
+        roi_mask[int(altura * 0.2):int(altura * 0.9), int(largura * 0.1):int(largura * 0.9)] = 255
+        roi_mask = cv2.bitwise_and(roi_mask, valid_mask)
+
+        edges = cv2.Canny(gray, 60, 160)
+        feature_mask = cv2.bitwise_and(cv2.dilate(edges, None, iterations=1), roi_mask)
+        if cv2.countNonZero(feature_mask) < 150:
+            feature_mask = roi_mask
+
+        return cv2.goodFeaturesToTrack(
+            gray,
+            maxCorners=180,
+            qualityLevel=0.01,
+            minDistance=12,
+            blockSize=8,
+            mask=feature_mask
+        )
+
+    def suavizar_comando_evasao(self, risk, lateral_body, brake, frame_dt_s):
+        """
+        Aplica filtro passa-baixa aos comandos reativos gerados pela visao.
+
+        A suavizacao reduz oscilacoes entre frames consecutivos sem alterar a direcao
+        geral estimada pela evasao visual.
+
+        Fontes:
+        [OpenCV Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [PX4 Offboard Mode] https://docs.px4.io/main/en/flight_modes/offboard
+        """
+
+        smoothing_dt_s = (
+            frame_dt_s
+            if self.use_dt_normalized_control
+            else self.nominal_visual_dt_s
+        )
+        alpha = self.alpha_ajustado_por_dt(
+            self.velocity_smooth_alpha,
+            smoothing_dt_s,
+            self.nominal_visual_dt_s,
+        )
+        self.obstacle_risk += alpha * (risk - self.obstacle_risk)
+        self.avoid_lateral_body += alpha * (lateral_body - self.avoid_lateral_body)
+        self.avoid_brake += alpha * (brake - self.avoid_brake)
+
+        if abs(self.avoid_lateral_body) > 0.03:
+            self.avoid_side_memory = math.copysign(1.0, self.avoid_lateral_body)
+
+    def calcular_evasao_visual(self, imagem_estabilizada, mascara_alpha, frame_stamp_s):
+        """
+        Estima risco de colisao por fluxo optico e profundidade inversa relativa.
+
+        Com camera monocular, a escala absoluta e ambigua. Por isso usamos o
+        principio de profundidade inversa: durante o movimento, pontos mais
+        proximos tendem a produzir fluxo radial maior na imagem. O resultado
+        alimenta um campo repulsivo simples, nao um mapa 3D completo.
+
+        Fontes:
+        [OpenCV Lucas-Kanade Optical Flow] https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
+        [Artigo - Bhattacharya2024] https://doi.org/10.48550/arXiv.2411.03303
+        [Artigo - RealTimeMonocular2022] https://doi.org/10.1109/TITS.2022.3160741
+        [Artigo - Vyas2022] https://doi.org/10.48550/arXiv.2205.01399
+        """
+
+        frame_dt_s = self.nominal_visual_dt_s
+        if self.prev_avoidance_stamp_s is not None:
+            measured_dt_s = frame_stamp_s - self.prev_avoidance_stamp_s
+            if np.isfinite(measured_dt_s) and 0.0 < measured_dt_s <= 0.5:
+                frame_dt_s = measured_dt_s
+        self.prev_avoidance_stamp_s = frame_stamp_s
+
+        frame_bgr = imagem_estabilizada[:, :, :3]
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        valid_mask = (mascara_alpha > 0).astype(np.uint8) * 255
+        valid_mask = cv2.erode(valid_mask, None, iterations=1)
+
+        debug = frame_bgr.copy()
+        altura, largura = gray.shape
+        cx, cy = largura * 0.5, altura * 0.5
+        cv2.rectangle(
+            debug,
+            (int(largura * 0.08), int(altura * 0.18)),
+            (int(largura * 0.92), int(altura * 0.90)),
+            (255, 180, 0),
+            1
+        )
+        frontal_left = int(largura * 0.30)
+        frontal_right = int(largura * 0.70)
+        frontal_top = int(altura * 0.22)
+        frontal_bottom = int(altura * 0.82)
+        cv2.rectangle(
+            debug,
+            (frontal_left, frontal_top),
+            (frontal_right, frontal_bottom),
+            (0, 120, 255),
+            1
+        )
+
+        if self.prev_gray_avoidance is None or self.prev_points_avoidance is None:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
+            return debug, None
+
+        prev_points_total = int(len(self.prev_points_avoidance))
+
+        next_points, status, _ = cv2.calcOpticalFlowPyrLK(
+            self.prev_gray_avoidance,
+            gray,
+            self.prev_points_avoidance,
+            None,
+            winSize=(21, 21),
+            maxLevel=3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.04)
+        )
+
+        if next_points is None or status is None:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
+            return debug, None
+
+        old = self.prev_points_avoidance[status.flatten() == 1].reshape(-1, 2)
+        new = next_points[status.flatten() == 1].reshape(-1, 2)
+
+        dentro = (
+            (new[:, 0] >= 0) & (new[:, 0] < largura) &
+            (new[:, 1] >= 0) & (new[:, 1] < altura)
+        )
+        old = old[dentro]
+        new = new[dentro]
+
+        if len(new) < 12:
+            self.prev_gray_avoidance = gray
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+            self.suavizar_comando_evasao(0.0, 0.0, 0.0, frame_dt_s)
+            return debug, None
+
+        valid_pixels = valid_mask[new[:, 1].astype(int), new[:, 0].astype(int)] > 0
+        old = old[valid_pixels]
+        new = new[valid_pixels]
+
+        flow = new - old
+        radial = new - np.array([[cx, cy]])
+        radial_norm = np.linalg.norm(radial, axis=1) + 1e-6
+        radial_unit = radial / radial_norm[:, None]
+        radial_flow = np.sum(flow * radial_unit, axis=1)
+        flow_to_nominal_scale = (
+            self.nominal_visual_dt_s / frame_dt_s
+            if self.use_dt_normalized_control
+            else 1.0
+        )
+        radial_flow_nominal = radial_flow * flow_to_nominal_scale
+
+        central_x = 1.0 - np.minimum(np.abs(new[:, 0] - cx) / (largura * 0.5), 1.0)
+        central_y = 1.0 - np.minimum(np.abs(new[:, 1] - cy) / (altura * 0.5), 1.0)
+        central_weight = np.clip(central_x * central_y, 0.0, 1.0)
+        frontal_mask = (
+            (new[:, 0] >= frontal_left) & (new[:, 0] <= frontal_right) &
+            (new[:, 1] >= frontal_top) & (new[:, 1] <= frontal_bottom)
+        )
+        frontal_weight = np.where(frontal_mask, 1.75, 1.0)
+
+        speed_xy = math.sqrt(self.smooth_vx**2 + self.smooth_vy**2)
+        speed_factor = min(1.0, max(0.0, speed_xy / 2.0))
+
+        inverse_depth_score = np.clip((radial_flow_nominal - 0.1) / 10, 0.0, 1.0)
+        point_risk = inverse_depth_score * central_weight * frontal_weight
+        point_risk *= speed_factor
+        point_risk = np.clip(point_risk, 0.0, 1.0)
+
+        active = point_risk > 0.04
+        if np.count_nonzero(active) < 10:
+            risk = 0.0
+            lateral_body = 0.0
+        else:
+            active_risk = point_risk[active]
+            active_points = new[active]
+            frontal_active = frontal_mask[active]
+            risk_global = float(np.percentile(active_risk, 75))
+            if np.count_nonzero(frontal_active) >= 3:
+                risk_frontal = float(np.percentile(active_risk[frontal_active], 75))
+            else:
+                risk_frontal = 0.0
+            risk = float(np.clip(max(risk_global * 1.35, risk_frontal * 1.75), 0.0, 1.0))
+
+            left = float(np.sum(active_risk[active_points[:, 0] < cx]))
+            right = float(np.sum(active_risk[active_points[:, 0] >= cx]))
+            balance = (right - left) / (right + left + 1e-6)
+
+            if abs(balance) < 0.1:
+                side = self.avoid_side_memory
+            else:
+                side = -math.copysign(1.0, balance)
+
+            lateral_body = side * self.max_lateral_acceleration * risk
+
+            for p0, p1, r in zip(old[active], active_points, active_risk):
+                color = (0, 0, 255) if r > 0.5 else (0, 255, 255)
+                cv2.arrowedLine(debug, tuple(p0.astype(int)), tuple(p1.astype(int)), color, 1, tipLength=0.3)
+
+        brake = min(self.avoidance_max_brake, risk * self.avoidance_max_brake)
+        self.suavizar_comando_evasao(risk, lateral_body, brake, frame_dt_s)
+
+        flow_interval = {
+            'prev_points_total': prev_points_total,
+            'valid_points': int(len(new)),
+            'active_points': int(np.count_nonzero(active)),
+            'old_points': old.copy(),
+            'new_points': new.copy(),
+            'flow': flow.copy(),
+            'radial_flow': radial_flow.copy(),
+            'radial_flow_nominal': radial_flow_nominal.copy(),
+            'frame_dt_s': float(frame_dt_s),
+            'point_risk': point_risk.copy(),
+        }
+
+        self.prev_gray_avoidance = gray
+        if len(new) < 80:
+            self.prev_points_avoidance = self.detectar_pontos_evasao(gray, valid_mask)
+        else:
+            self.prev_points_avoidance = new.reshape(-1, 1, 2).astype(np.float32)
+
+        cv2.putText(
+            debug,
+            f"risco={self.obstacle_risk:.2f} lateral={self.avoid_lateral_body:.2f} freio={self.avoid_brake:.2f}",
+            (12, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 0, 255),
+            1
+        )
+        return debug, flow_interval
+
     def image_callback(self, msg):
         """
         ==================================================================================
-        Processa cada frame recebido da câmera simulada e aplica estabilização eletrônica
-        baseada na atitude do drone.
-        
-        A imagem ROS é convertida para matriz OpenCV por meio do cv_bridge. Em seguida, os
-        ângulos atuais de pitch e roll, obtidos do VehicleAttitude, são usados para montar
-        matrizes de rotação 3D. A homografia H = K_zoom * R * K_inv projeta a imagem como se
-        houvesse um gimbal virtual compensando a inclinação física do drone.
-        
-        A função exibe três janelas principais: a imagem original com a geometria do warping,
-        a imagem estabilizada e a máscara alpha que indica quais pixels de saída ainda possuem
-        correspondência válida na imagem de entrada.
-        
-        Importante: esta estabilização reduz a tremedeira visual da câmera, mas não corrige a
-        dinâmica física do voo. A redução do chacoalho do drone é tratada na navegação por
-        waypoints, especialmente pela frenagem por curvatura e limitação de aceleração lateral.
+        Processa cada frame recebido da camera monocular simulada.
+
+        A imagem ROS e convertida para matriz OpenCV por meio do cv_bridge. Em seguida, a
+        compensacao visual por IMU/atitude usa pitch e roll absolutos para reduzir tilt/roll
+        e usa o delta de yaw/pan entre frames para reduzir o giro horizontal aparente. A
+        homografia H = K_saida * R * K_entrada^-1 projeta a imagem como se houvesse um gimbal
+        virtual antes do calculo de fluxo optico.
+
+        Quando um topico de ground truth de profundidade foi configurado, a funcao tenta
+        parear o frame RGB monocular com o ultimo depth sintetico do Gazebo. Esse depth pode
+        ser visualizado e salvo em dataset junto com pose, atitude e IMU bruta, mas nao entra
+        no calculo de evasao reativa.
+
+        A funcao tambem atualiza as janelas de depuracao visual usadas durante os testes:
+        a imagem original com a geometria do warping, a visualizacao da evasao reativa e,
+        quando disponivel, o mapa de profundidade ground truth colorizado. O waitKey(1) e
+        mantido para permitir que o OpenCV atualize as janelas a cada frame.
+
+        Importante: esta compensacao reduz ego-rotacao visual, mas nao remove translacao da
+        camera, porque translacao exige profundidade por pixel. A profundidade do Gazebo fica
+        como ground truth para validacao/dataset e para o treino futuro do modelo.
         
         Fontes:
         [cv_bridge] https://docs.ros.org/en/jade/api/cv_bridge/html/python/
         [OpenCV Homography] https://docs.opencv.org/4.x/d9/dab/tutorial_homography.html
         [OpenCV Camera Calibration] https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
         [OpenCV warpPerspective] https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html
+        [Gazebo DepthCameraSensor] https://gazebosim.org/api/sensors/7/classgz_1_1sensors_1_1DepthCameraSensor.html
+        [Artigo - Tarrio2015] https://doi.org/10.1109/iccv.2015.87
         ==================================================================================
         """
         
+        self.rgb_frames_received += 1
+        rgb_stamp_s = self.image_timestamp_s(msg)
+        with self.sensor_state_lock:
+            if self.last_rgb_stamp_s is not None and rgb_stamp_s <= self.last_rgb_stamp_s:
+                self.rgb_frames_rejected_nonmonotonic += 1
+                if (
+                    self.rgb_frames_rejected_nonmonotonic == 1
+                    or self.rgb_frames_rejected_nonmonotonic % 100 == 0
+                ):
+                    self.get_logger().warning(
+                        'Frame RGB descartado por timestamp repetido ou nao monotonico; '
+                        f'total={self.rgb_frames_rejected_nonmonotonic}.'
+                    )
+                return
+            self.last_rgb_stamp_s = rgb_stamp_s
+
         resolucao_largura = msg.width
         resolucao_altura = msg.height
         # formato_ros = msg.encoding
@@ -539,64 +2028,68 @@ class DroneOffboardNode(Node):
         # Frame Recebido - Resolução: 1280x960 pixels | Formato: rgb8
         
         try:
-            # Convertendo a mensagem do ROS para uma imagem OpenCV (Matriz NumPy BGR)
             cv_image = np.ones((resolucao_altura,resolucao_largura, 4),dtype=np.uint8, order='F') * 255
             cv_image[:,:,:3] = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.rgb_frames_seen += 1
+
+            (
+                depth_gt,
+                rgb_stamp_s,
+                depth_age_s,
+                depth_stamp_s,
+                depth_sequence,
+            ) = self.obter_depth_gt_sincronizado(msg, rgb_stamp_s)
+            depth_gt_visual = None
+            if depth_gt is not None:
+                if depth_gt.shape[:2] != (resolucao_altura, resolucao_largura) and not self.depth_gt_shape_warned:
+                    self.get_logger().warning(
+                        f'Depth GT com resolucao {depth_gt.shape[:2]}, RGB com '
+                        f'{(resolucao_altura, resolucao_largura)}. Para treino pixel-a-pixel, '
+                        'configure o render de depth com a mesma resolucao/FOV da monocular.'
+                    )
+                    self.depth_gt_shape_warned = True
+
+                depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
             
-            # --- ESTABILIZAÇÃO DA IMAGEM (IMU) ---
-            if hasattr(self, 'current_roll') and hasattr(self, 'current_pitch'):
-                theta_x = self.current_pitch 
-                theta_z = self.current_roll  
-                
-                # Matriz de rotação em X (Compensa o nariz subindo/descendo)
-                Rx = np.array([
-                    [1, 0, 0],
-                    [0, math.cos(theta_x), -math.sin(theta_x)],
-                    [0, math.sin(theta_x), math.cos(theta_x)]
-                ])
-                
-                # Matriz de rotação em Z (Compensa a inclinação lateral)
-                Rz = np.array([
-                    [math.cos(theta_z), -math.sin(theta_z), 0],
-                    [math.sin(theta_z), math.cos(theta_z), 0],
-                    [0, 0, 1]
-                ])
-                R = Rx @ Rz 
-                
-                zoom = 1.25
-                
-                K_zoom = np.array([
-                    [self.K[0,0] * zoom, 0, 320.0],
-                    [0, self.K[1,1] * zoom, 240.0],
-                    [0, 0, 1]
-                ])
-                K_inv = np.linalg.inv(self.K)
+            # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
+            imagem_estabilizada, mascara_alpha, img_geometria = self.aplicar_compensacao_imu(
+                cv_image,
+                msg
+            )
+            estado_intervalo = self.capturar_estado_intervalo(
+                rgb_stamp_s,
+                depth_age_s,
+                depth_stamp_s,
+                depth_sequence,
+            )
 
-                # Calcula a Homografia
-                H = K_zoom @ R @ K_inv 
-                
-                # Gerar o Plot da visualização compensada em tempo real
-                img_geometria = self.desenhar_telemetria_geometria(cv_image, H)
-
-                imagem_estabilizada = cv2.warpPerspective(
-                    cv_image, 
-                    H, 
-                    (640, 480), 
-                    flags=cv2.INTER_LINEAR, 
-                    borderMode=cv2.BORDER_CONSTANT,
-                    borderValue=(0, 0, 0, 0)
+            # ---- VISAO COMPUTACIONAL PARA DESVIO REATIVO ----
+            if self.evasao_visual_ativa:
+                visao_da_evasao, flow_interval = self.calcular_evasao_visual(
+                    imagem_estabilizada,
+                    mascara_alpha,
+                    rgb_stamp_s,
                 )
-                mascara_alpha = imagem_estabilizada[:, :, 3]
+                self.registrar_intervalo_ground_truth(
+                    imagem_estabilizada[:, :, :3],
+                    depth_gt,
+                    estado_intervalo,
+                    flow_interval
+                )
             else:
-                imagem_estabilizada = cv_image
-                mascara_alpha = cv_image[:, :, 3]
-            
-            # --- AQUI ENTRA A LÓGICA DE VISÃO COMPUTACIONAL PARA DESVIO AINDA A SER DESENVOLVIDA ---
+                self.prev_gray_avoidance = None
+                self.prev_points_avoidance = None
+                self.prev_avoidance_stamp_s = None
+                self.prev_depth_interval_ref = None
+                visao_da_evasao = imagem_estabilizada[:, :, :3].copy()
             
             #cv2.imshow("Visão do Drone Original (Com tremor)", cv_image)
-            cv2.imshow("Visão do Drone Original com a Geometria do Warping", img_geometria)
-            cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
-            cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
+            #cv2.imshow("Visao do Drone Original (Com tremor) + a Geometria do Warping", img_geometria)
+            #cv2.imshow("Visão do Drone Estabilizada (Usando IMU)", imagem_estabilizada)
+            #if depth_gt_visual is not None:
+                #cv2.imshow("Ground Truth Depth Gazebo", depth_gt_visual)
+            cv2.imshow("Deteccao Reativa (Fluxo Optico)", visao_da_evasao)
+            #cv2.imshow("Mascara Alpha (Branco = Pixel Valido)", mascara_alpha)
             cv2.waitKey(1) # Necessário para o OpenCV atualizar a janela
         except Exception as e:
             self.get_logger().error(f'Erro na conversão da imagem: {e}')
@@ -605,34 +2098,62 @@ class DroneOffboardNode(Node):
         """
         =========================================================================================
         Recebe a atitude estimada do drone e converte a orientação de quaternion para ângulos
-        de Euler roll e pitch.
+        de Euler roll, pitch e yaw.
         
         O PX4 publica VehicleAttitude com quaternion no formato q(w, x, y, z), seguindo a
         convenção de Hamilton. A mensagem representa a rotação do corpo do drone no referencial
-        FRD para o referencial NED. O script extrai apenas roll e pitch porque esses ângulos
-        são usados para compensar a inclinação da câmera no gimbal virtual de image_callback().
+        FRD para o referencial NED. O script extrai roll e pitch para compensar tilt/roll da
+        camera e tambem extrai yaw para estimar o pan entre frames consecutivos.
         
         A conversão implementada segue as fórmulas usuais de quaternion para Euler, com trava
         de segurança no pitch quando o valor de asin ultrapassa o intervalo [-1, 1] por erro
-        numérico. O yaw operacional usado na navegação vem do campo heading da posição local.
+        numérico. O yaw operacional usado na navegação continua vindo do campo heading da
+        posição local; o yaw desta mensagem e reservado para compensacao visual.
         
         Fontes:
         [PX4 VehicleAttitude] https://docs.px4.io/main/en/msg_docs/VehicleAttitude
         [MAVLink ATTITUDE_QUATERNION] https://mavlink.io/en/messages/common.html#ATTITUDE_QUATERNION
         [Conversão Quaternion-Euler] https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        [Artigo - Garcia2016] https://doi.org/10.1109/icarsc.2016.46
         =========================================================================================
         """
         
         w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
         
-        # Fórmula de conversão para Roll
         sinr_cosp = 2.0 * (w * x + y * z)
         cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
         self.current_roll = math.atan2(sinr_cosp, cosr_cosp)
 
-        # Fórmula de conversão para Pitch
         sinp = 2.0 * (w * y - z * x)
         if abs(sinp) >= 1:
-            self.current_pitch = math.copysign(math.pi / 2.0, sinp) # Trava em 90 graus
+            self.current_pitch = math.copysign(math.pi / 2.0, sinp)
         else:
             self.current_pitch = math.asin(sinp)
+
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        self.current_yaw_attitude = math.atan2(siny_cosp, cosy_cosp)
+
+    def destroy_node(self):
+        """
+        ==================================================================================
+        Fecha recursos abertos pelo no antes de delegar a destruicao para a classe base.
+
+        Atualmente os recursos adicionais sao memmaps do dataset de intervalos depth/flow,
+        abertos apenas quando save_ground_truth_dataset esta ativo e a primeira amostra
+        sincronizada e salva. O flush garante que os buffers sejam descarregados.
+
+        Fontes:
+        [ROS 2 Node] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
+        [Python File Objects] https://docs.python.org/3/tutorial/inputoutput.html#reading-and-writing-files
+        ==================================================================================
+        """
+
+        self.flush_ground_truth_memmaps()
+        descartes = sum(self.dataset_intervals_rejected.values())
+        self.get_logger().info(
+            'Qualidade do dataset: '
+            f'{self.depth_intervals_saved} intervalos salvos, {descartes} descartados, '
+            f'{self.rgb_frames_rejected_nonmonotonic} RGB repetidos/nao monotonicos.'
+        )
+        super().destroy_node()

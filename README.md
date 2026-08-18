@@ -1,5 +1,16 @@
 # TCC_Drone: Simulação e Controle Autônomo com ROS 2, Gazebo e PX4
 
+> **Versão final do trabalho:** branch `reactive_approach`.
+
+## Pontos centrais do repositório
+
+O projeto possui dois fluxos principais:
+
+1. **Execução do pipeline de voo e coleta:** [`main.py`](main.py). Esse arquivo inicia o nó ROS 2, executa a navegação reativa e coordena a coleta dos dados usados no estudo.
+2. **Execução das métricas e dos experimentos:** [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb). O notebook reúne o carregamento dos dados, as verificações de qualidade, o treinamento dos modelos, as comparações, a explicabilidade e a geração dos resultados apresentados no TCC.
+
+Os diretórios `logs/` e `datasets/` usados nas 40 execuções finais não estão disponíveis no GitHub devido ao volume dos arquivos. Eles permanecem ignorados pelo Git e são necessários para refazer integralmente as análises a partir dos dados brutos. O notebook versionado mantém o código, as configurações e as saídas da análise final.
+
 Este projeto é parte de um Trabalho de Conclusão de Curso (TCC) focado no desenvolvimento de uma arquitetura de controle autônomo para Drones. O sistema permite o voo autônomo, por meio de um sistema reativo de evasão de obstáculos usando visão computacional.
 
 A simulação de alta fidelidade é alcançada através da integração do controlador de voo **PX4 (SITL)** com o motor físico **Gazebo Harmonic**, enquanto toda a inteligência e controle de alto nível rodam sobre o **ROS 2 (Humble)**, comunicando-se via middleware **Micro XRCE-DDS Agent**.
@@ -28,6 +39,18 @@ Este arquivo contém toda a matemática, física e comunicação com o PX4. Ele 
 *   **Comunicação Bidirecional:** Publicar mensagens (`OffboardControlMode`, `TrajectorySetpoint`, `VehicleCommand`) e assinar sensores (VehicleLocalPosition, tópicos de imagem da câmera).
 *   **Movimento Suave:** Gerenciar a diferença entre a "Posição Atual" e a "Posição Alvo", aplicando passos de interpolação baseados na velocidade do drone, operando sempre a 50Hz.
 *   **Visão Computacional:** Utilizar o CvBridge para converter os dados brutos de imagem do ROS 2 em matrizes OpenCV (NumPy). Isso permite aplicar filtros visuais para extrair informações do ambiente, identificar obstáculos e modificar os setpoints de trajetória instantaneamente.
+
+### 3. `estudos_e_analises/estudo_das_metricas.ipynb` (Análise dos Experimentos)
+
+É o ponto central da análise feita após a coleta. O notebook:
+
+* relaciona os diretórios correspondentes de `logs/` e `datasets/`;
+* verifica sincronização, intervalos válidos, trajetórias e dados da IMU;
+* treina a MLP e acompanha as curvas de perda;
+* compara os marcos de crescimento do conjunto com validação e teste fixos;
+* avalia várias sementes, modelos de árvores e ablação de grupos de entradas;
+* executa a análise de eventos e a explicabilidade por gradientes;
+* exporta os CSVs e gráficos usados no dashboard e na parte escrita.
 
 ---
 
@@ -59,3 +82,8 @@ source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
 PYTHONNOUSERSITE=1 python3 main.py
 ```
+
+O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam
+o mesmo frame de depth e intervalos temporais invalidos. Ao final de cada run, confira no
+`manifest.json` os campos `quality_counters`: `rgb_frames_rejected_nonmonotonic` deve ser
+baixo, e cada amostra salva deve ter `dt_s > 0` e `depth_dt_s > 0`.

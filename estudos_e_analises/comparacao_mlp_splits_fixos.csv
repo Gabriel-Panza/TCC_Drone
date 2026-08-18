@@ -1,0 +1,181 @@
+modelo,split,alvo_delta,MAE,RMSE,corr,marco_runs,estrategia_split
+MLP,treino,delta_depth_p10_m,0.05693512479160903,0.10558641621909372,0.6282925541026722,9,validacao_teste_fixos
+MLP,treino,delta_depth_p50_m,0.1295482870013479,0.1889237270582128,0.7600234427055346,9,validacao_teste_fixos
+MLP,treino,delta_depth_p90_m,1.0050285503363436,1.9163508026742824,0.6338172611388089,9,validacao_teste_fixos
+MLP,treino,delta_depth_close_2m_pp,0.9847995124992193,1.4433560069497977,0.6661823700078972,9,validacao_teste_fixos
+MLP,treino,delta_depth_close_5m_pp,1.1316227074564469,1.692550098813633,0.7044500956378337,9,validacao_teste_fixos
+MLP,treino,delta_depth_close_10m_pp,0.7195508378278342,0.9519460869337927,0.6299684189804673,9,validacao_teste_fixos
+Media treino,treino,delta_depth_p10_m,0.07220525896373972,0.1279825867526545,,9,validacao_teste_fixos
+Media treino,treino,delta_depth_p50_m,0.19008500974648346,0.27072965608974553,,9,validacao_teste_fixos
+Media treino,treino,delta_depth_p90_m,1.1216101102684404,2.2785000119103906,,9,validacao_teste_fixos
+Media treino,treino,delta_depth_close_2m_pp,1.2159920616283217,1.7958921977084525,,9,validacao_teste_fixos
+Media treino,treino,delta_depth_close_5m_pp,1.549358212922797,2.2545246419787235,,9,validacao_teste_fixos
+Media treino,treino,delta_depth_close_10m_pp,0.8386485957548617,1.144457831410086,,9,validacao_teste_fixos
+MLP,validacao,delta_depth_p10_m,0.06465217404724881,0.09253838006210273,0.23737013279149247,9,validacao_teste_fixos
+MLP,validacao,delta_depth_p50_m,0.21096064416034258,0.29637915763625894,0.355615225765267,9,validacao_teste_fixos
+MLP,validacao,delta_depth_p90_m,1.1982528677650834,3.186400976872349,0.3034077237806186,9,validacao_teste_fixos
+MLP,validacao,delta_depth_close_2m_pp,1.233072206074276,1.8830619095562462,0.32112823327483525,9,validacao_teste_fixos
+MLP,validacao,delta_depth_close_5m_pp,1.5350854057306766,1.9617776860306895,0.38190640038124485,9,validacao_teste_fixos
+MLP,validacao,delta_depth_close_10m_pp,0.9387095535525826,1.3002495276687986,0.23518131802421868,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_p10_m,0.06282743440590538,0.09522742362314633,,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_p50_m,0.21573423719386647,0.31646986203956584,,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_p90_m,1.1466943517518517,3.294062556344122,,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_2m_pp,1.213004894158446,1.9823910173928345,,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_5m_pp,1.59117199901316,2.1093357708072973,,9,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_10m_pp,0.9573845160703951,1.3361806633534408,,9,validacao_teste_fixos
+MLP,teste,delta_depth_p10_m,0.08909616451735002,0.23087224356826178,0.2681695800098216,9,validacao_teste_fixos
+MLP,teste,delta_depth_p50_m,0.19977129803366087,0.2919863691511678,0.11912004698164595,9,validacao_teste_fixos
+MLP,teste,delta_depth_p90_m,0.9705905086606087,1.6492590050178964,-0.1096332680408762,9,validacao_teste_fixos
+MLP,teste,delta_depth_close_2m_pp,1.0440985844504618,1.5522871480188953,0.3098156850422933,9,validacao_teste_fixos
+MLP,teste,delta_depth_close_5m_pp,1.885267057558249,2.8629411408150887,0.2139851812179552,9,validacao_teste_fixos
+MLP,teste,delta_depth_close_10m_pp,0.9380761165869425,1.2706711869546976,0.0983019625887537,9,validacao_teste_fixos
+Media treino,teste,delta_depth_p10_m,0.08622372896285364,0.23951609684415184,,9,validacao_teste_fixos
+Media treino,teste,delta_depth_p50_m,0.18043777469025998,0.2657864443556594,,9,validacao_teste_fixos
+Media treino,teste,delta_depth_p90_m,0.8238434841657631,1.5198092615433219,,9,validacao_teste_fixos
+Media treino,teste,delta_depth_close_2m_pp,1.0897639852180467,1.6141022577810897,,9,validacao_teste_fixos
+Media treino,teste,delta_depth_close_5m_pp,1.8392478415536182,2.872456891221095,,9,validacao_teste_fixos
+Media treino,teste,delta_depth_close_10m_pp,0.9228000429771592,1.2416063595911166,,9,validacao_teste_fixos
+MLP,treino,delta_depth_p10_m,0.06814778185216,0.12275874383601115,0.8795314778877631,17,validacao_teste_fixos
+MLP,treino,delta_depth_p50_m,0.1595238194516723,0.24739068219384158,0.7935578664776419,17,validacao_teste_fixos
+MLP,treino,delta_depth_p90_m,1.1876452023041428,2.238435823942442,0.7121262393487487,17,validacao_teste_fixos
+MLP,treino,delta_depth_close_2m_pp,1.1804784940099835,1.8185490328219192,0.8261426627518732,17,validacao_teste_fixos
+MLP,treino,delta_depth_close_5m_pp,1.2230837658186096,1.8158391290153844,0.8500971721078764,17,validacao_teste_fixos
+MLP,treino,delta_depth_close_10m_pp,0.7833202122702425,1.106773563696083,0.7260918822483171,17,validacao_teste_fixos
+Media treino,treino,delta_depth_p10_m,0.10166845068200792,0.24569396821488443,,17,validacao_teste_fixos
+Media treino,treino,delta_depth_p50_m,0.2452852516572046,0.39113739757570687,,17,validacao_teste_fixos
+Media treino,treino,delta_depth_p90_m,1.3554914295051308,3.0335103436713036,,17,validacao_teste_fixos
+Media treino,treino,delta_depth_close_2m_pp,1.6763081907202062,3.118163011387357,,17,validacao_teste_fixos
+Media treino,treino,delta_depth_close_5m_pp,1.956632606380245,3.3676250629335933,,17,validacao_teste_fixos
+Media treino,treino,delta_depth_close_10m_pp,1.042979728868759,1.579712629627229,,17,validacao_teste_fixos
+MLP,validacao,delta_depth_p10_m,0.0583342665220143,0.09066253772067168,0.34203646009424754,17,validacao_teste_fixos
+MLP,validacao,delta_depth_p50_m,0.1944628353285439,0.27903440344558833,0.4772472593733978,17,validacao_teste_fixos
+MLP,validacao,delta_depth_p90_m,1.2219227353770667,3.306464570047249,0.04736365753236316,17,validacao_teste_fixos
+MLP,validacao,delta_depth_close_2m_pp,1.0806682706300361,1.5920168536503674,0.6529144553074328,17,validacao_teste_fixos
+MLP,validacao,delta_depth_close_5m_pp,1.3298318603314008,1.7756363325216253,0.5375689246848313,17,validacao_teste_fixos
+MLP,validacao,delta_depth_close_10m_pp,0.887306212561859,1.189008098758652,0.5008973505722611,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_p10_m,0.0632820106497782,0.09535329923710688,,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_p50_m,0.2197678088594009,0.31473071889747023,,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_p90_m,1.1528609441692417,3.291507252453393,,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_2m_pp,1.2147813784436012,1.9824714107974775,,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_5m_pp,1.5526147549400695,2.081239246603631,,17,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_10m_pp,0.9592252886773405,1.3362360393633377,,17,validacao_teste_fixos
+MLP,teste,delta_depth_p10_m,0.09694403897342006,0.25117557165716337,-0.023917435079139106,17,validacao_teste_fixos
+MLP,teste,delta_depth_p50_m,0.19402507744095426,0.27739392076265385,0.17352424099537014,17,validacao_teste_fixos
+MLP,teste,delta_depth_p90_m,1.104861114024274,1.8950038368161255,-0.13898625291234892,17,validacao_teste_fixos
+MLP,teste,delta_depth_close_2m_pp,1.1604386873164294,1.935422919235031,-0.0769841651116801,17,validacao_teste_fixos
+MLP,teste,delta_depth_close_5m_pp,1.8749752316711856,2.9362127319105746,0.1405316708859758,17,validacao_teste_fixos
+MLP,teste,delta_depth_close_10m_pp,0.831541783569419,1.1672909509917768,0.32822982307403403,17,validacao_teste_fixos
+Media treino,teste,delta_depth_p10_m,0.08672223588906881,0.2378459676222928,,17,validacao_teste_fixos
+Media treino,teste,delta_depth_p50_m,0.18985387554114802,0.271496442140149,,17,validacao_teste_fixos
+Media treino,teste,delta_depth_p90_m,0.8365950721992094,1.5205221772492048,,17,validacao_teste_fixos
+Media treino,teste,delta_depth_close_2m_pp,1.0942124646882394,1.61637149094038,,17,validacao_teste_fixos
+Media treino,teste,delta_depth_close_5m_pp,1.8510271435415246,2.880224722611443,,17,validacao_teste_fixos
+Media treino,teste,delta_depth_close_10m_pp,0.9263510369423309,1.2441157560025138,,17,validacao_teste_fixos
+MLP,treino,delta_depth_p10_m,0.08978574956123142,0.21438148170204047,0.5229872183568454,25,validacao_teste_fixos
+MLP,treino,delta_depth_p50_m,0.20927494548887796,0.3317908804939451,0.5446192316082515,25,validacao_teste_fixos
+MLP,treino,delta_depth_p90_m,1.34978395338922,2.9716835284927763,0.3445546164670151,25,validacao_teste_fixos
+MLP,treino,delta_depth_close_2m_pp,1.4702150523156563,2.714664697779403,0.4105731564073491,25,validacao_teste_fixos
+MLP,treino,delta_depth_close_5m_pp,1.6090791664376616,2.6942674481395823,0.6121019835358882,25,validacao_teste_fixos
+MLP,treino,delta_depth_close_10m_pp,0.968890756108011,1.4490340532794899,0.5098179161129978,25,validacao_teste_fixos
+Media treino,treino,delta_depth_p10_m,0.10305118485582765,0.246775306987646,,25,validacao_teste_fixos
+Media treino,treino,delta_depth_p50_m,0.24284907912722206,0.3887281751749996,,25,validacao_teste_fixos
+Media treino,treino,delta_depth_p90_m,1.3729626489284674,3.102266406734184,,25,validacao_teste_fixos
+Media treino,treino,delta_depth_close_2m_pp,1.6290153016123108,2.9551346246768784,,25,validacao_teste_fixos
+Media treino,treino,delta_depth_close_5m_pp,1.9466994773792794,3.349814435480313,,25,validacao_teste_fixos
+Media treino,treino,delta_depth_close_10m_pp,1.0736614121667676,1.6529302472601972,,25,validacao_teste_fixos
+MLP,validacao,delta_depth_p10_m,0.06218666348058097,0.09176408845845777,0.3247733589406824,25,validacao_teste_fixos
+MLP,validacao,delta_depth_p50_m,0.19994230949703384,0.29010690908092074,0.4171265903380131,25,validacao_teste_fixos
+MLP,validacao,delta_depth_p90_m,1.1455099408198721,3.3041581214341504,0.000231050845452083,25,validacao_teste_fixos
+MLP,validacao,delta_depth_close_2m_pp,1.1503778985691229,1.7949043141197143,0.4616091421993671,25,validacao_teste_fixos
+MLP,validacao,delta_depth_close_5m_pp,1.3437127587025959,1.8045782246837827,0.5106578568096316,25,validacao_teste_fixos
+MLP,validacao,delta_depth_close_10m_pp,0.859117559654217,1.166256539700335,0.6036436226314591,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_p10_m,0.06309347072260407,0.09526141843473333,,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_p50_m,0.2200984539451942,0.31469509822694225,,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_p90_m,1.1529265450285608,3.2914874895696506,,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_2m_pp,1.2140115989554081,1.9824282195684662,,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_5m_pp,1.551957581218649,2.081570346378748,,25,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_10m_pp,0.9586980180006418,1.3362118559823903,,25,validacao_teste_fixos
+MLP,teste,delta_depth_p10_m,0.0889100309141848,0.22654076623978914,0.32881665318646436,25,validacao_teste_fixos
+MLP,teste,delta_depth_p50_m,0.18090206876080087,0.2721901841851941,0.14735191250884147,25,validacao_teste_fixos
+MLP,teste,delta_depth_p90_m,0.9224161056769477,1.6111926772478533,-0.1840214883082008,25,validacao_teste_fixos
+MLP,teste,delta_depth_close_2m_pp,1.0449682080144795,1.5876300384757338,0.25822884147477326,25,validacao_teste_fixos
+MLP,teste,delta_depth_close_5m_pp,1.7988168981020398,2.774598216245343,0.2734979041969069,25,validacao_teste_fixos
+MLP,teste,delta_depth_close_10m_pp,0.857674683665422,1.1732981750618103,0.3287426573028889,25,validacao_teste_fixos
+Media treino,teste,delta_depth_p10_m,0.08654038177491503,0.23792472321509167,,25,validacao_teste_fixos
+Media treino,teste,delta_depth_p50_m,0.1906113107376816,0.2719885123326874,,25,validacao_teste_fixos
+Media treino,teste,delta_depth_p90_m,0.8367228381936278,1.52053537594967,,25,validacao_teste_fixos
+Media treino,teste,delta_depth_close_2m_pp,1.092284866297183,1.6153783322538176,,25,validacao_teste_fixos
+Media treino,teste,delta_depth_close_5m_pp,1.8490165356075647,2.879383536338158,,25,validacao_teste_fixos
+Media treino,teste,delta_depth_close_10m_pp,0.9253338906723875,1.243388539409549,,25,validacao_teste_fixos
+MLP,treino,delta_depth_p10_m,0.10067331163627684,0.26115897549260864,0.44718812533859925,33,validacao_teste_fixos
+MLP,treino,delta_depth_p50_m,0.20597135921066814,0.327788743460943,0.5605335506696638,33,validacao_teste_fixos
+MLP,treino,delta_depth_p90_m,1.2412608853883664,2.701136414616517,0.3729593322754158,33,validacao_teste_fixos
+MLP,treino,delta_depth_close_2m_pp,1.5092204392902804,2.870453435142369,0.41701142833009636,33,validacao_teste_fixos
+MLP,treino,delta_depth_close_5m_pp,1.5901564047483656,2.616368236552083,0.6207049770453853,33,validacao_teste_fixos
+MLP,treino,delta_depth_close_10m_pp,0.9610513101236142,1.4570952254013265,0.4991473743827264,33,validacao_teste_fixos
+Media treino,treino,delta_depth_p10_m,0.11289812830369647,0.28842305444911537,,33,validacao_teste_fixos
+Media treino,treino,delta_depth_p50_m,0.2422173062805033,0.38508558115530406,,33,validacao_teste_fixos
+Media treino,treino,delta_depth_p90_m,1.2639850982242473,2.846994976284632,,33,validacao_teste_fixos
+Media treino,treino,delta_depth_close_2m_pp,1.694636471716464,3.1269935854136457,,33,validacao_teste_fixos
+Media treino,treino,delta_depth_close_5m_pp,1.9355346675424845,3.2625431845679866,,33,validacao_teste_fixos
+Media treino,treino,delta_depth_close_10m_pp,1.0725302822608,1.6461299302678754,,33,validacao_teste_fixos
+MLP,validacao,delta_depth_p10_m,0.06327814880867677,0.0931292411550482,0.3104554142930046,33,validacao_teste_fixos
+MLP,validacao,delta_depth_p50_m,0.2049707922646228,0.2897246751229975,0.4325065624331727,33,validacao_teste_fixos
+MLP,validacao,delta_depth_p90_m,1.165391250191533,3.286610705021734,0.0553342907668773,33,validacao_teste_fixos
+MLP,validacao,delta_depth_close_2m_pp,1.147611660503796,1.7519086739468988,0.5107822242432138,33,validacao_teste_fixos
+MLP,validacao,delta_depth_close_5m_pp,1.3667203890841098,1.799269421970909,0.5196200618161948,33,validacao_teste_fixos
+MLP,validacao,delta_depth_close_10m_pp,0.8748997301201384,1.1842672080975667,0.5803623257199446,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_p10_m,0.06382775185892943,0.09565869416964398,,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_p50_m,0.21994807688603762,0.31470991599789944,,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_p90_m,1.1493551104117585,3.2927343907273463,,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_2m_pp,1.2107301322610882,1.9824050301727287,,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_5m_pp,1.5541190798256086,2.0808156537875715,,33,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_10m_pp,0.9530606498665738,1.3363905686611024,,33,validacao_teste_fixos
+MLP,teste,delta_depth_p10_m,0.09015887888133747,0.22976827918789725,0.2598091474292529,33,validacao_teste_fixos
+MLP,teste,delta_depth_p50_m,0.1806357638870782,0.27190434108147343,0.08634947373061976,33,validacao_teste_fixos
+MLP,teste,delta_depth_p90_m,0.9395709630941596,1.614727287664961,-0.1533669072569468,33,validacao_teste_fixos
+MLP,teste,delta_depth_close_2m_pp,1.0768890254771675,1.6281114242149939,0.19046609720792024,33,validacao_teste_fixos
+MLP,teste,delta_depth_close_5m_pp,1.8280091382974284,2.832204412509546,0.19842549110626986,33,validacao_teste_fixos
+MLP,teste,delta_depth_close_10m_pp,0.8522589428660254,1.1691022774948794,0.30507426915032826,33,validacao_teste_fixos
+Media treino,teste,delta_depth_p10_m,0.0872172237532946,0.237658101846291,,33,validacao_teste_fixos
+Media treino,teste,delta_depth_p50_m,0.19026682995677688,0.2717632282298394,,33,validacao_teste_fixos
+Media treino,teste,delta_depth_p90_m,0.829566784324363,1.5199674590068504,,33,validacao_teste_fixos
+Media treino,teste,delta_depth_close_2m_pp,1.082595368689386,1.6106030763623564,,33,validacao_teste_fixos
+Media treino,teste,delta_depth_close_5m_pp,1.8546725626023284,2.8817454473949007,,33,validacao_teste_fixos
+Media treino,teste,delta_depth_close_10m_pp,0.9141977443998555,1.2357912566239657,,33,validacao_teste_fixos
+MLP,treino,delta_depth_p10_m,0.09619296096860913,0.2485924397581653,0.4307350911777067,40,validacao_teste_fixos
+MLP,treino,delta_depth_p50_m,0.2033443913914228,0.32517656247892024,0.5112255191512849,40,validacao_teste_fixos
+MLP,treino,delta_depth_p90_m,1.248511003027852,2.728267330770593,0.2969868561180404,40,validacao_teste_fixos
+MLP,treino,delta_depth_close_2m_pp,1.4503809330944915,2.7816261827174156,0.40071983742103723,40,validacao_teste_fixos
+MLP,treino,delta_depth_close_5m_pp,1.5685011287703647,2.6472886768412978,0.5726453849699293,40,validacao_teste_fixos
+MLP,treino,delta_depth_close_10m_pp,0.958678951544694,1.4560753535973032,0.4797820004798691,40,validacao_teste_fixos
+Media treino,treino,delta_depth_p10_m,0.10878783309665692,0.2741963051368558,,40,validacao_teste_fixos
+Media treino,treino,delta_depth_p50_m,0.235209949046935,0.3736110030010934,,40,validacao_teste_fixos
+Media treino,treino,delta_depth_p90_m,1.2581176607550417,2.825642036229837,,40,validacao_teste_fixos
+Media treino,treino,delta_depth_close_2m_pp,1.6450261281042728,3.0160955037330472,,40,validacao_teste_fixos
+Media treino,treino,delta_depth_close_5m_pp,1.8879809662069416,3.194924939620601,,40,validacao_teste_fixos
+Media treino,treino,delta_depth_close_10m_pp,1.067530444485987,1.6443353723808778,,40,validacao_teste_fixos
+MLP,validacao,delta_depth_p10_m,0.0649328437337939,0.09179255455266432,0.3433370707132109,40,validacao_teste_fixos
+MLP,validacao,delta_depth_p50_m,0.20624737892957296,0.2902781843267023,0.4330146606721133,40,validacao_teste_fixos
+MLP,validacao,delta_depth_p90_m,1.1247563772871432,3.2799503948657853,0.07702948804934287,40,validacao_teste_fixos
+MLP,validacao,delta_depth_close_2m_pp,1.1739160019181916,1.7804071650313926,0.4721549085959964,40,validacao_teste_fixos
+MLP,validacao,delta_depth_close_5m_pp,1.3965164556652514,1.7942711737778096,0.5320159240254195,40,validacao_teste_fixos
+MLP,validacao,delta_depth_close_10m_pp,0.8727290530700189,1.1722336436504266,0.5634212387102894,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_p10_m,0.06329149432640953,0.09535823476031906,,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_p50_m,0.21920636051921483,0.3148167399249826,,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_p90_m,1.147061309823706,3.2938542334521808,,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_2m_pp,1.212020714744419,1.9823752843281606,,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_5m_pp,1.5519120539856728,2.08161175174656,,40,validacao_teste_fixos
+Media treino,validacao,delta_depth_close_10m_pp,0.9511296442120817,1.3367391110268585,,40,validacao_teste_fixos
+MLP,teste,delta_depth_p10_m,0.08717510109108614,0.2270762721412328,0.32565411575912495,40,validacao_teste_fixos
+MLP,teste,delta_depth_p50_m,0.17170638863512494,0.2685658052318639,0.11667969706807504,40,validacao_teste_fixos
+MLP,teste,delta_depth_p90_m,0.8942626801980759,1.5670899888191028,-0.09427810744081547,40,validacao_teste_fixos
+MLP,teste,delta_depth_close_2m_pp,1.0419262242141214,1.5703489215727517,0.26840383011077246,40,validacao_teste_fixos
+MLP,teste,delta_depth_close_5m_pp,1.7180840949047396,2.749885496260914,0.2951692494157827,40,validacao_teste_fixos
+MLP,teste,delta_depth_close_10m_pp,0.8400963859546229,1.1627811657766374,0.323922286605133,40,validacao_teste_fixos
+Media treino,teste,delta_depth_p10_m,0.08673138326511037,0.23784213225175016,,40,validacao_teste_fixos
+Media treino,teste,delta_depth_p50_m,0.18856772083277856,0.2706885481529042,,40,validacao_teste_fixos
+Media treino,teste,delta_depth_p90_m,0.8245828221153356,1.5198102779253102,,40,validacao_teste_fixos
+Media treino,teste,delta_depth_close_2m_pp,1.0869209374256517,1.6126941263286643,,40,validacao_teste_fixos
+Media treino,teste,delta_depth_close_5m_pp,1.8488004964319722,2.8792906969054246,,40,validacao_teste_fixos
+Media treino,teste,delta_depth_close_10m_pp,0.9095890408567621,1.2326396747391826,,40,validacao_teste_fixos
