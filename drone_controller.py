@@ -6,6 +6,7 @@ import math
 import cv2
 import rclpy
 import threading
+from collections import deque
 from dataclasses import asdict
 from pathlib import Path
 from datetime import datetime
@@ -118,6 +119,33 @@ class DroneOffboardNode(Node):
         self.spatial_replan_interval_s = max(
             0.25,
             float(self.declare_parameter('spatial_replan_interval_s', 1.5).value),
+        )
+        self.spatial_replan_remaining_distance_m = max(
+            0.5,
+            float(
+                self.declare_parameter(
+                    'spatial_replan_remaining_distance_m',
+                    4.0,
+                ).value
+            ),
+        )
+        self.spatial_recovery_retreat_distance_m = max(
+            1.0,
+            float(
+                self.declare_parameter(
+                    'spatial_recovery_retreat_distance_m',
+                    2.5,
+                ).value
+            ),
+        )
+        self.spatial_recovery_history_spacing_m = max(
+            0.5,
+            float(
+                self.declare_parameter(
+                    'spatial_recovery_history_spacing_m',
+                    1.0,
+                ).value
+            ),
         )
         self.spatial_waypoint_acceptance_radius_m = max(
             0.25,
@@ -237,6 +265,9 @@ class DroneOffboardNode(Node):
             max_waypoint_spacing_m=float(
                 self.declare_parameter('spatial_max_waypoint_spacing_m', 5.0).value
             ),
+            frontier_standoff_m=float(
+                self.declare_parameter('spatial_frontier_standoff_m', 2.5).value
+            ),
             connectivity=int(
                 self.declare_parameter('spatial_connectivity', 26).value
             ),
@@ -263,6 +294,8 @@ class DroneOffboardNode(Node):
         self.spatial_takeoff_complete = False
         self.spatial_takeoff_target = None
         self.spatial_hold_position = None
+        self.spatial_safe_position_history = deque(maxlen=600)
+        self.spatial_recovery_active = False
         self.spatial_recorder = None
 
         self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
@@ -540,6 +573,18 @@ class DroneOffboardNode(Node):
                         'waypoints_relative_m': self.waypoints_relativos,
                         'takeoff_altitude_m': self.spatial_takeoff_altitude_m,
                         'spatial_config': asdict(spatial_config),
+                        'execution_safety': {
+                            'replan_interval_s': self.spatial_replan_interval_s,
+                            'replan_remaining_distance_m': (
+                                self.spatial_replan_remaining_distance_m
+                            ),
+                            'recovery_retreat_distance_m': (
+                                self.spatial_recovery_retreat_distance_m
+                            ),
+                            'recovery_history_spacing_m': (
+                                self.spatial_recovery_history_spacing_m
+                            ),
+                        },
                     },
                     save_frames=self.spatial_save_frames,
                 )
@@ -905,6 +950,8 @@ class DroneOffboardNode(Node):
             ):
                 self.spatial_takeoff_complete = True
                 self.spatial_hold_position = self.spatial_takeoff_target.copy()
+                self.spatial_safe_position_history.clear()
+                self.spatial_safe_position_history.append(tuple(current))
                 if self.spatial_recorder is not None:
                     self.spatial_recorder.record_state(
                         self.get_clock().now().nanoseconds * 1e-9,
@@ -916,6 +963,9 @@ class DroneOffboardNode(Node):
                     'Altitude inicial atingida. Planejamento espacial liberado.'
                 )
             return
+
+        if not self.spatial_recovery_active:
+            self.registrar_posicao_espacial_segura(current)
 
         if self.missao_concluida:
             self.publicar_setpoint_posicao(current)
@@ -940,8 +990,10 @@ class DroneOffboardNode(Node):
                 )
             if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
                 self.wp_atual_index += 1
-                self.spatial_path_waypoints = []
-                self.spatial_path_index = 0
+                with self.spatial_plan_lock:
+                    self.spatial_path_waypoints = []
+                    self.spatial_path_index = 0
+                    self.spatial_recovery_active = False
                 self.get_logger().info(
                     f'Objetivo global atingido. Proximo: {self.wp_atual_index}.'
                 )
@@ -970,9 +1022,15 @@ class DroneOffboardNode(Node):
         with self.spatial_plan_lock:
             path = list(self.spatial_path_waypoints)
             path_index = self.spatial_path_index
+            recovery_active = self.spatial_recovery_active
 
         path_missing = path_index >= len(path)
-        if plan_expired:
+        if path_missing and recovery_active:
+            self.finalizar_recuperacao_espacial(current)
+            recovery_active = False
+            self.spatial_last_plan_request_s = None
+
+        if plan_expired and not recovery_active:
             if path_missing:
                 self.solicitar_plano_espacial(current, global_goal, now_s)
             else:
@@ -982,7 +1040,22 @@ class DroneOffboardNode(Node):
                         path[path_index:],
                     )
                 if path_safe:
-                    self.spatial_last_plan_request_s = now_s
+                    remaining_distance = self.distancia_restante_no_caminho(
+                        current,
+                        path[path_index:],
+                    )
+                    if (
+                        remaining_distance
+                        <= self.spatial_replan_remaining_distance_m
+                    ):
+                        self.solicitar_plano_espacial(
+                            current,
+                            global_goal,
+                            now_s,
+                            preserve_path_on_failure=True,
+                        )
+                    else:
+                        self.spatial_last_plan_request_s = now_s
                 else:
                     self.solicitar_plano_espacial(current, global_goal, now_s)
 
@@ -1006,6 +1079,8 @@ class DroneOffboardNode(Node):
                 path_index = self.spatial_path_index
                 path = list(self.spatial_path_waypoints)
             if path_index >= len(path):
+                if self.spatial_recovery_active:
+                    self.finalizar_recuperacao_espacial(current)
                 self.spatial_hold_position = current.copy()
                 self.publicar_setpoint_posicao(
                     self.spatial_hold_position,
@@ -1019,7 +1094,95 @@ class DroneOffboardNode(Node):
 
         self.publicar_setpoint_posicao(local_target)
 
-    def solicitar_plano_espacial(self, current, global_goal, now_s):
+    @staticmethod
+    def distancia_restante_no_caminho(current, waypoints):
+        """Calcula o comprimento restante da polilinha executada pelo PX4."""
+
+        points = [np.asarray(current, dtype=float)] + [
+            np.asarray(point, dtype=float) for point in waypoints
+        ]
+        return sum(
+            float(np.linalg.norm(end - start))
+            for start, end in zip(points, points[1:])
+        )
+
+    def registrar_posicao_espacial_segura(self, current):
+        """Mantem pontos espacados da trajetoria para uma eventual retirada."""
+
+        current = np.asarray(current, dtype=float)
+        if not np.all(np.isfinite(current)):
+            return
+        if self.spatial_safe_position_history:
+            last = np.asarray(self.spatial_safe_position_history[-1], dtype=float)
+            if (
+                np.linalg.norm(current - last)
+                < self.spatial_recovery_history_spacing_m
+            ):
+                return
+        with self.spatial_lock:
+            is_safe = self.spatial_estimated_navigator.position_is_safe(current)
+        if is_safe:
+            self.spatial_safe_position_history.append(tuple(current))
+
+    def construir_caminho_de_recuperacao(self, current):
+        """Volta por posicoes seguras ja voadas ate criar distancia da fronteira."""
+
+        current = np.asarray(current, dtype=float)
+        waypoints = []
+        previous = current
+        retreat_distance = 0.0
+        for saved in reversed(list(self.spatial_safe_position_history)):
+            saved = np.asarray(saved, dtype=float)
+            segment = float(np.linalg.norm(saved - previous))
+            if segment < self.spatial_recovery_history_spacing_m * 0.5:
+                continue
+            waypoints.append(tuple(saved))
+            retreat_distance += segment
+            previous = saved
+            if retreat_distance >= self.spatial_recovery_retreat_distance_m:
+                break
+        if retreat_distance < self.spatial_recovery_retreat_distance_m:
+            return []
+        return waypoints
+
+    def finalizar_recuperacao_espacial(self, current):
+        """Encerra a retirada e libera uma nova tentativa de planejamento."""
+
+        current = np.asarray(current, dtype=float)
+        with self.spatial_plan_lock:
+            was_active = self.spatial_recovery_active
+            self.spatial_recovery_active = False
+            self.spatial_path_waypoints = []
+            self.spatial_path_index = 0
+        if was_active and self.spatial_safe_position_history:
+            history = list(self.spatial_safe_position_history)
+            nearest_index = int(
+                np.argmin(
+                    [
+                        np.linalg.norm(np.asarray(point, dtype=float) - current)
+                        for point in history
+                    ]
+                )
+            )
+            self.spatial_safe_position_history = deque(
+                history[: nearest_index + 1],
+                maxlen=600,
+            )
+        self.spatial_last_plan_request_s = None
+        if was_active and self.spatial_recorder is not None:
+            self.spatial_recorder.record_state(
+                self.get_clock().now().nanoseconds * 1e-9,
+                'recovery_complete',
+                position_ned_m=current,
+            )
+
+    def solicitar_plano_espacial(
+        self,
+        current,
+        global_goal,
+        now_s,
+        preserve_path_on_failure=False,
+    ):
         """Inicia um replanejamento sem bloquear os heartbeats do modo Offboard."""
 
         if self.spatial_plan_thread is not None and self.spatial_plan_thread.is_alive():
@@ -1027,12 +1190,23 @@ class DroneOffboardNode(Node):
         self.spatial_last_plan_request_s = now_s
         self.spatial_plan_thread = threading.Thread(
             target=self._calcular_plano_espacial,
-            args=(np.asarray(current, dtype=float), np.asarray(global_goal, dtype=float), now_s),
+            args=(
+                np.asarray(current, dtype=float),
+                np.asarray(global_goal, dtype=float),
+                now_s,
+                bool(preserve_path_on_failure),
+            ),
             daemon=True,
         )
         self.spatial_plan_thread.start()
 
-    def _calcular_plano_espacial(self, current, global_goal, timestamp_s):
+    def _calcular_plano_espacial(
+        self,
+        current,
+        global_goal,
+        timestamp_s,
+        preserve_path_on_failure=False,
+    ):
         with self.spatial_lock:
             plan = self.spatial_estimated_navigator.plan(current, global_goal)
             reference_plan = (
@@ -1054,18 +1228,51 @@ class DroneOffboardNode(Node):
                 self.spatial_current_plan = plan
                 self.spatial_path_waypoints = waypoints
                 self.spatial_path_index = 0
+                self.spatial_recovery_active = False
             self.spatial_plan_successes += 1
             self.get_logger().info(
                 f'A*: {plan.reason}, {len(plan.path_voxels)} voxels, '
                 f'{plan.path_length_m:.1f} m.'
             )
         else:
+            recovery_waypoints = []
+            with self.spatial_plan_lock:
+                path_still_available = (
+                    self.spatial_path_index < len(self.spatial_path_waypoints)
+                )
+            if not (preserve_path_on_failure and path_still_available):
+                recovery_waypoints = self.construir_caminho_de_recuperacao(current)
             with self.spatial_plan_lock:
                 self.spatial_current_plan = plan
-                self.spatial_path_waypoints = []
-                self.spatial_path_index = 0
+                if recovery_waypoints:
+                    self.spatial_path_waypoints = recovery_waypoints
+                    self.spatial_path_index = 0
+                    self.spatial_recovery_active = True
+                elif not (preserve_path_on_failure and path_still_available):
+                    self.spatial_path_waypoints = []
+                    self.spatial_path_index = 0
+                    self.spatial_recovery_active = False
             self.spatial_plan_failures += 1
-            self.get_logger().warning(f'A* sem plano: {plan.reason}. Drone em espera.')
+            if recovery_waypoints:
+                self.get_logger().warning(
+                    f'A* sem plano: {plan.reason}. Recuando pela trajetoria segura.'
+                )
+                if self.spatial_recorder is not None:
+                    self.spatial_recorder.record_state(
+                        timestamp_s,
+                        'recovery_started',
+                        position_ned_m=current,
+                        recovery_waypoints_ned_m=recovery_waypoints,
+                        plan_failure_reason=plan.reason,
+                    )
+            elif preserve_path_on_failure and path_still_available:
+                self.get_logger().warning(
+                    f'A* antecipado sem plano: {plan.reason}. Caminho atual preservado.'
+                )
+            else:
+                self.get_logger().warning(
+                    f'A* sem plano: {plan.reason}. Drone em espera.'
+                )
 
         if self.spatial_recorder is not None:
             self.spatial_recorder.record_plan(timestamp_s, plan, 'estimated')

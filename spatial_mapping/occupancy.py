@@ -102,6 +102,11 @@ class OccupancyGrid3D:
                 center_voxel[1] + dy,
                 center_voxel[2] + dz,
             )
+            if (
+                self._log_odds.get(voxel, 0.0)
+                >= self.config.occupied_threshold
+            ):
+                continue
             self._log_odds[voxel] = min(self._log_odds.get(voxel, 0.0), evidence)
 
     def export_arrays(self):

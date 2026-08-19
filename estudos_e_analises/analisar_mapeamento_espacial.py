@@ -372,6 +372,18 @@ def planning_metrics(events, reference):
                 if any(plan.get("raw_path_length_m", 0.0) > 0.0 for plan in successful)
                 else None
             ),
+            "mean_frontier_standoff_applied_m": (
+                float(
+                    np.mean(
+                        [
+                            plan.get("frontier_standoff_applied_m", 0.0)
+                            for plan in successful
+                        ]
+                    )
+                )
+                if successful
+                else None
+            ),
             "mean_planning_time_ms": (
                 float(np.mean([plan.get("planning_time_ms", 0.0) for plan in selected]))
                 if selected
@@ -398,6 +410,33 @@ def planning_metrics(events, reference):
         float(np.mean(collision_counts)) if collision_counts else None
     )
     return summary
+
+
+def recovery_metrics(events):
+    """Resume retiradas acionadas depois de uma falha sem caminho seguro."""
+
+    started = [
+        event
+        for event in events
+        if event.get("event") == "mission_state"
+        and event.get("state") == "recovery_started"
+    ]
+    completed = sum(
+        event.get("event") == "mission_state"
+        and event.get("state") == "recovery_complete"
+        for event in events
+    )
+    return {
+        "attempts": len(started),
+        "completed": completed,
+        "completion_rate": _ratio(completed, len(started)),
+        "trigger_reasons": dict(
+            Counter(
+                event.get("plan_failure_reason", "motivo ausente")
+                for event in started
+            )
+        ),
+    }
 
 
 def map_points(mapping, max_points=30000):
@@ -511,6 +550,7 @@ def main():
         ),
         "occupancy": compare_maps(estimated, reference),
         "planning": planning_metrics(events, reference),
+        "recovery": recovery_metrics(events),
         "frames": sum(event.get("event") == "frame" for event in events),
         "plans": sum(event.get("event") == "plan" for event in events),
         "successful_plans": sum(

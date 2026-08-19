@@ -56,6 +56,36 @@ class GeometryTest(unittest.TestCase):
 
 
 class OccupancyAndPlanningTest(unittest.TestCase):
+    def test_known_free_sphere_preserves_confirmed_obstacle(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=0.75,
+                occupied_threshold=0.6,
+            )
+        )
+        obstacle = np.array([2.1, 0.1, 0.1])
+        grid.integrate_points([0.1, 0.1, 0.1], [obstacle])
+        obstacle_voxel = grid.world_to_voxel(obstacle)
+
+        grid.mark_free_sphere(obstacle, 0.9)
+
+        self.assertEqual(grid.state(obstacle_voxel), "occupied")
+
+    def test_obstacle_inflation_uses_euclidean_radius(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=0.75,
+                occupied_threshold=0.6,
+            )
+        )
+        grid.integrate_points([-1.0, 0.1, 0.1], [[0.1, 0.1, 0.1]])
+
+        inflated = grid.inflated_occupied_voxels(1.25)
+
+        self.assertIn((1, 1, 0), inflated)
+        self.assertNotIn((1, 1, 1), inflated)
+        self.assertNotIn((2, 0, 0), inflated)
+
     def test_depth_integration_filters_points_outside_vertical_band(self):
         navigator = SpatialNavigator(
             SpatialNavigationConfig(
@@ -153,6 +183,37 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertLessEqual(
             max(distances),
             navigator.config.max_waypoint_spacing_m + 1e-9,
+        )
+
+    def test_local_subgoal_keeps_standoff_from_observed_frontier(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                local_plan_radius_m=12.0,
+                min_subgoal_progress_m=0.5,
+                max_waypoint_spacing_m=20.0,
+                frontier_standoff_m=2.5,
+            )
+        )
+        for x in range(10):
+            navigator.grid.mark_free_sphere((x + 0.1, 0.1, 0.1), 0.1)
+
+        current = np.array([0.1, 0.1, 0.1])
+        plan = navigator.plan(current, (20.0, 0.1, 0.1))
+
+        self.assertTrue(plan.success)
+        self.assertEqual(plan.reason, "local_subgoal")
+        self.assertAlmostEqual(plan.frontier_standoff_applied_m, 2.5)
+        selected_distance = np.linalg.norm(
+            np.asarray(plan.selected_goal_ned_m) - current
+        )
+        executed_distance = np.linalg.norm(
+            np.asarray(plan.waypoints_ned_m[-1]) - current
+        )
+        self.assertAlmostEqual(
+            selected_distance - executed_distance,
+            2.5,
+            delta=0.01,
         )
 
     def test_failed_local_subgoal_reports_reachable_progress(self):

@@ -26,6 +26,7 @@ class SpatialNavigationConfig:
     min_subgoal_progress_m: float = 0.5
     vertical_tolerance_m: float = 1.5
     max_waypoint_spacing_m: float = 5.0
+    frontier_standoff_m: float = 2.5
     connectivity: int = 26
 
     def __post_init__(self):
@@ -41,6 +42,8 @@ class SpatialNavigationConfig:
             raise ValueError("vertical_tolerance_m deve ser positivo")
         if self.max_waypoint_spacing_m <= 0:
             raise ValueError("max_waypoint_spacing_m deve ser positivo")
+        if self.frontier_standoff_m < 0:
+            raise ValueError("frontier_standoff_m nao pode ser negativo")
 
 
 @dataclass
@@ -55,6 +58,7 @@ class SpatialPlan:
     waypoints_ned_m: list[tuple[float, float, float]] = field(default_factory=list)
     path_length_m: float = 0.0
     raw_path_length_m: float = 0.0
+    frontier_standoff_applied_m: float = 0.0
     planning_time_ms: float = 0.0
 
 
@@ -191,15 +195,27 @@ class SpatialNavigator:
         waypoints = self._densify_waypoints(
             [self.grid.voxel_to_world(voxel) for voxel in compressed]
         )
+        reason = (
+            "goal_observed"
+            if selected_goal == requested_goal_voxel
+            else "local_subgoal"
+        )
+        frontier_standoff_applied_m = 0.0
+        if reason == "local_subgoal":
+            waypoints, frontier_standoff_applied_m = self._reserve_frontier(
+                current,
+                waypoints,
+            )
         return SpatialPlan(
             success=True,
-            reason="goal_observed" if selected_goal == requested_goal_voxel else "local_subgoal",
+            reason=reason,
             requested_goal_ned_m=tuple(requested_goal),
             selected_goal_ned_m=tuple(self.grid.voxel_to_world(selected_goal)),
             path_voxels=path,
             waypoints_ned_m=waypoints,
-            path_length_m=self._waypoint_length(waypoints),
+            path_length_m=self._waypoint_length([current, *waypoints]),
             raw_path_length_m=self._path_length(path),
+            frontier_standoff_applied_m=frontier_standoff_applied_m,
             planning_time_ms=self._elapsed_ms(started),
         )
 
@@ -232,6 +248,18 @@ class SpatialNavigator:
                 if voxel in blocked or voxel not in free:
                     return False
         return True
+
+    def position_is_safe(self, position_ned_m):
+        """Confirma que uma posicao pertence ao espaco livre fora da inflacao."""
+
+        voxel = self.grid.world_to_voxel(position_ned_m)
+        return (
+            voxel in self.grid.free_voxels()
+            and voxel
+            not in self.grid.inflated_occupied_voxels(
+                self.config.drone_clearance_radius_m
+            )
+        )
 
     def _select_local_subgoal(self, current, requested_goal, traversable):
         direction = requested_goal - current
@@ -337,6 +365,43 @@ class SpatialNavigator:
                 for step in range(1, steps + 1)
             )
         return [tuple(point) for point in dense]
+
+    def _reserve_frontier(self, current, waypoints):
+        """Encurta um caminho local para o drone observar a fronteira a distancia."""
+
+        points = [np.asarray(current, dtype=float)] + [
+            np.asarray(point, dtype=float) for point in waypoints
+        ]
+        if len(points) < 2 or self.config.frontier_standoff_m <= 0:
+            return list(waypoints), 0.0
+
+        lengths = [
+            float(np.linalg.norm(end - start))
+            for start, end in zip(points, points[1:])
+        ]
+        total_length = sum(lengths)
+        travel_length = max(
+            self.config.min_subgoal_progress_m,
+            total_length - self.config.frontier_standoff_m,
+        )
+        travel_length = min(total_length, travel_length)
+        applied = max(0.0, total_length - travel_length)
+        if applied <= 1e-9:
+            return list(waypoints), 0.0
+
+        reserved = []
+        traveled = 0.0
+        for start, end, length in zip(points, points[1:], lengths):
+            if length <= 1e-9:
+                continue
+            if traveled + length < travel_length - 1e-9:
+                reserved.append(tuple(end))
+                traveled += length
+                continue
+            fraction = (travel_length - traveled) / length
+            reserved.append(tuple(start + fraction * (end - start)))
+            break
+        return reserved, applied
 
     @staticmethod
     def _failure(requested_goal, reason, planning_time_ms=0.0):
