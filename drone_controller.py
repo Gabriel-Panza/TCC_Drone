@@ -156,6 +156,35 @@ class DroneOffboardNode(Node):
                 ).value
             ),
         )
+        self.spatial_short_plan_recovery_threshold = max(
+            1,
+            int(
+                self.declare_parameter(
+                    'spatial_short_plan_recovery_threshold',
+                    3,
+                ).value
+            ),
+        )
+        self.spatial_wait_scan_amplitude_rad = math.radians(
+            max(
+                0.0,
+                float(
+                    self.declare_parameter(
+                        'spatial_wait_scan_amplitude_deg',
+                        45.0,
+                    ).value
+                ),
+            )
+        )
+        self.spatial_wait_scan_period_s = max(
+            2.0,
+            float(
+                self.declare_parameter(
+                    'spatial_wait_scan_period_s',
+                    6.0,
+                ).value
+            ),
+        )
         self.spatial_waypoint_acceptance_radius_m = max(
             0.25,
             float(
@@ -314,6 +343,9 @@ class DroneOffboardNode(Node):
         self.spatial_hold_position = None
         self.spatial_safe_position_history = deque(maxlen=600)
         self.spatial_recovery_active = False
+        self.spatial_consecutive_short_plans = 0
+        self.spatial_wait_scan_active = False
+        self.spatial_wait_scan_started_s = None
         self.spatial_recorder = None
 
         self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
@@ -608,6 +640,13 @@ class DroneOffboardNode(Node):
                             'recovery_history_spacing_m': (
                                 self.spatial_recovery_history_spacing_m
                             ),
+                            'short_plan_recovery_threshold': (
+                                self.spatial_short_plan_recovery_threshold
+                            ),
+                            'wait_scan_amplitude_deg': math.degrees(
+                                self.spatial_wait_scan_amplitude_rad
+                            ),
+                            'wait_scan_period_s': self.spatial_wait_scan_period_s,
                         },
                     },
                     save_frames=self.spatial_save_frames,
@@ -1018,6 +1057,7 @@ class DroneOffboardNode(Node):
                     self.spatial_path_waypoints = []
                     self.spatial_path_index = 0
                     self.spatial_recovery_active = False
+                    self.spatial_wait_scan_active = False
                 self.get_logger().info(
                     f'Objetivo global atingido. Proximo: {self.wp_atual_index}.'
                 )
@@ -1086,12 +1126,23 @@ class DroneOffboardNode(Node):
         if path_index >= len(path):
             if self.spatial_hold_position is None:
                 self.spatial_hold_position = current.copy()
+            hold_yaw = self.yaw_para_objetivo(
+                global_goal,
+                origin_ned_m=self.spatial_hold_position,
+            )
+            if self.spatial_wait_scan_active:
+                if self.spatial_wait_scan_started_s is None:
+                    self.spatial_wait_scan_started_s = now_s
+                phase = (
+                    2.0
+                    * math.pi
+                    * (now_s - self.spatial_wait_scan_started_s)
+                    / self.spatial_wait_scan_period_s
+                )
+                hold_yaw += self.spatial_wait_scan_amplitude_rad * math.sin(phase)
             self.publicar_setpoint_posicao(
                 self.spatial_hold_position,
-                yaw_target=self.yaw_para_objetivo(
-                    global_goal,
-                    origin_ned_m=self.spatial_hold_position,
-                ),
+                yaw_target=hold_yaw,
             )
             return
 
@@ -1240,6 +1291,7 @@ class DroneOffboardNode(Node):
             )
         self.spatial_reference_plan = reference_plan
 
+        short_plan_rejected = False
         waypoints = list(plan.waypoints_ned_m) if plan.success else []
         if plan.success:
             while (
@@ -1264,6 +1316,7 @@ class DroneOffboardNode(Node):
                     f'{self.spatial_min_executable_path_m:.2f}m)'
                 )
                 waypoints = []
+                short_plan_rejected = True
 
         if plan.success:
             with self.spatial_plan_lock:
@@ -1288,6 +1341,7 @@ class DroneOffboardNode(Node):
                 )
             if preserve_existing:
                 plan.adopted_for_execution = False
+                self.spatial_consecutive_short_plans = 0
                 self.spatial_plan_successes += 1
                 self.get_logger().info(
                     'A* antecipado sem extensao suficiente; caminho atual preservado '
@@ -1301,6 +1355,9 @@ class DroneOffboardNode(Node):
                     self.spatial_path_waypoints = waypoints
                     self.spatial_path_index = 0
                     self.spatial_recovery_active = False
+                    self.spatial_wait_scan_active = False
+                    self.spatial_wait_scan_started_s = None
+                    self.spatial_consecutive_short_plans = 0
                 self.spatial_plan_successes += 1
                 self.get_logger().info(
                     f'A*: {plan.reason}, {len(plan.path_voxels)} voxels, '
@@ -1317,8 +1374,16 @@ class DroneOffboardNode(Node):
                 current_is_safe = self.spatial_estimated_navigator.position_is_safe(
                     current
                 )
+            if short_plan_rejected:
+                self.spatial_consecutive_short_plans += 1
+            else:
+                self.spatial_consecutive_short_plans = 0
+            force_recovery = (
+                self.spatial_consecutive_short_plans
+                >= self.spatial_short_plan_recovery_threshold
+            )
             if (
-                not current_is_safe
+                (not current_is_safe or force_recovery)
                 and not (preserve_path_on_failure and path_still_available)
             ):
                 recovery_waypoints = self.construir_caminho_de_recuperacao(current)
@@ -1328,10 +1393,17 @@ class DroneOffboardNode(Node):
                     self.spatial_path_waypoints = recovery_waypoints
                     self.spatial_path_index = 0
                     self.spatial_recovery_active = True
+                    self.spatial_wait_scan_active = False
+                    self.spatial_wait_scan_started_s = None
+                    self.spatial_consecutive_short_plans = 0
                 elif not (preserve_path_on_failure and path_still_available):
                     self.spatial_path_waypoints = []
                     self.spatial_path_index = 0
                     self.spatial_recovery_active = False
+                    if short_plan_rejected:
+                        self.spatial_wait_scan_active = True
+                        if self.spatial_wait_scan_started_s is None:
+                            self.spatial_wait_scan_started_s = timestamp_s
             self.spatial_plan_failures += 1
             if recovery_waypoints:
                 self.get_logger().warning(
@@ -1351,7 +1423,12 @@ class DroneOffboardNode(Node):
                 )
             else:
                 self.get_logger().warning(
-                    f'A* sem plano: {plan.reason}. Drone em espera.'
+                    f'A* sem plano: {plan.reason}. '
+                    + (
+                        'Drone em espera com varredura visual.'
+                        if self.spatial_wait_scan_active
+                        else 'Drone em espera.'
+                    )
                 )
 
         if self.spatial_recorder is not None:

@@ -31,6 +31,9 @@ drone_offboard_node:
     spatial_min_executable_path_m: 1.5
     spatial_recovery_retreat_distance_m: 1.5
     spatial_recovery_history_spacing_m: 1.0
+    spatial_short_plan_recovery_threshold: 3
+    spatial_wait_scan_amplitude_deg: 45.0
+    spatial_wait_scan_period_s: 6.0
     spatial_waypoint_acceptance_radius_m: 0.8
     spatial_global_goal_acceptance_radius_m: 1.5
     spatial_takeoff_altitude_m: 1.6
