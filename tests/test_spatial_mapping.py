@@ -120,6 +120,14 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertEqual(plan.reason, "local_subgoal")
         self.assertGreater(plan.selected_goal_ned_m[0], 4.0)
         self.assertGreater(plan.planning_time_ms, 0.0)
+        distances = [
+            np.linalg.norm(np.asarray(current) - np.asarray(previous))
+            for previous, current in zip(
+                plan.waypoints_ned_m,
+                plan.waypoints_ned_m[1:],
+            )
+        ]
+        self.assertLessEqual(max(distances), 2.25 + 1e-9)
 
 
 class MetricsTest(unittest.TestCase):

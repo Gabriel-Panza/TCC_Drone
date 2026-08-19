@@ -78,7 +78,11 @@ PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p spatial_execute_path:=true
 ```
 
-O modo novo envia apenas setpoints de posicao. O PX4 controla a dinamica do voo. Os comandos de risco, freio e desvio continuam sendo calculados para comparacao, mas nao alteram os setpoints.
+O modo novo envia apenas setpoints de posicao. O PX4 controla a dinamica do voo e os comandos reativos antigos nao alteram os setpoints.
+
+Por padrao, `spatial_collect_legacy_metrics=false` desliga a estabilizacao e o fluxo optico antigos durante esta validacao. Os frames RGB, profundidade, pose, mapas e planos continuam sendo registrados pelo gravador espacial. Isso evita que um processamento que nao participa do voo atrase a atualizacao do mapa.
+
+O YAML inicial usa uma rota curta ate `[-8, 8, -1.65]` e retorna ao inicio. Ela serve apenas para validar atualizacao em movimento e estabilidade. A rota entre arvores deve ser definida depois, com pontos intermediarios registrados e mantidos iguais nos ensaios ideal e monocular.
 
 ## 5. Profundidade monocular
 

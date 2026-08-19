@@ -24,6 +24,7 @@ class SpatialNavigationConfig:
     local_plan_radius_m: float = 20.0
     min_subgoal_progress_m: float = 2.0
     vertical_tolerance_m: float = 1.5
+    max_waypoint_spacing_m: float = 2.25
     connectivity: int = 26
 
     def __post_init__(self):
@@ -35,6 +36,8 @@ class SpatialNavigationConfig:
             raise ValueError("local_plan_radius_m deve ser positivo")
         if self.vertical_tolerance_m <= 0:
             raise ValueError("vertical_tolerance_m deve ser positivo")
+        if self.max_waypoint_spacing_m <= 0:
+            raise ValueError("max_waypoint_spacing_m deve ser positivo")
 
 
 @dataclass
@@ -156,7 +159,9 @@ class SpatialNavigator:
             )
 
         compressed = compress_collinear_path(path)
-        waypoints = [tuple(self.grid.voxel_to_world(voxel)) for voxel in compressed]
+        waypoints = self._densify_waypoints(
+            [self.grid.voxel_to_world(voxel) for voxel in compressed]
+        )
         return SpatialPlan(
             success=True,
             reason="goal_observed" if selected_goal == requested_goal_voxel else "local_subgoal",
@@ -223,6 +228,23 @@ class SpatialNavigator:
             sqrt(sum((a - b) ** 2 for a, b in zip(current, previous)))
             for previous, current in zip(path, path[1:])
         )
+
+    def _densify_waypoints(self, points):
+        """Limita saltos entre setpoints sem alterar a geometria do caminho."""
+
+        if not points:
+            return []
+        dense = [np.asarray(points[0], dtype=float)]
+        for endpoint in points[1:]:
+            start = dense[-1]
+            endpoint = np.asarray(endpoint, dtype=float)
+            distance = float(np.linalg.norm(endpoint - start))
+            steps = max(1, int(np.ceil(distance / self.config.max_waypoint_spacing_m)))
+            dense.extend(
+                start + (endpoint - start) * (step / steps)
+                for step in range(1, steps + 1)
+            )
+        return [tuple(point) for point in dense]
 
     @staticmethod
     def _failure(requested_goal, reason, planning_time_ms=0.0):

@@ -73,6 +73,21 @@ def aggregate_depth_metrics(events):
     }
 
 
+def aggregate_mapping_metrics(events):
+    times = [
+        float((event.get("map") or {}).get("integration_time_ms"))
+        for event in events
+        if event.get("event") == "frame"
+        and (event.get("map") or {}).get("integration_time_ms") is not None
+    ]
+    if not times:
+        return {}
+    return {
+        "mean_integration_time_ms": float(np.mean(times)),
+        "p95_integration_time_ms": float(np.percentile(times, 95)),
+    }
+
+
 def last_successful_path(events, map_kind="estimated"):
     for event in reversed(events):
         plan = event.get("plan") or {}
@@ -208,6 +223,7 @@ def main():
     summary = {
         "run_dir": str(run_dir),
         "depth": aggregate_depth_metrics(events),
+        "mapping": aggregate_mapping_metrics(events),
         "occupancy": compare_maps(estimated, reference),
         "planning": planning_metrics(events, reference),
         "frames": sum(event.get("event") == "frame" for event in events),

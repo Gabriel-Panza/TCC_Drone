@@ -110,7 +110,10 @@ class DroneOffboardNode(Node):
         )
         self.spatial_process_every_n = max(
             1,
-            int(self.declare_parameter('spatial_process_every_n', 5).value),
+            int(self.declare_parameter('spatial_process_every_n', 10).value),
+        )
+        self.spatial_collect_legacy_metrics = bool(
+            self.declare_parameter('spatial_collect_legacy_metrics', False).value
         )
         self.spatial_replan_interval_s = max(
             0.25,
@@ -121,7 +124,7 @@ class DroneOffboardNode(Node):
             float(
                 self.declare_parameter(
                     'spatial_waypoint_acceptance_radius_m',
-                    1.0,
+                    0.6,
                 ).value
             ),
         )
@@ -193,7 +196,7 @@ class DroneOffboardNode(Node):
             ),
             depth_stride=max(
                 1,
-                int(self.declare_parameter('spatial_depth_stride', 16).value),
+                int(self.declare_parameter('spatial_depth_stride', 32).value),
             ),
             min_depth_m=float(
                 self.declare_parameter('spatial_min_depth_m', 0.5).value
@@ -214,14 +217,21 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_min_subgoal_progress_m', 2.0).value
             ),
             vertical_tolerance_m=float(
-                self.declare_parameter('spatial_vertical_tolerance_m', 1.5).value
+                self.declare_parameter('spatial_vertical_tolerance_m', 0.5).value
+            ),
+            max_waypoint_spacing_m=float(
+                self.declare_parameter('spatial_max_waypoint_spacing_m', 2.25).value
             ),
             connectivity=int(
                 self.declare_parameter('spatial_connectivity', 26).value
             ),
         )
         self.spatial_estimated_navigator = SpatialNavigator(spatial_config)
-        self.spatial_reference_navigator = SpatialNavigator(spatial_config)
+        self.spatial_reference_navigator = (
+            self.spatial_estimated_navigator
+            if self.spatial_depth_source == 'ground_truth_debug'
+            else SpatialNavigator(spatial_config)
+        )
         self.spatial_lock = threading.RLock()
         self.spatial_plan_lock = threading.Lock()
         self.spatial_plan_thread = None
@@ -497,7 +507,7 @@ class DroneOffboardNode(Node):
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
         if self.spatial_enabled:
-            self.evasao_visual_ativa = True
+            self.evasao_visual_ativa = self.spatial_collect_legacy_metrics
             if not self.depth_gt_topic:
                 raise ValueError(
                     'spatial_astar exige ground_truth_depth_topic para avaliacao. '
@@ -971,7 +981,11 @@ class DroneOffboardNode(Node):
     def _calcular_plano_espacial(self, current, global_goal, timestamp_s):
         with self.spatial_lock:
             plan = self.spatial_estimated_navigator.plan(current, global_goal)
-            reference_plan = self.spatial_reference_navigator.plan(current, global_goal)
+            reference_plan = (
+                plan
+                if self.spatial_reference_navigator is self.spatial_estimated_navigator
+                else self.spatial_reference_navigator.plan(current, global_goal)
+            )
         self.spatial_reference_plan = reference_plan
 
         if plan.success:
@@ -1404,13 +1418,16 @@ class DroneOffboardNode(Node):
         )
 
         with self.spatial_lock:
+            integration_started = time.perf_counter()
             estimated_stats = self.spatial_estimated_navigator.integrate_depth(
                 estimated_depth,
                 estimated_intrinsics,
                 camera_to_ned,
             )
             reference_stats = None
-            if depth_gt is not None:
+            if self.spatial_reference_navigator is self.spatial_estimated_navigator:
+                reference_stats = estimated_stats
+            elif depth_gt is not None:
                 reference_intrinsics = self.intrinsics_para_shape(
                     image_width,
                     image_height,
@@ -1421,6 +1438,9 @@ class DroneOffboardNode(Node):
                     reference_intrinsics,
                     camera_to_ned,
                 )
+            estimated_stats['integration_time_ms'] = (
+                time.perf_counter() - integration_started
+            ) * 1000.0
             self.spatial_last_map_stats = {
                 'estimated': estimated_stats,
                 'reference': reference_stats,
@@ -2675,6 +2695,10 @@ class DroneOffboardNode(Node):
                 resolucao_largura,
                 resolucao_altura,
             )
+
+            if self.spatial_enabled and not self.spatial_collect_legacy_metrics:
+                cv2.waitKey(1)
+                return
             
             # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
             imagem_estabilizada, mascara_alpha, img_geometria = self.aplicar_compensacao_imu(

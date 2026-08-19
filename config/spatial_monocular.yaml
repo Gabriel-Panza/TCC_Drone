@@ -6,27 +6,29 @@ drone_offboard_node:
     monocular_depth_topic: /monocular_depth
     monocular_depth_max_age_s: 0.12
     ground_truth_depth_topic: /sim_depth_ground_truth
-    save_ground_truth_dataset: true
+    save_ground_truth_dataset: false
     spatial_save_dataset: true
     spatial_save_frames: true
     spatial_show_topdown: true
-    spatial_process_every_n: 5
+    spatial_collect_legacy_metrics: false
+    spatial_process_every_n: 10
     spatial_voxel_resolution_m: 0.75
-    spatial_depth_stride: 16
+    spatial_depth_stride: 32
     spatial_min_depth_m: 0.5
     spatial_max_depth_m: 25.0
     spatial_clearance_radius_m: 1.25
     spatial_known_free_radius_m: 0.8
     spatial_local_plan_radius_m: 20.0
     spatial_min_subgoal_progress_m: 2.0
-    spatial_vertical_tolerance_m: 1.5
+    spatial_vertical_tolerance_m: 0.5
+    spatial_max_waypoint_spacing_m: 2.25
     spatial_connectivity: 26
     spatial_replan_interval_s: 1.5
-    spatial_waypoint_acceptance_radius_m: 1.0
+    spatial_waypoint_acceptance_radius_m: 0.6
     spatial_global_goal_acceptance_radius_m: 1.5
     spatial_takeoff_altitude_m: 1.65
-    # Pontos relativos NED em grupos [x, y, z]. Use a mesma rota do ensaio ideal.
-    spatial_waypoints_relative_m: [-25.0, 25.0, -1.65, -50.0, 70.0, -1.65, -25.0, 25.0, -1.65, 0.0, 0.0, -1.65]
+    # Mantenha a mesma rota curta do ensaio ideal durante a calibracao.
+    spatial_waypoints_relative_m: [-8.0, 8.0, -1.65, 0.0, 0.0, -1.65]
     camera_offset_forward_m: 0.0
     camera_offset_right_m: 0.0
     camera_offset_down_m: 0.0
