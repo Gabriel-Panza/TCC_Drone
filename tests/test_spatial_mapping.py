@@ -93,6 +93,16 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         with self.assertRaises(PathNotFoundError):
             planner.plan((0, 0, 0), (1, 1, 0))
 
+    def test_reachable_component_excludes_disconnected_free_voxels(self):
+        planner = AStar3D(
+            {(0, 0, 0), (1, 0, 0), (5, 0, 0)},
+            connectivity=6,
+        )
+
+        reachable = planner.reachable_from((0, 0, 0))
+
+        self.assertEqual(reachable, {(0, 0, 0), (1, 0, 0)})
+
     def test_navigator_selects_observed_local_subgoal(self):
         navigator = SpatialNavigator(
             SpatialNavigationConfig(

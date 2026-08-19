@@ -237,6 +237,7 @@ class DroneOffboardNode(Node):
         self.spatial_plan_failures = 0
         self.spatial_takeoff_complete = False
         self.spatial_takeoff_target = None
+        self.spatial_hold_position = None
         self.spatial_recorder = None
 
         self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
@@ -874,6 +875,7 @@ class DroneOffboardNode(Node):
             self.publicar_setpoint_posicao(self.spatial_takeoff_target)
             if np.linalg.norm(current - self.spatial_takeoff_target) <= 0.6:
                 self.spatial_takeoff_complete = True
+                self.spatial_hold_position = current.copy()
                 self.get_logger().info(
                     'Altitude inicial atingida. Planejamento espacial liberado.'
                 )
@@ -909,12 +911,11 @@ class DroneOffboardNode(Node):
                 return
 
         now_s = self.get_clock().now().nanoseconds * 1e-9
-        path_missing = self.spatial_path_index >= len(self.spatial_path_waypoints)
         plan_expired = (
             self.spatial_last_plan_request_s is None
             or now_s - self.spatial_last_plan_request_s >= self.spatial_replan_interval_s
         )
-        if path_missing or plan_expired:
+        if plan_expired:
             self.solicitar_plano_espacial(current, global_goal, now_s)
 
         with self.spatial_plan_lock:
@@ -922,12 +923,18 @@ class DroneOffboardNode(Node):
             path_index = self.spatial_path_index
 
         if path_index >= len(path):
+            if self.spatial_hold_position is None:
+                self.spatial_hold_position = current.copy()
             self.publicar_setpoint_posicao(
-                current,
-                yaw_target=self.yaw_para_objetivo(global_goal),
+                self.spatial_hold_position,
+                yaw_target=self.yaw_para_objetivo(
+                    global_goal,
+                    origin_ned_m=self.spatial_hold_position,
+                ),
             )
             return
 
+        self.spatial_hold_position = None
         local_target = np.asarray(path[path_index], dtype=float)
         if np.linalg.norm(current - local_target) <= self.spatial_waypoint_acceptance_radius_m:
             with self.spatial_plan_lock:
@@ -935,9 +942,13 @@ class DroneOffboardNode(Node):
                 path_index = self.spatial_path_index
                 path = list(self.spatial_path_waypoints)
             if path_index >= len(path):
+                self.spatial_hold_position = current.copy()
                 self.publicar_setpoint_posicao(
-                    current,
-                    yaw_target=self.yaw_para_objetivo(global_goal),
+                    self.spatial_hold_position,
+                    yaw_target=self.yaw_para_objetivo(
+                        global_goal,
+                        origin_ned_m=self.spatial_hold_position,
+                    ),
                 )
                 return
             local_target = np.asarray(path[path_index], dtype=float)
@@ -996,11 +1007,16 @@ class DroneOffboardNode(Node):
                 'reference',
             )
 
-    def yaw_para_objetivo(self, target_ned_m):
+    def yaw_para_objetivo(self, target_ned_m, origin_ned_m=None):
         target = np.asarray(target_ned_m, dtype=float)
+        origin = (
+            np.asarray(origin_ned_m, dtype=float)
+            if origin_ned_m is not None
+            else np.asarray([self.current_x, self.current_y, self.current_z], dtype=float)
+        )
         return math.atan2(
-            target[1] - self.current_y,
-            target[0] - self.current_x,
+            target[1] - origin[1],
+            target[0] - origin[0],
         )
 
     def publicar_setpoint_posicao(self, target_ned_m, yaw_target=None):

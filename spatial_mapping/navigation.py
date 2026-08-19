@@ -123,14 +123,21 @@ class SpatialNavigator:
                 self._elapsed_ms(started),
             )
 
+        planner = AStar3D(
+            traversable,
+            blocked,
+            connectivity=self.config.connectivity,
+        )
+        reachable = planner.reachable_from(start)
+
         requested_goal_voxel = self.grid.world_to_voxel(requested_goal)
-        if requested_goal_voxel in traversable:
+        if requested_goal_voxel in reachable:
             selected_goal = requested_goal_voxel
         else:
             selected_goal = self._select_local_subgoal(
                 current,
                 requested_goal,
-                traversable,
+                reachable,
             )
         if selected_goal is None or selected_goal == start:
             return self._failure(
@@ -140,11 +147,7 @@ class SpatialNavigator:
             )
 
         try:
-            path = AStar3D(
-                traversable,
-                blocked,
-                connectivity=self.config.connectivity,
-            ).plan(start, selected_goal)
+            path = planner.plan(start, selected_goal)
         except PathNotFoundError as error:
             return self._failure(
                 requested_goal,

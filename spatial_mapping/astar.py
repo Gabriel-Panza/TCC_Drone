@@ -55,6 +55,24 @@ class AStar3D:
 
         raise PathNotFoundError("nenhum caminho encontrado")
 
+    def reachable_from(self, start):
+        """Retorna o componente livre alcancavel a partir do voxel inicial."""
+
+        start = tuple(start)
+        if start not in self.traversable or start in self.blocked:
+            return set()
+
+        reachable = {start}
+        frontier = [start]
+        while frontier:
+            current = frontier.pop()
+            for neighbor, _ in self._valid_neighbors(current):
+                if neighbor in reachable:
+                    continue
+                reachable.add(neighbor)
+                frontier.append(neighbor)
+        return reachable
+
     def _valid_neighbors(self, voxel):
         for dx, dy, dz in self._neighbors:
             neighbor = (voxel[0] + dx, voxel[1] + dy, voxel[2] + dz)
