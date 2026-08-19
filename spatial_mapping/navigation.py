@@ -16,7 +16,7 @@ class SpatialNavigationConfig:
     """Parametros que devem permanecer iguais entre mapa estimado e mapa ideal."""
 
     voxel_resolution_m: float = 0.75
-    depth_stride: int = 16
+    depth_stride: int = 40
     min_depth_m: float = 0.5
     max_depth_m: float = 25.0
     drone_clearance_radius_m: float = 1.25
@@ -24,7 +24,7 @@ class SpatialNavigationConfig:
     local_plan_radius_m: float = 20.0
     min_subgoal_progress_m: float = 0.5
     vertical_tolerance_m: float = 1.5
-    max_waypoint_spacing_m: float = 4.0
+    max_waypoint_spacing_m: float = 5.0
     connectivity: int = 26
 
     def __post_init__(self):
@@ -51,6 +51,7 @@ class SpatialPlan:
     path_voxels: list[tuple[int, int, int]] = field(default_factory=list)
     waypoints_ned_m: list[tuple[float, float, float]] = field(default_factory=list)
     path_length_m: float = 0.0
+    raw_path_length_m: float = 0.0
     planning_time_ms: float = 0.0
 
 
@@ -174,7 +175,8 @@ class SpatialNavigator:
                 self._elapsed_ms(started),
             )
 
-        compressed = compress_collinear_path(path)
+        shortcut = self._shortcut_path(path, traversable, blocked)
+        compressed = compress_collinear_path(shortcut)
         waypoints = self._densify_waypoints(
             [self.grid.voxel_to_world(voxel) for voxel in compressed]
         )
@@ -185,7 +187,8 @@ class SpatialNavigator:
             selected_goal_ned_m=tuple(self.grid.voxel_to_world(selected_goal)),
             path_voxels=path,
             waypoints_ned_m=waypoints,
-            path_length_m=self._path_length(path),
+            path_length_m=self._waypoint_length(waypoints),
+            raw_path_length_m=self._path_length(path),
             planning_time_ms=self._elapsed_ms(started),
         )
 
@@ -274,6 +277,38 @@ class SpatialNavigator:
             sqrt(sum((a - b) ** 2 for a, b in zip(current, previous)))
             for previous, current in zip(path, path[1:])
         )
+
+    @staticmethod
+    def _waypoint_length(waypoints):
+        return sum(
+            float(np.linalg.norm(np.asarray(current) - np.asarray(previous)))
+            for previous, current in zip(waypoints, waypoints[1:])
+        )
+
+    def _shortcut_path(self, path, traversable, blocked):
+        """Remove curvas da grade quando a linha direta permanece conhecida e livre."""
+
+        path = [tuple(voxel) for voxel in path]
+        if len(path) <= 2:
+            return path
+
+        simplified = [path[0]]
+        anchor = 0
+        while anchor < len(path) - 1:
+            next_index = anchor + 1
+            for candidate in range(len(path) - 1, anchor, -1):
+                start = self.grid.voxel_to_world(path[anchor])
+                end = self.grid.voxel_to_world(path[candidate])
+                segment = self.grid._ray_voxels(start, end)
+                if all(
+                    voxel in traversable and voxel not in blocked
+                    for voxel in segment
+                ):
+                    next_index = candidate
+                    break
+            simplified.append(path[next_index])
+            anchor = next_index
+        return simplified
 
     def _densify_waypoints(self, points):
         """Limita saltos entre setpoints sem alterar a geometria do caminho."""

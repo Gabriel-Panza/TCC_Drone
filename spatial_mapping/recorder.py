@@ -91,6 +91,19 @@ class SpatialRunRecorder:
                 }
             )
 
+    def record_state(self, timestamp_s, state, **details):
+        """Registra marcos da missao usados para separar as fases da trajetoria."""
+
+        with self._lock:
+            self._append_event(
+                {
+                    "event": "mission_state",
+                    "timestamp_s": float(timestamp_s),
+                    "state": str(state),
+                    **details,
+                }
+            )
+
     def save_map(self, name, navigator):
         np.savez_compressed(self.run_dir / f"{name}.npz", **navigator.export_map())
 

@@ -13,7 +13,7 @@ drone_offboard_node:
     spatial_collect_legacy_metrics: false
     spatial_process_every_n: 10
     spatial_voxel_resolution_m: 0.75
-    spatial_depth_stride: 32
+    spatial_depth_stride: 40
     spatial_min_depth_m: 0.5
     spatial_max_depth_m: 25.0
     spatial_clearance_radius_m: 1.25
@@ -21,7 +21,7 @@ drone_offboard_node:
     spatial_local_plan_radius_m: 20.0
     spatial_min_subgoal_progress_m: 0.5
     spatial_vertical_tolerance_m: 0.5
-    spatial_max_waypoint_spacing_m: 4.0
+    spatial_max_waypoint_spacing_m: 5.0
     spatial_connectivity: 26
     spatial_replan_interval_s: 1.5
     spatial_waypoint_acceptance_radius_m: 0.8

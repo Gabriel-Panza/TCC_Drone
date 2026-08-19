@@ -205,7 +205,7 @@ class DroneOffboardNode(Node):
             ),
             depth_stride=max(
                 1,
-                int(self.declare_parameter('spatial_depth_stride', 32).value),
+                int(self.declare_parameter('spatial_depth_stride', 40).value),
             ),
             min_depth_m=float(
                 self.declare_parameter('spatial_min_depth_m', 0.5).value
@@ -229,7 +229,7 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_vertical_tolerance_m', 0.5).value
             ),
             max_waypoint_spacing_m=float(
-                self.declare_parameter('spatial_max_waypoint_spacing_m', 4.0).value
+                self.declare_parameter('spatial_max_waypoint_spacing_m', 5.0).value
             ),
             connectivity=int(
                 self.declare_parameter('spatial_connectivity', 26).value
@@ -532,6 +532,7 @@ class DroneOffboardNode(Node):
                         'monocular_depth_topic': self.monocular_depth_topic,
                         'ground_truth_depth_topic': self.depth_gt_topic,
                         'waypoints_relative_m': self.waypoints_relativos,
+                        'takeoff_altitude_m': self.spatial_takeoff_altitude_m,
                         'spatial_config': asdict(spatial_config),
                     },
                     save_frames=self.spatial_save_frames,
@@ -898,6 +899,13 @@ class DroneOffboardNode(Node):
             ):
                 self.spatial_takeoff_complete = True
                 self.spatial_hold_position = self.spatial_takeoff_target.copy()
+                if self.spatial_recorder is not None:
+                    self.spatial_recorder.record_state(
+                        self.get_clock().now().nanoseconds * 1e-9,
+                        'takeoff_complete',
+                        position_ned_m=current,
+                        target_ned_m=self.spatial_takeoff_target,
+                    )
                 self.get_logger().info(
                     'Altitude inicial atingida. Planejamento espacial liberado.'
                 )
@@ -915,6 +923,15 @@ class DroneOffboardNode(Node):
             np.linalg.norm(current - global_goal)
             <= self.spatial_global_goal_acceptance_radius_m
         ):
+            reached_index = self.wp_atual_index
+            if self.spatial_recorder is not None:
+                self.spatial_recorder.record_state(
+                    self.get_clock().now().nanoseconds * 1e-9,
+                    'global_goal_reached',
+                    waypoint_index=reached_index,
+                    position_ned_m=current,
+                    goal_ned_m=global_goal,
+                )
             if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
                 self.wp_atual_index += 1
                 self.spatial_path_waypoints = []
@@ -928,6 +945,12 @@ class DroneOffboardNode(Node):
                 )
             else:
                 self.missao_concluida = True
+                if self.spatial_recorder is not None:
+                    self.spatial_recorder.record_state(
+                        self.get_clock().now().nanoseconds * 1e-9,
+                        'mission_complete',
+                        position_ned_m=current,
+                    )
                 self.get_logger().info('Rota espacial concluida.')
                 self.publicar_setpoint_posicao(current)
                 return
@@ -1218,6 +1241,12 @@ class DroneOffboardNode(Node):
 
         self.get_logger().info("Missao encerrada. Iniciando pouso pelo PX4.")
         if self.spatial_enabled:
+            if self.spatial_recorder is not None:
+                self.spatial_recorder.record_state(
+                    self.get_clock().now().nanoseconds * 1e-9,
+                    'landing_started',
+                    position_ned_m=[self.current_x, self.current_y, self.current_z],
+                )
             self.land()
             time.sleep(8)
         else:

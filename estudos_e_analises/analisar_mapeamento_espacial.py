@@ -92,7 +92,9 @@ def aggregate_mapping_metrics(events):
     }
 
 
-def trajectory_metrics(run_dir, events, manifest):
+def load_trajectory(run_dir, events):
+    """Carrega a posicao da camera salva em cada frame espacial."""
+
     frame_events = [
         event
         for event in events
@@ -106,40 +108,116 @@ def trajectory_metrics(run_dir, events, manifest):
                 np.asarray(frame["camera_to_ned"], dtype=float)[:3, 3]
             )
         timestamps.append(float(event["timestamp_s"]))
+    return np.asarray(positions, dtype=float), np.asarray(timestamps, dtype=float)
+
+
+def movement_metrics(positions, timestamps, nominal_length=None):
+    """Resume distancia, velocidade, altitude e mudancas de direcao."""
+
     if len(positions) < 2:
         return {}
 
     positions = np.asarray(positions)
+    timestamps = np.asarray(timestamps)
     segments = np.diff(positions, axis=0)
     lengths = np.linalg.norm(segments, axis=1)
     traveled = float(np.sum(lengths))
     duration = max(0.0, timestamps[-1] - timestamps[0])
-    moving = segments[lengths > 0.05]
+
+    turning_points = [positions[0]]
+    for position in positions[1:-1]:
+        if np.linalg.norm(position - turning_points[-1]) >= 0.25:
+            turning_points.append(position)
+    turning_points.append(positions[-1])
+    moving = np.diff(np.asarray(turning_points), axis=0)
+    moving = moving[np.linalg.norm(moving, axis=1) > 0.15]
     total_turn_deg = 0.0
     if len(moving) >= 2:
         unit = moving / np.linalg.norm(moving, axis=1, keepdims=True)
         cosines = np.clip(np.sum(unit[:-1] * unit[1:], axis=1), -1.0, 1.0)
         total_turn_deg = float(np.degrees(np.arccos(cosines)).sum())
 
-    route = (
-        manifest.get("metadata", {}).get("waypoints_relative_m")
-        or []
-    )
-    route_points = np.asarray([[0.0, 0.0, 0.0], *route], dtype=float)
-    nominal = (
-        float(np.linalg.norm(np.diff(route_points, axis=0), axis=1).sum())
-        if len(route_points) >= 2
-        else None
-    )
     return {
         "duration_s": duration,
         "distance_traveled_m": traveled,
-        "nominal_route_length_m": nominal,
-        "distance_over_nominal": _ratio(traveled, nominal),
+        "nominal_route_length_m": nominal_length,
+        "distance_over_nominal": _ratio(traveled, nominal_length),
         "mean_sampled_speed_m_s": _ratio(traveled, duration),
         "altitude_range_m": float(np.ptp(-positions[:, 2])),
+        "altitude_std_m": float(np.std(-positions[:, 2])),
         "total_turn_deg": total_turn_deg,
         "turn_deg_per_meter": _ratio(total_turn_deg, traveled),
+    }
+
+
+def trajectory_metrics(positions, timestamps, events, manifest):
+    """Separa a missao completa do trecho entre decolagem e objetivo final."""
+
+    if len(positions) < 2:
+        return {}
+    metadata = manifest.get("metadata", {})
+    route = metadata.get("waypoints_relative_m") or []
+    full_route = np.asarray([[0.0, 0.0, 0.0], *route], dtype=float)
+    full_nominal = float(
+        np.linalg.norm(np.diff(full_route, axis=0), axis=1).sum()
+    )
+    takeoff_altitude = float(
+        metadata.get(
+            "takeoff_altitude_m",
+            abs(route[0][2]) if route else 0.0,
+        )
+    )
+    cruise_route = np.asarray(
+        [[0.0, 0.0, -takeoff_altitude], *route],
+        dtype=float,
+    )
+    cruise_nominal = float(
+        np.linalg.norm(np.diff(cruise_route, axis=0), axis=1).sum()
+    )
+
+    states = [event for event in events if event.get("event") == "mission_state"]
+    takeoff = next(
+        (event for event in states if event.get("state") == "takeoff_complete"),
+        None,
+    )
+    mission_complete = next(
+        (event for event in states if event.get("state") == "mission_complete"),
+        None,
+    )
+    if takeoff is None:
+        takeoff = next(
+            (
+                event
+                for event in events
+                if event.get("event") == "plan"
+                and event.get("map_kind") == "estimated"
+            ),
+            None,
+        )
+    start_s = float(takeoff["timestamp_s"]) if takeoff else float(timestamps[0])
+    end_s = (
+        float(mission_complete["timestamp_s"])
+        if mission_complete
+        else float(timestamps[-1])
+    )
+    cruise_mask = (timestamps >= start_s) & (timestamps <= end_s)
+
+    return {
+        "full_mission": movement_metrics(
+            positions,
+            timestamps,
+            full_nominal,
+        ),
+        "cruise": movement_metrics(
+            positions[cruise_mask],
+            timestamps[cruise_mask],
+            cruise_nominal,
+        ),
+        "cruise_bounds_source": (
+            "mission_state_events"
+            if takeoff and mission_complete and states
+            else "estimated_from_available_events"
+        ),
     }
 
 
@@ -168,6 +246,34 @@ def planning_metrics(events, reference):
             "mean_path_length_m": (
                 float(np.mean([plan.get("path_length_m", 0.0) for plan in successful]))
                 if successful
+                else None
+            ),
+            "mean_raw_path_length_m": (
+                float(
+                    np.mean(
+                        [
+                            plan.get("raw_path_length_m", plan.get("path_length_m", 0.0))
+                            for plan in successful
+                        ]
+                    )
+                )
+                if successful
+                else None
+            ),
+            "mean_smoothing_ratio": (
+                float(
+                    np.mean(
+                        [
+                            _ratio(
+                                plan.get("path_length_m", 0.0),
+                                plan.get("raw_path_length_m", 0.0),
+                            )
+                            for plan in successful
+                            if plan.get("raw_path_length_m", 0.0) > 0.0
+                        ]
+                    )
+                )
+                if any(plan.get("raw_path_length_m", 0.0) > 0.0 for plan in successful)
                 else None
             ),
             "mean_planning_time_ms": (
@@ -206,7 +312,13 @@ def map_points(mapping, max_points=30000):
     return (occupied.astype(float) + 0.5) * mapping["resolution_m"]
 
 
-def build_figure(estimated, reference, estimated_path, reference_path):
+def build_figure(
+    estimated,
+    reference,
+    estimated_path,
+    reference_path,
+    flown_trajectory,
+):
     figure = make_subplots(
         rows=1,
         cols=2,
@@ -246,6 +358,20 @@ def build_figure(estimated, reference, estimated_path, reference_path):
                 row=1,
                 col=column,
             )
+        if len(flown_trajectory):
+            figure.add_trace(
+                go.Scatter3d(
+                    x=flown_trajectory[:, 0],
+                    y=flown_trajectory[:, 1],
+                    z=flown_trajectory[:, 2],
+                    mode="lines",
+                    line={"color": "#111111", "width": 5},
+                    name="trajetoria voada",
+                    showlegend=column == 1,
+                ),
+                row=1,
+                col=column,
+            )
     figure.update_scenes(
         xaxis_title="Norte (m)",
         yaxis_title="Leste (m)",
@@ -274,13 +400,19 @@ def main():
     reference = load_map(run_dir / "reference_map.npz")
     events = load_events(run_dir / "events.jsonl")
     manifest = load_manifest(run_dir / "manifest.json")
+    flown_trajectory, trajectory_timestamps = load_trajectory(run_dir, events)
     estimated_path = last_successful_path(events, "estimated")
     reference_path = last_successful_path(events, "reference")
     summary = {
         "run_dir": str(run_dir),
         "depth": aggregate_depth_metrics(events),
         "mapping": aggregate_mapping_metrics(events),
-        "trajectory": trajectory_metrics(run_dir, events, manifest),
+        "trajectory": trajectory_metrics(
+            flown_trajectory,
+            trajectory_timestamps,
+            events,
+            manifest,
+        ),
         "occupancy": compare_maps(estimated, reference),
         "planning": planning_metrics(events, reference),
         "frames": sum(event.get("event") == "frame" for event in events),
@@ -300,6 +432,7 @@ def main():
         reference,
         estimated_path,
         reference_path,
+        flown_trajectory,
     ).write_html(
         run_dir / "spatial_map_3d.html",
         include_plotlyjs=True,

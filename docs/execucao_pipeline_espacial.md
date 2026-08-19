@@ -82,6 +82,8 @@ O modo novo envia apenas setpoints de posicao. O PX4 controla a dinamica do voo 
 
 Por padrao, `spatial_collect_legacy_metrics=false` desliga a estabilizacao e o fluxo optico antigos durante esta validacao. Os frames RGB, profundidade, pose, mapas e planos continuam sendo registrados pelo gravador espacial. Isso evita que um processamento que nao participa do voo atrase a atualizacao do mapa.
 
+O planejador remove curvas discretas quando existe linha de visada inteiramente observada e livre. O caminho resultante e dividido em pontos com no maximo 5 m, e um caminho em andamento so e substituido se terminar ou deixar de ser seguro. A amostragem `spatial_depth_stride=40` preserva a grade de 0,75 m com menor custo de integracao.
+
 O YAML inicial usa uma rota curta ate `[-8, 8, -1.65]` e retorna ao inicio. Ela serve apenas para validar atualizacao em movimento e estabilidade. A rota entre arvores deve ser definida depois, com pontos intermediarios registrados e mantidos iguais nos ensaios ideal e monocular.
 
 ## 5. Profundidade monocular

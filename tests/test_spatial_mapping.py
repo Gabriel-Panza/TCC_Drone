@@ -1,5 +1,6 @@
 """Testes do nucleo geometrico e do planejador, sem dependencia do ROS 2."""
 
+import json
 import unittest
 from tempfile import TemporaryDirectory
 
@@ -196,6 +197,21 @@ class OccupancyAndPlanningTest(unittest.TestCase):
 
         self.assertTrue(plan.success)
 
+    def test_shortcut_removes_voxel_zigzag_in_open_space(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(voxel_resolution_m=1.0)
+        )
+        traversable = {
+            (x, y, 0)
+            for x in range(5)
+            for y in range(5)
+        }
+        path = [(0, 0, 0), (1, 0, 0), (2, 1, 0), (3, 2, 0), (4, 4, 0)]
+
+        shortcut = navigator._shortcut_path(path, traversable, set())
+
+        self.assertEqual(shortcut, [(0, 0, 0), (4, 4, 0)])
+
 
 class MetricsTest(unittest.TestCase):
     def test_depth_metrics_use_common_valid_pixels(self):
@@ -270,11 +286,23 @@ class DepthModelAndRecorderTest(unittest.TestCase):
                 source="ground_truth_debug",
                 map_stats={"free_voxels": 1},
             )
+            recorder.record_state(
+                1.5,
+                "takeoff_complete",
+                position_ned_m=[0.0, 0.0, -1.65],
+            )
             recorder.close({"estimated_map": navigator})
 
             self.assertTrue((recorder.run_dir / "manifest.json").is_file())
             self.assertTrue((recorder.run_dir / "frames/frame_000001.npz").is_file())
             self.assertTrue((recorder.run_dir / "estimated_map.npz").is_file())
+            events = [
+                json.loads(line)
+                for line in recorder.events_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertTrue(
+                any(event.get("state") == "takeoff_complete" for event in events)
+            )
 
 
 if __name__ == "__main__":
