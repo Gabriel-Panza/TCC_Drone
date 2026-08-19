@@ -6,6 +6,7 @@ import math
 import cv2
 import rclpy
 import threading
+from dataclasses import asdict
 from pathlib import Path
 from datetime import datetime
 from cv_bridge import CvBridge
@@ -13,6 +14,17 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, qos_profile_sensor_data, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
+
+from spatial_mapping import (
+    CameraIntrinsics,
+    SpatialNavigationConfig,
+    SpatialNavigator,
+    camera_to_ned_transform,
+    euler_xyz_rotation_matrix,
+)
+from spatial_mapping.metrics import depth_metrics, occupancy_metrics
+from spatial_mapping.recorder import SpatialRunRecorder
+from spatial_mapping.visualization import render_top_down
 
 try:
     from px4_msgs.msg import SensorCombined
@@ -71,6 +83,161 @@ class DroneOffboardNode(Node):
 
         # Inicializa a ponte de conversão ROS -> OpenCV
         self.bridge = CvBridge()
+
+        self.navigation_mode = str(
+            self.declare_parameter('navigation_mode', 'legacy_reactive').value
+        ).strip().lower()
+        if self.navigation_mode not in {'legacy_reactive', 'spatial_astar'}:
+            raise ValueError(
+                'navigation_mode deve ser legacy_reactive ou spatial_astar'
+            )
+        self.spatial_enabled = self.navigation_mode == 'spatial_astar'
+        self.spatial_execute_path = bool(
+            self.declare_parameter('spatial_execute_path', False).value
+        )
+        self.spatial_depth_source = str(
+            self.declare_parameter('spatial_depth_source', 'ground_truth_debug').value
+        ).strip().lower()
+        if self.spatial_depth_source not in {'ground_truth_debug', 'monocular_topic'}:
+            raise ValueError(
+                'spatial_depth_source deve ser ground_truth_debug ou monocular_topic'
+            )
+        self.monocular_depth_topic = str(
+            self.declare_parameter('monocular_depth_topic', '/monocular_depth').value
+        )
+        self.monocular_depth_max_age_s = float(
+            self.declare_parameter('monocular_depth_max_age_s', 0.12).value
+        )
+        self.spatial_process_every_n = max(
+            1,
+            int(self.declare_parameter('spatial_process_every_n', 5).value),
+        )
+        self.spatial_replan_interval_s = max(
+            0.25,
+            float(self.declare_parameter('spatial_replan_interval_s', 1.5).value),
+        )
+        self.spatial_waypoint_acceptance_radius_m = max(
+            0.25,
+            float(
+                self.declare_parameter(
+                    'spatial_waypoint_acceptance_radius_m',
+                    1.0,
+                ).value
+            ),
+        )
+        self.spatial_takeoff_altitude_m = max(
+            0.5,
+            float(self.declare_parameter('spatial_takeoff_altitude_m', 1.65).value),
+        )
+        self.spatial_global_goal_acceptance_radius_m = max(
+            0.5,
+            float(
+                self.declare_parameter(
+                    'spatial_global_goal_acceptance_radius_m',
+                    1.5,
+                ).value
+            ),
+        )
+        self.spatial_save_dataset = bool(
+            self.declare_parameter('spatial_save_dataset', True).value
+        )
+        self.spatial_save_frames = bool(
+            self.declare_parameter('spatial_save_frames', True).value
+        )
+        self.spatial_dataset_dir = str(
+            self.declare_parameter(
+                'spatial_dataset_dir',
+                os.path.expanduser('~/TCC_Drone/datasets/spatial_mapping'),
+            ).value
+        )
+        self.spatial_frame_width = max(
+            32,
+            int(self.declare_parameter('spatial_frame_width', 320).value),
+        )
+        self.spatial_frame_height = max(
+            24,
+            int(self.declare_parameter('spatial_frame_height', 240).value),
+        )
+        self.spatial_show_topdown = bool(
+            self.declare_parameter('spatial_show_topdown', True).value
+        )
+        self.camera_translation_body_m = np.asarray(
+            [
+                float(self.declare_parameter('camera_offset_forward_m', 0.0).value),
+                float(self.declare_parameter('camera_offset_right_m', 0.0).value),
+                float(self.declare_parameter('camera_offset_down_m', 0.0).value),
+            ],
+            dtype=float,
+        )
+        mount_roll = math.radians(
+            float(self.declare_parameter('camera_mount_roll_deg', 0.0).value)
+        )
+        mount_pitch = math.radians(
+            float(self.declare_parameter('camera_mount_pitch_deg', 0.0).value)
+        )
+        mount_yaw = math.radians(
+            float(self.declare_parameter('camera_mount_yaw_deg', 0.0).value)
+        )
+        optical_to_forward_body = np.array(
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=float,
+        )
+        self.camera_rotation_body_from_optical = (
+            euler_xyz_rotation_matrix(mount_roll, mount_pitch, mount_yaw)
+            @ optical_to_forward_body
+        )
+
+        spatial_config = SpatialNavigationConfig(
+            voxel_resolution_m=float(
+                self.declare_parameter('spatial_voxel_resolution_m', 0.75).value
+            ),
+            depth_stride=max(
+                1,
+                int(self.declare_parameter('spatial_depth_stride', 16).value),
+            ),
+            min_depth_m=float(
+                self.declare_parameter('spatial_min_depth_m', 0.5).value
+            ),
+            max_depth_m=float(
+                self.declare_parameter('spatial_max_depth_m', 25.0).value
+            ),
+            drone_clearance_radius_m=float(
+                self.declare_parameter('spatial_clearance_radius_m', 1.25).value
+            ),
+            known_free_radius_m=float(
+                self.declare_parameter('spatial_known_free_radius_m', 0.8).value
+            ),
+            local_plan_radius_m=float(
+                self.declare_parameter('spatial_local_plan_radius_m', 20.0).value
+            ),
+            min_subgoal_progress_m=float(
+                self.declare_parameter('spatial_min_subgoal_progress_m', 2.0).value
+            ),
+            vertical_tolerance_m=float(
+                self.declare_parameter('spatial_vertical_tolerance_m', 1.5).value
+            ),
+            connectivity=int(
+                self.declare_parameter('spatial_connectivity', 26).value
+            ),
+        )
+        self.spatial_estimated_navigator = SpatialNavigator(spatial_config)
+        self.spatial_reference_navigator = SpatialNavigator(spatial_config)
+        self.spatial_lock = threading.RLock()
+        self.spatial_plan_lock = threading.Lock()
+        self.spatial_plan_thread = None
+        self.spatial_current_plan = None
+        self.spatial_reference_plan = None
+        self.spatial_path_waypoints = []
+        self.spatial_path_index = 0
+        self.spatial_last_plan_request_s = None
+        self.spatial_last_map_stats = {}
+        self.spatial_frames_seen = 0
+        self.spatial_frames_integrated = 0
+        self.spatial_plan_successes = 0
+        self.spatial_plan_failures = 0
+        self.spatial_takeoff_complete = False
+        self.spatial_takeoff_target = None
+        self.spatial_recorder = None
 
         self.depth_gt_topic = str(self.declare_parameter('ground_truth_depth_topic', '').value)
         self.depth_gt_max_age_s = float(self.declare_parameter('ground_truth_depth_max_age_s', 0.08).value)
@@ -172,6 +339,10 @@ class DroneOffboardNode(Node):
         self.depth_gt_capacity_warned = False
         self.prev_depth_interval_ref = None
         self.depth_gt_shape_warned = False
+        self.latest_depth_estimated = None
+        self.latest_depth_estimated_stamp_s = None
+        self.latest_depth_estimated_sequence = 0
+        self.depth_estimated_frames_received = 0
 
         self.current_gyro_rad_s = np.zeros(3, dtype=float)
         self.current_accel_m_s2 = np.zeros(3, dtype=float)
@@ -199,6 +370,19 @@ class DroneOffboardNode(Node):
             )
         else:
             self.depth_gt_sub = None
+
+        if self.spatial_enabled and self.spatial_depth_source == 'monocular_topic':
+            self.monocular_depth_sub = self.create_subscription(
+                Image,
+                self.monocular_depth_topic,
+                self.monocular_depth_callback,
+                qos_profile_sensor_data,
+            )
+            self.get_logger().info(
+                f'Profundidade monocular para o mapa: {self.monocular_depth_topic}.'
+            )
+        else:
+            self.monocular_depth_sub = None
 
         if self.use_imu_raw and SensorCombined is not None:
             self.imu_raw_sub = self.create_subscription(
@@ -234,6 +418,8 @@ class DroneOffboardNode(Node):
         self.current_pitch = 0.0
         self.current_yaw = 0.0
         self.current_yaw_attitude = 0.0
+        self.current_attitude_q = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        self.attitude_received = False
         self.smooth_yaw = None
         self.smooth_vx = 0.0
         self.smooth_vy = 0.0
@@ -260,12 +446,29 @@ class DroneOffboardNode(Node):
         self.start_y = None
         self.start_z = None
 
-        self.waypoints_relativos = [
+        legacy_waypoints = [
             [-25.0, 25.0, -1.65],
             [-50.0, 70.0, -1.65],
             [-25.0, 25.0, -1.65],
             [0.0, 0.0, -1.65]
         ]
+        if self.spatial_enabled:
+            flattened_waypoints = list(
+                self.declare_parameter(
+                    'spatial_waypoints_relative_m',
+                    [coordinate for point in legacy_waypoints for coordinate in point],
+                ).value
+            )
+            if not flattened_waypoints or len(flattened_waypoints) % 3:
+                raise ValueError(
+                    'spatial_waypoints_relative_m deve conter grupos x, y, z'
+                )
+            self.waypoints_relativos = [
+                [float(value) for value in flattened_waypoints[index:index + 3]]
+                for index in range(0, len(flattened_waypoints), 3)
+            ]
+        else:
+            self.waypoints_relativos = legacy_waypoints
         
         self.lista_alvos_absolutos = []
         self.wp_atual_index = 0
@@ -291,6 +494,40 @@ class DroneOffboardNode(Node):
             self.declare_parameter('use_dt_normalized_control', False).value
         )
         self.timer = self.create_timer(self.dt, self.timer_callback)
+
+        if self.spatial_enabled:
+            self.evasao_visual_ativa = True
+            if not self.depth_gt_topic:
+                raise ValueError(
+                    'spatial_astar exige ground_truth_depth_topic para avaliacao. '
+                    'No modo monocular, o topico continua sendo apenas referencia.'
+                )
+            if self.spatial_save_dataset:
+                self.spatial_recorder = SpatialRunRecorder(
+                    self.spatial_dataset_dir,
+                    metadata={
+                        'navigation_mode': self.navigation_mode,
+                        'execute_path': self.spatial_execute_path,
+                        'depth_source': self.spatial_depth_source,
+                        'monocular_depth_topic': self.monocular_depth_topic,
+                        'ground_truth_depth_topic': self.depth_gt_topic,
+                        'waypoints_relative_m': self.waypoints_relativos,
+                        'spatial_config': asdict(spatial_config),
+                    },
+                    save_frames=self.spatial_save_frames,
+                )
+                self.get_logger().info(
+                    f'Dataset espacial: {self.spatial_recorder.run_dir}'
+                )
+            self.get_logger().warning(
+                'Modo spatial_astar ativo. Os comandos reativos serao somente metricas; '
+                'o PX4 recebera setpoints de posicao vindos do mapa 3D.'
+            )
+            if not self.spatial_execute_path:
+                self.get_logger().warning(
+                    'spatial_execute_path=false: o drone nao sera armado. '
+                    'Use este modo para validar mapa, eixos e sincronizacao.'
+                )
 
     @staticmethod
     def alpha_ajustado_por_dt(alpha_nominal, dt_s, dt_nominal_s):
@@ -375,6 +612,10 @@ class DroneOffboardNode(Node):
         if self.current_x is None:
             return
 
+        if self.spatial_enabled and not self.spatial_execute_path:
+            self.ciclos += 1
+            return
+
         self.publish_offboard_control_mode()
 
         if self.ciclos == 50:
@@ -383,7 +624,10 @@ class DroneOffboardNode(Node):
             self.voo_iniciado = True
 
         if self.voo_iniciado:
-            self.navegar_por_waypoints(self.control_dt_s)
+            if self.spatial_enabled:
+                self.navegar_com_mapa_espacial()
+            else:
+                self.navegar_por_waypoints(self.control_dt_s)
             
             if self.missao_concluida and not self.encerrando:
                 self.encerrando = True
@@ -616,6 +860,174 @@ class DroneOffboardNode(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
 
+    def navegar_com_mapa_espacial(self):
+        """Segue pontos do A* com setpoints de posicao executados pelo PX4."""
+
+        current = np.array([self.current_x, self.current_y, self.current_z], dtype=float)
+        if self.spatial_takeoff_target is None:
+            self.spatial_takeoff_target = np.array(
+                [self.start_x, self.start_y, self.start_z - self.spatial_takeoff_altitude_m],
+                dtype=float,
+            )
+
+        if not self.spatial_takeoff_complete:
+            self.publicar_setpoint_posicao(self.spatial_takeoff_target)
+            if np.linalg.norm(current - self.spatial_takeoff_target) <= 0.6:
+                self.spatial_takeoff_complete = True
+                self.get_logger().info(
+                    'Altitude inicial atingida. Planejamento espacial liberado.'
+                )
+            return
+
+        if self.missao_concluida:
+            self.publicar_setpoint_posicao(current)
+            return
+
+        global_goal = np.asarray(
+            self.lista_alvos_absolutos[self.wp_atual_index],
+            dtype=float,
+        )
+        if (
+            np.linalg.norm(current - global_goal)
+            <= self.spatial_global_goal_acceptance_radius_m
+        ):
+            if self.wp_atual_index < len(self.lista_alvos_absolutos) - 1:
+                self.wp_atual_index += 1
+                self.spatial_path_waypoints = []
+                self.spatial_path_index = 0
+                self.get_logger().info(
+                    f'Objetivo global atingido. Proximo: {self.wp_atual_index}.'
+                )
+                global_goal = np.asarray(
+                    self.lista_alvos_absolutos[self.wp_atual_index],
+                    dtype=float,
+                )
+            else:
+                self.missao_concluida = True
+                self.get_logger().info('Rota espacial concluida.')
+                self.publicar_setpoint_posicao(current)
+                return
+
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        path_missing = self.spatial_path_index >= len(self.spatial_path_waypoints)
+        plan_expired = (
+            self.spatial_last_plan_request_s is None
+            or now_s - self.spatial_last_plan_request_s >= self.spatial_replan_interval_s
+        )
+        if path_missing or plan_expired:
+            self.solicitar_plano_espacial(current, global_goal, now_s)
+
+        with self.spatial_plan_lock:
+            path = list(self.spatial_path_waypoints)
+            path_index = self.spatial_path_index
+
+        if path_index >= len(path):
+            self.publicar_setpoint_posicao(
+                current,
+                yaw_target=self.yaw_para_objetivo(global_goal),
+            )
+            return
+
+        local_target = np.asarray(path[path_index], dtype=float)
+        if np.linalg.norm(current - local_target) <= self.spatial_waypoint_acceptance_radius_m:
+            with self.spatial_plan_lock:
+                self.spatial_path_index += 1
+                path_index = self.spatial_path_index
+                path = list(self.spatial_path_waypoints)
+            if path_index >= len(path):
+                self.publicar_setpoint_posicao(
+                    current,
+                    yaw_target=self.yaw_para_objetivo(global_goal),
+                )
+                return
+            local_target = np.asarray(path[path_index], dtype=float)
+
+        self.publicar_setpoint_posicao(local_target)
+
+    def solicitar_plano_espacial(self, current, global_goal, now_s):
+        """Inicia um replanejamento sem bloquear os heartbeats do modo Offboard."""
+
+        if self.spatial_plan_thread is not None and self.spatial_plan_thread.is_alive():
+            return
+        self.spatial_last_plan_request_s = now_s
+        self.spatial_plan_thread = threading.Thread(
+            target=self._calcular_plano_espacial,
+            args=(np.asarray(current, dtype=float), np.asarray(global_goal, dtype=float), now_s),
+            daemon=True,
+        )
+        self.spatial_plan_thread.start()
+
+    def _calcular_plano_espacial(self, current, global_goal, timestamp_s):
+        with self.spatial_lock:
+            plan = self.spatial_estimated_navigator.plan(current, global_goal)
+            reference_plan = self.spatial_reference_navigator.plan(current, global_goal)
+        self.spatial_reference_plan = reference_plan
+
+        if plan.success:
+            waypoints = list(plan.waypoints_ned_m)
+            while (
+                waypoints
+                and np.linalg.norm(np.asarray(waypoints[0]) - current)
+                <= self.spatial_waypoint_acceptance_radius_m
+            ):
+                waypoints.pop(0)
+            with self.spatial_plan_lock:
+                self.spatial_current_plan = plan
+                self.spatial_path_waypoints = waypoints
+                self.spatial_path_index = 0
+            self.spatial_plan_successes += 1
+            self.get_logger().info(
+                f'A*: {plan.reason}, {len(plan.path_voxels)} voxels, '
+                f'{plan.path_length_m:.1f} m.'
+            )
+        else:
+            with self.spatial_plan_lock:
+                self.spatial_current_plan = plan
+                self.spatial_path_waypoints = []
+                self.spatial_path_index = 0
+            self.spatial_plan_failures += 1
+            self.get_logger().warning(f'A* sem plano: {plan.reason}. Drone em espera.')
+
+        if self.spatial_recorder is not None:
+            self.spatial_recorder.record_plan(timestamp_s, plan, 'estimated')
+            self.spatial_recorder.record_plan(
+                timestamp_s,
+                reference_plan,
+                'reference',
+            )
+
+    def yaw_para_objetivo(self, target_ned_m):
+        target = np.asarray(target_ned_m, dtype=float)
+        return math.atan2(
+            target[1] - self.current_y,
+            target[0] - self.current_x,
+        )
+
+    def publicar_setpoint_posicao(self, target_ned_m, yaw_target=None):
+        """Publica apenas posicao e yaw, deixando o controle dinamico no PX4."""
+
+        target = np.asarray(target_ned_m, dtype=float)
+        yaw = self.current_yaw if yaw_target is None else float(yaw_target)
+        horizontal_distance = math.hypot(
+            target[0] - self.current_x,
+            target[1] - self.current_y,
+        )
+        if yaw_target is None and horizontal_distance > 0.2:
+            yaw = math.atan2(
+                target[1] - self.current_y,
+                target[0] - self.current_x,
+            )
+
+        msg = TrajectorySetpoint()
+        msg.position = [float(target[0]), float(target[1]), float(target[2])]
+        msg.velocity = [float('nan'), float('nan'), float('nan')]
+        msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
+        msg.yaw = float(yaw)
+        msg.yawspeed = float('nan')
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.trajectory_setpoint_publisher.publish(msg)
+
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
         """ 
         ==================================================================================
@@ -661,7 +1073,7 @@ class DroneOffboardNode(Node):
 
         msg = OffboardControlMode()
         msg.position = True
-        msg.velocity = True
+        msg.velocity = not self.spatial_enabled
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
@@ -690,7 +1102,16 @@ class DroneOffboardNode(Node):
         """
 
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
-        self.get_logger().info('Modo Feedforward (Posição + Velocidade) Ativado.')
+        if self.spatial_enabled:
+            self.get_logger().info('Modo Offboard por setpoints de posicao ativado.')
+        else:
+            self.get_logger().info('Modo Feedforward (Posição + Velocidade) Ativado.')
+
+    def land(self):
+        """Solicita ao PX4 o pouso com o controlador interno do piloto automatico."""
+
+        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
+        self.get_logger().info('Comando de pouso enviado ao PX4.')
 
     def force_disarm(self):
         """
@@ -740,11 +1161,13 @@ class DroneOffboardNode(Node):
         [Python threading] https://docs.python.org/3/library/threading.html
         """
 
-        self.get_logger().info("Encerrando a missão em 3s... Iniciando pouso!")
-        
-        self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
-        
-        time.sleep(3)
+        self.get_logger().info("Missao encerrada. Iniciando pouso pelo PX4.")
+        if self.spatial_enabled:
+            self.land()
+            time.sleep(8)
+        else:
+            self.lista_alvos_absolutos[self.wp_atual_index][2] = 0.0
+            time.sleep(3)
         self.force_disarm()
         time.sleep(1)
         if rclpy.ok():
@@ -872,6 +1295,184 @@ class DroneOffboardNode(Node):
                     )
         except Exception as e:
             self.get_logger().error(f'Erro ao converter ground truth de profundidade: {e}')
+
+    def monocular_depth_callback(self, msg):
+        """Armazena a ultima profundidade metrico-monocular publicada pelo estimador."""
+
+        try:
+            depth_m = self.converter_depth_gt_para_metros(msg)
+            timestamp_s = self.image_timestamp_s(msg)
+            with self.sensor_state_lock:
+                if (
+                    self.latest_depth_estimated_stamp_s is not None
+                    and timestamp_s <= self.latest_depth_estimated_stamp_s
+                ):
+                    return
+                self.latest_depth_estimated = depth_m
+                self.latest_depth_estimated_stamp_s = timestamp_s
+                self.latest_depth_estimated_sequence += 1
+                self.depth_estimated_frames_received += 1
+        except Exception as error:
+            self.get_logger().error(
+                f'Erro ao converter profundidade monocular: {error}'
+            )
+
+    def obter_depth_estimado_sincronizado(self, rgb_stamp_s, depth_gt):
+        """Seleciona a fonte do mapa sem esconder o uso de ground truth em depuracao."""
+
+        if self.spatial_depth_source == 'ground_truth_debug':
+            return depth_gt, 0.0 if depth_gt is not None else None
+
+        with self.sensor_state_lock:
+            depth = self.latest_depth_estimated
+            timestamp_s = self.latest_depth_estimated_stamp_s
+        if depth is None or timestamp_s is None:
+            return None, None
+        age_s = abs(float(rgb_stamp_s) - float(timestamp_s))
+        if age_s > self.monocular_depth_max_age_s:
+            return None, age_s
+        return depth.copy(), age_s
+
+    def intrinsics_para_shape(self, image_width, image_height, shape):
+        """Escala a matriz intrinseca RGB para a resolucao do mapa de profundidade."""
+
+        depth_height, depth_width = shape[:2]
+        return CameraIntrinsics(
+            fx=float(self.K[0, 0]) * depth_width / image_width,
+            fy=float(self.K[1, 1]) * depth_height / image_height,
+            cx=float(self.K[0, 2]) * depth_width / image_width,
+            cy=float(self.K[1, 2]) * depth_height / image_height,
+        )
+
+    def processar_mapeamento_espacial(
+        self,
+        rgb_bgr,
+        depth_gt,
+        rgb_stamp_s,
+        image_width,
+        image_height,
+    ):
+        """Atualiza mapas estimado e ideal e registra um frame sincronizado."""
+
+        if not self.spatial_enabled:
+            return
+        self.spatial_frames_seen += 1
+        if self.spatial_frames_seen % self.spatial_process_every_n != 0:
+            return
+        if self.current_x is None or not self.attitude_received:
+            return
+
+        estimated_depth, estimated_age_s = self.obter_depth_estimado_sincronizado(
+            rgb_stamp_s,
+            depth_gt,
+        )
+        if estimated_depth is None:
+            if self.spatial_frames_seen % (self.spatial_process_every_n * 20) == 0:
+                self.get_logger().warning(
+                    'Mapeamento aguardando profundidade estimada sincronizada.'
+                )
+            return
+
+        position = np.array([self.current_x, self.current_y, self.current_z], dtype=float)
+        attitude = np.asarray(self.current_attitude_q, dtype=float).copy()
+        camera_to_ned = camera_to_ned_transform(
+            position,
+            attitude,
+            self.camera_translation_body_m,
+            self.camera_rotation_body_from_optical,
+        )
+        estimated_intrinsics = self.intrinsics_para_shape(
+            image_width,
+            image_height,
+            estimated_depth.shape,
+        )
+
+        with self.spatial_lock:
+            estimated_stats = self.spatial_estimated_navigator.integrate_depth(
+                estimated_depth,
+                estimated_intrinsics,
+                camera_to_ned,
+            )
+            reference_stats = None
+            if depth_gt is not None:
+                reference_intrinsics = self.intrinsics_para_shape(
+                    image_width,
+                    image_height,
+                    depth_gt.shape,
+                )
+                reference_stats = self.spatial_reference_navigator.integrate_depth(
+                    depth_gt,
+                    reference_intrinsics,
+                    camera_to_ned,
+                )
+            self.spatial_last_map_stats = {
+                'estimated': estimated_stats,
+                'reference': reference_stats,
+            }
+        self.spatial_frames_integrated += 1
+
+        frame_depth_metrics = None
+        reference_for_metrics = None
+        if depth_gt is not None:
+            reference_for_metrics = cv2.resize(
+                depth_gt,
+                (estimated_depth.shape[1], estimated_depth.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            frame_depth_metrics = depth_metrics(
+                estimated_depth,
+                reference_for_metrics,
+                min_depth_m=self.spatial_estimated_navigator.config.min_depth_m,
+            )
+
+        if self.spatial_recorder is not None:
+            save_size = (self.spatial_frame_width, self.spatial_frame_height)
+            rgb_saved = cv2.resize(rgb_bgr, save_size, interpolation=cv2.INTER_AREA)
+            estimated_saved = cv2.resize(
+                estimated_depth,
+                save_size,
+                interpolation=cv2.INTER_NEAREST,
+            )
+            reference_saved = (
+                None
+                if depth_gt is None
+                else cv2.resize(depth_gt, save_size, interpolation=cv2.INTER_NEAREST)
+            )
+            saved_intrinsics = estimated_intrinsics.scaled(
+                self.spatial_frame_width / estimated_depth.shape[1],
+                self.spatial_frame_height / estimated_depth.shape[0],
+            )
+            self.spatial_recorder.record_frame(
+                timestamp_s=rgb_stamp_s,
+                rgb_bgr=rgb_saved,
+                estimated_depth_m=estimated_saved,
+                reference_depth_m=reference_saved,
+                camera_to_ned=camera_to_ned,
+                intrinsics=saved_intrinsics,
+                source=self.spatial_depth_source,
+                map_stats={
+                    **estimated_stats,
+                    'estimated_age_s': estimated_age_s,
+                },
+                depth_metrics=frame_depth_metrics,
+            )
+
+        if self.spatial_show_topdown:
+            with self.spatial_plan_lock:
+                path = list(self.spatial_path_waypoints)
+            target = (
+                self.lista_alvos_absolutos[self.wp_atual_index]
+                if self.lista_alvos_absolutos
+                else None
+            )
+            with self.spatial_lock:
+                topdown = render_top_down(
+                    self.spatial_estimated_navigator.grid,
+                    center_ned_m=position,
+                    target_ned_m=target,
+                    path_ned_m=path,
+                )
+            cv2.imshow('Mapa espacial 3D - projecao superior', topdown)
 
     def imu_raw_callback(self, msg):
         """
@@ -2050,6 +2651,14 @@ class DroneOffboardNode(Node):
                     self.depth_gt_shape_warned = True
 
                 depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
+
+            self.processar_mapeamento_espacial(
+                cv_image[:, :, :3],
+                depth_gt,
+                rgb_stamp_s,
+                resolucao_largura,
+                resolucao_altura,
+            )
             
             # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
             imagem_estabilizada, mascara_alpha, img_geometria = self.aplicar_compensacao_imu(
@@ -2119,6 +2728,10 @@ class DroneOffboardNode(Node):
         """
         
         w, x, y, z = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
+        quaternion = np.asarray([w, x, y, z], dtype=float)
+        if np.all(np.isfinite(quaternion)) and np.linalg.norm(quaternion) > 1e-9:
+            self.current_attitude_q = quaternion / np.linalg.norm(quaternion)
+            self.attitude_received = True
         
         sinr_cosp = 2.0 * (w * x + y * z)
         cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
@@ -2150,10 +2763,35 @@ class DroneOffboardNode(Node):
         """
 
         self.flush_ground_truth_memmaps()
+        if self.spatial_plan_thread is not None and self.spatial_plan_thread.is_alive():
+            self.spatial_plan_thread.join(timeout=2.0)
+        if self.spatial_recorder is not None:
+            with self.spatial_lock:
+                map_metrics = occupancy_metrics(
+                    self.spatial_estimated_navigator.grid,
+                    self.spatial_reference_navigator.grid,
+                )
+                self.spatial_recorder.close(
+                    navigators={
+                        'estimated_map': self.spatial_estimated_navigator,
+                        'reference_map': self.spatial_reference_navigator,
+                    },
+                    summary={
+                        'frames_seen': self.spatial_frames_seen,
+                        'frames_integrated': self.spatial_frames_integrated,
+                        'plan_successes': self.spatial_plan_successes,
+                        'plan_failures': self.spatial_plan_failures,
+                        'occupancy_metrics': map_metrics,
+                    },
+                )
+            self.get_logger().info(
+                f'Dataset espacial finalizado em {self.spatial_recorder.run_dir}.'
+            )
         descartes = sum(self.dataset_intervals_rejected.values())
         self.get_logger().info(
             'Qualidade do dataset: '
             f'{self.depth_intervals_saved} intervalos salvos, {descartes} descartados, '
             f'{self.rgb_frames_rejected_nonmonotonic} RGB repetidos/nao monotonicos.'
         )
+        cv2.destroyAllWindows()
         super().destroy_node()

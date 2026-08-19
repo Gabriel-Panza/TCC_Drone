@@ -1,6 +1,7 @@
 """Testes do nucleo geometrico e do planejador, sem dependencia do ROS 2."""
 
 import unittest
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
@@ -10,9 +11,19 @@ from spatial_mapping import (
     OccupancyGrid3D,
     OccupancyGridConfig,
     PathNotFoundError,
+    SpatialNavigationConfig,
+    SpatialNavigator,
     backproject_depth,
+    camera_to_ned_transform,
     transform_points,
 )
+from spatial_mapping.metrics import depth_metrics, occupancy_metrics
+from spatial_mapping.recorder import SpatialRunRecorder
+
+try:
+    from spatial_mapping.depth_model import MetricDepthOnnx
+except ModuleNotFoundError:
+    MetricDepthOnnx = None
 
 
 class GeometryTest(unittest.TestCase):
@@ -31,6 +42,16 @@ class GeometryTest(unittest.TestCase):
         points = transform_points([[0.0, 0.0, 2.0]], transform)
 
         np.testing.assert_allclose(points, [[1.0, 2.0, 5.0]])
+
+    def test_front_camera_optical_axis_maps_to_body_forward(self):
+        transform = camera_to_ned_transform(
+            [1.0, 2.0, 3.0],
+            [1.0, 0.0, 0.0, 0.0],
+        )
+
+        points = transform_points([[0.0, 0.0, 2.0]], transform)
+
+        np.testing.assert_allclose(points, [[3.0, 2.0, 3.0]])
 
 
 class OccupancyAndPlanningTest(unittest.TestCase):
@@ -71,6 +92,88 @@ class OccupancyAndPlanningTest(unittest.TestCase):
 
         with self.assertRaises(PathNotFoundError):
             planner.plan((0, 0, 0), (1, 1, 0))
+
+    def test_navigator_selects_observed_local_subgoal(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                min_subgoal_progress_m=1.0,
+                local_plan_radius_m=10.0,
+            )
+        )
+        for x in range(6):
+            navigator.grid.mark_free_sphere((x + 0.1, 0.1, 0.1), 0.1)
+
+        plan = navigator.plan((0.1, 0.1, 0.1), (20.0, 0.1, 0.1))
+
+        self.assertTrue(plan.success)
+        self.assertEqual(plan.reason, "local_subgoal")
+        self.assertGreater(plan.selected_goal_ned_m[0], 4.0)
+        self.assertGreater(plan.planning_time_ms, 0.0)
+
+
+class MetricsTest(unittest.TestCase):
+    def test_depth_metrics_use_common_valid_pixels(self):
+        metrics = depth_metrics(
+            [[1.0, 2.0], [0.0, 4.0]],
+            [[1.0, 3.0], [2.0, 4.0]],
+        )
+
+        self.assertEqual(metrics["valid_pixels"], 3)
+        self.assertAlmostEqual(metrics["mae_m"], 1.0 / 3.0)
+
+    def test_occupancy_metrics_report_false_free(self):
+        config = OccupancyGridConfig(
+            resolution_m=1.0,
+            occupied_threshold=0.5,
+            free_threshold=-0.3,
+        )
+        estimated = OccupancyGrid3D(config)
+        reference = OccupancyGrid3D(config)
+        reference.integrate_points([0.1, 0.1, 0.1], [[2.1, 0.1, 0.1]])
+        estimated.mark_free_sphere([2.1, 0.1, 0.1], 0.1)
+
+        metrics = occupancy_metrics(estimated, reference)
+
+        self.assertEqual(metrics["false_free_rate"], 1.0)
+
+
+class DepthModelAndRecorderTest(unittest.TestCase):
+    @unittest.skipIf(MetricDepthOnnx is None, "OpenCV indisponivel neste ambiente")
+    def test_inverse_depth_output_is_converted_to_meters(self):
+        model = MetricDepthOnnx.__new__(MetricDepthOnnx)
+        model.output_representation = "inverse_depth"
+        model.output_scale = 1.0
+        model.output_shift = 0.0
+        model.min_depth_m = 0.1
+        model.max_depth_m = 50.0
+
+        depth = model.postprocess(np.array([[[[0.5]]]], dtype=np.float32), (1, 1))
+
+        self.assertAlmostEqual(float(depth[0, 0]), 2.0)
+
+    def test_recorder_writes_manifest_frames_and_maps(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(voxel_resolution_m=1.0)
+        )
+        navigator.grid.mark_free_sphere((0.1, 0.1, 0.1), 0.1)
+        with TemporaryDirectory() as temp_dir:
+            recorder = SpatialRunRecorder(temp_dir, save_frames=True)
+            recorder.record_frame(
+                timestamp_s=1.0,
+                rgb_bgr=np.zeros((2, 2, 3), dtype=np.uint8),
+                estimated_depth_m=np.ones((2, 2), dtype=np.float32),
+                reference_depth_m=np.ones((2, 2), dtype=np.float32),
+                camera_to_ned=np.eye(4),
+                intrinsics=CameraIntrinsics(1.0, 1.0, 0.5, 0.5),
+                source="ground_truth_debug",
+                map_stats={"free_voxels": 1},
+            )
+            recorder.close({"estimated_map": navigator})
+
+            self.assertTrue((recorder.run_dir / "manifest.json").is_file())
+            self.assertTrue((recorder.run_dir / "frames/frame_000001.npz").is_file())
+            self.assertTrue((recorder.run_dir / "estimated_map.npz").is_file())
 
 
 if __name__ == "__main__":

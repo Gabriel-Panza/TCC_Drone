@@ -63,3 +63,15 @@ Essa separacao permite atribuir diferencas de caminho ao mapa, sem misturar muda
 5. Integrar a fonte monocular de profundidade.
 6. Executar o A* nos mapas ideal e estimado.
 7. Somente depois publicar os pontos de passagem para o PX4.
+
+## Estado da v1
+
+- reprojecao, transformacao camera-NED, ocupacao e A* possuem testes sinteticos;
+- o modo `ground_truth_debug` permite validar mapa e planejamento sem alegar visao monocular;
+- o modo `monocular_topic` recebe profundidade metrica de um no independente;
+- os mapas estimado e ideal recebem o mesmo A* em cada tentativa;
+- somente o caminho estimado pode ser enviado ao PX4;
+- `spatial_execute_path=false` impede o armamento durante a primeira inspecao;
+- cada run salva frames sincronizados, mapas, planos e metricas;
+- cada tentativa registra tempo, comprimento e sucesso do A*, e a analise verifica o caminho estimado contra o mapa ideal final;
+- ainda faltam os testes com Gazebo e PX4 no computador do laboratorio.

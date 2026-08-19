@@ -18,6 +18,20 @@ class CameraIntrinsics:
         if self.fx <= 0 or self.fy <= 0:
             raise ValueError("fx e fy devem ser positivos")
 
+    def scaled(self, scale_x, scale_y=None):
+        """Ajusta os parametros para uma imagem redimensionada."""
+
+        if scale_y is None:
+            scale_y = scale_x
+        if scale_x <= 0 or scale_y <= 0:
+            raise ValueError("as escalas devem ser positivas")
+        return CameraIntrinsics(
+            fx=self.fx * scale_x,
+            fy=self.fy * scale_y,
+            cx=self.cx * scale_x,
+            cy=self.cy * scale_y,
+        )
+
 
 def backproject_depth(
     depth_m,
@@ -69,3 +83,73 @@ def transform_points(points, transform):
     homogeneous = np.column_stack((points_array, np.ones(len(points_array))))
     transformed = homogeneous @ transform_array.T
     return transformed[:, :3]
+
+
+def quaternion_to_rotation_matrix(quaternion_wxyz):
+    """Converte um quaternion Hamilton (w, x, y, z) em matriz de rotacao."""
+
+    quaternion = np.asarray(quaternion_wxyz, dtype=np.float64)
+    if quaternion.shape != (4,) or not np.all(np.isfinite(quaternion)):
+        raise ValueError("quaternion deve possuir quatro valores finitos")
+    norm = float(np.linalg.norm(quaternion))
+    if norm <= 1e-12:
+        raise ValueError("quaternion nao pode possuir norma zero")
+    w, x, y, z = quaternion / norm
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
+
+
+def euler_xyz_rotation_matrix(roll_rad, pitch_rad, yaw_rad):
+    """Retorna Rz(yaw) Ry(pitch) Rx(roll) para uma montagem rigida."""
+
+    cr, sr = np.cos(roll_rad), np.sin(roll_rad)
+    cp, sp = np.cos(pitch_rad), np.sin(pitch_rad)
+    cy, sy = np.cos(yaw_rad), np.sin(yaw_rad)
+    rotation_x = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]], dtype=float)
+    rotation_y = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]], dtype=float)
+    rotation_z = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]], dtype=float)
+    return rotation_z @ rotation_y @ rotation_x
+
+
+def camera_to_ned_transform(
+    position_ned_m,
+    attitude_body_to_ned_wxyz,
+    camera_translation_body_m=(0.0, 0.0, 0.0),
+    camera_rotation_body_from_optical=None,
+):
+    """Monta a transformacao da camera optica para o referencial local NED.
+
+    A rotacao padrao considera uma camera frontal alinhada ao corpo FRD: o eixo Z
+    optico aponta para a frente do drone, X optico para a direita e Y optico para
+    baixo. Uma montagem diferente deve fornecer sua matriz extrinseca.
+    """
+
+    position = np.asarray(position_ned_m, dtype=np.float64)
+    translation_body = np.asarray(camera_translation_body_m, dtype=np.float64)
+    if position.shape != (3,) or translation_body.shape != (3,):
+        raise ValueError("posicao e translacao devem possuir tres coordenadas")
+
+    if camera_rotation_body_from_optical is None:
+        rotation_body_from_optical = np.array(
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        )
+    else:
+        rotation_body_from_optical = np.asarray(
+            camera_rotation_body_from_optical,
+            dtype=np.float64,
+        )
+    if rotation_body_from_optical.shape != (3, 3):
+        raise ValueError("a rotacao extrinseca deve possuir formato (3, 3)")
+
+    rotation_ned_from_body = quaternion_to_rotation_matrix(attitude_body_to_ned_wxyz)
+    transform = np.eye(4, dtype=np.float64)
+    transform[:3, :3] = rotation_ned_from_body @ rotation_body_from_optical
+    transform[:3, 3] = position + rotation_ned_from_body @ translation_body
+    return transform

@@ -74,6 +74,49 @@ class OccupancyGrid3D:
             if value <= self.config.free_threshold
         }
 
+    def observed_voxels(self):
+        return set(self._log_odds)
+
+    def mark_free_sphere(self, center, radius_m):
+        """Marca a vizinhanca conhecida do drone como livre."""
+
+        if radius_m < 0:
+            raise ValueError("radius_m nao pode ser negativo")
+        center_voxel = self.world_to_voxel(center)
+        radius_voxels = int(np.ceil(radius_m / self.config.resolution_m))
+        evidence = min(
+            self.config.free_threshold - 1e-6,
+            -self.config.free_decrement,
+        )
+        for dx, dy, dz in product(
+            range(-radius_voxels, radius_voxels + 1),
+            repeat=3,
+        ):
+            if (
+                self.config.resolution_m * np.sqrt(dx * dx + dy * dy + dz * dz)
+                > radius_m + 1e-9
+            ):
+                continue
+            voxel = (
+                center_voxel[0] + dx,
+                center_voxel[1] + dy,
+                center_voxel[2] + dz,
+            )
+            self._log_odds[voxel] = min(self._log_odds.get(voxel, 0.0), evidence)
+
+    def export_arrays(self):
+        """Retorna coordenadas e log-odds em arrays adequados para NPZ."""
+
+        if not self._log_odds:
+            return (
+                np.empty((0, 3), dtype=np.int32),
+                np.empty((0,), dtype=np.float32),
+            )
+        items = sorted(self._log_odds.items())
+        voxels = np.asarray([item[0] for item in items], dtype=np.int32)
+        log_odds = np.asarray([item[1] for item in items], dtype=np.float32)
+        return voxels, log_odds
+
     def inflated_occupied_voxels(self, radius_m):
         """Expande obstaculos para considerar dimensoes e margem do drone."""
 
@@ -85,7 +128,8 @@ class OccupancyGrid3D:
             (voxel[0] + dx, voxel[1] + dy, voxel[2] + dz)
             for voxel in self.occupied_voxels()
             for dx, dy, dz in offsets
-            if dx * dx + dy * dy + dz * dz <= radius_voxels * radius_voxels
+            if self.config.resolution_m * np.sqrt(dx * dx + dy * dy + dz * dz)
+            <= radius_m + 1e-9
         }
 
     def state(self, voxel):

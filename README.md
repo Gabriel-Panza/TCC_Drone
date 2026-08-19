@@ -1,12 +1,12 @@
 # TCC_Drone: Avaliação de Sinais Monoculares e Inerciais em VANTs
 
-> **Versão final do trabalho:** branch `main`.
+> A branch `main` preserva a versão experimental anterior. O fluxo de mapeamento 3D e A* está sendo desenvolvido na branch `mapeamento-3d-position-paper` e só deve voltar para `main` depois dos testes no laboratório.
 
 ## Pontos centrais do repositório
 
 O projeto possui dois fluxos principais e uma validação espacial em desenvolvimento:
 
-1. **Execução do pipeline de voo e coleta:** [`main.py`](main.py). Esse arquivo inicia o nó ROS 2, executa a navegação reativa e coordena a coleta dos dados usados no estudo.
+1. **Execução do pipeline de voo e coleta:** [`main.py`](main.py). Esse arquivo inicia os nós ROS 2 e coordena a coleta. O modo selecionado pode preservar a navegação reativa anterior ou usar mapa 3D e A*.
 2. **Execução das métricas e dos experimentos:** [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb). O notebook reúne o carregamento dos dados, as verificações de qualidade, o treinamento dos modelos, as comparações, a explicabilidade e a geração dos resultados apresentados no TCC.
 3. **Validação espacial complementar:** [`spatial_mapping/`](spatial_mapping). O módulo reúne a reprojeção da profundidade, a grade 3D de ocupação e o planejamento A*. Seu papel é verificar se a informação de proximidade produz conhecimento espacial útil, sem desenvolver um novo controlador de voo.
 
@@ -22,7 +22,7 @@ A simulação de alta fidelidade é alcançada através da integração do contr
 
 O objetivo principal é organizar e avaliar sinais visuais e inerciais produzidos durante voos simulados. As principais características do projeto incluem:
 
-*   **Controle Offboard Avançado:** O drone decola, estabiliza e se move utilizando vetores de velocidade, com interpolação suave para evitar trancos e capotamentos na simulação.
+*   **Execução Offboard:** O fluxo legado usa vetores de velocidade; a validação espacial envia somente pontos de passagem e deixa a dinâmica de voo a cargo do PX4.
 *   **Coleta Visual e Inercial:** Uma câmera monocular, o fluxo óptico, a IMU, o movimento e os comandos do sistema são sincronizados por intervalo visual.
 *   **Avaliação Experimental:** MLP, referências simples, modelos de árvores, várias sementes, eventos, gradientes e ablação ajudam a localizar os limites da representação.
 *   **Validação Espacial:** A profundidade por pixel pode ser reprojetada em uma grade 3D e submetida ao A* para verificar se o mapa permite gerar um caminho livre de obstáculos.
@@ -42,8 +42,8 @@ O código foi estruturado de forma modular, dividindo as responsabilidades de re
 ### 2. `drone_controller.py` (Execução e Coleta)
 Este arquivo contém a comunicação com o PX4, a lógica de voo usada nas coletas e o processamento visual. Ele herda a classe Node do ROS 2 e é responsável por:
 *   **Comunicação Bidirecional:** Publicar mensagens (`OffboardControlMode`, `TrajectorySetpoint`, `VehicleCommand`) e assinar sensores (VehicleLocalPosition, tópicos de imagem da câmera).
-*   **Movimento Suave:** Gerenciar a diferença entre a "Posição Atual" e a "Posição Alvo", aplicando passos de interpolação baseados na velocidade do drone, operando sempre a 50Hz.
-*   **Visão Computacional:** Utilizar o CvBridge para converter os dados brutos de imagem do ROS 2 em matrizes OpenCV (NumPy). Isso permite aplicar filtros visuais para extrair informações do ambiente, identificar obstáculos e modificar os setpoints de trajetória instantaneamente.
+*   **Modos de navegação:** Preservar a execução reativa anterior e, no modo espacial, converter os caminhos do A* em setpoints de posição publicados a 25 Hz.
+*   **Visão computacional:** Usar CvBridge e OpenCV para extrair os sinais do estudo e, na validação espacial, acumular a profundidade em um mapa 3D sem aplicar os antigos comandos reativos ao voo.
 
 ### 3. `estudos_e_analises/estudo_das_metricas.ipynb` (Análise dos Experimentos)
 
@@ -68,6 +68,16 @@ O módulo, ainda desacoplado do ROS 2, contém:
 * planejamento A* em três dimensões.
 
 O protocolo e as métricas planejadas estão em [`docs/validacao_espacial_3d.md`](docs/validacao_espacial_3d.md).
+O roteiro de execução em etapas está em [`docs/execucao_pipeline_espacial.md`](docs/execucao_pipeline_espacial.md).
+
+O fluxo possui dois modos explícitos:
+
+* `ground_truth_debug`: usa a profundidade do Gazebo para validar geometria, mapa e A*. Não representa um resultado monocular.
+* `monocular_topic`: recebe profundidade métrica pelo tópico `/monocular_depth` e mantém o Gazebo somente como referência de avaliação.
+
+O adaptador [`monocular_depth_node.py`](monocular_depth_node.py) aceita um modelo ONNX externo. Os pesos não fazem parte do repositório: o ensaio monocular só pode começar depois que um modelo métrico, ou uma saída inversa calibrada de forma independente, for configurado e validado contra a referência do simulador.
+
+Por segurança, `spatial_execute_path` fica desligado nos arquivos de configuração. O primeiro teste constrói o mapa sem armar o drone. A execução dos pontos do A* precisa ser habilitada explicitamente depois da inspeção dos eixos e da escala.
 
 ---
 

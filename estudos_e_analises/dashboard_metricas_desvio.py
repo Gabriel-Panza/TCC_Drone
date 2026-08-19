@@ -783,7 +783,10 @@ def load_flight_interval_memmap(manifest_path: Path) -> pd.DataFrame:
     with open(manifest_path, encoding="utf-8") as fp:
         manifest = json.load(fp)
 
-    if manifest.get("schema_version") != "flight_interval_memmap_v1":
+    if manifest.get("schema_version") not in {
+        "flight_interval_memmap_v1",
+        "flight_interval_memmap_v2_spatial",
+    }:
         return _empty_dataframe()
 
     n = int(manifest.get("num_samples", 0))
@@ -804,11 +807,19 @@ def load_flight_interval_memmap(manifest_path: Path) -> pd.DataFrame:
         if col != "pan_comp_source_code":
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["timestamp"] = df["dt_s"].fillna(0.0).cumsum()
+    if "timestamp_s" in df and df["timestamp_s"].notna().any():
+        df["timestamp"] = df["timestamp_s"] - df["timestamp_s"].iloc[0]
+    else:
+        df["timestamp"] = df["dt_s"].fillna(0.0).cumsum()
     df["tempo_s"] = df["timestamp"]
-    df["x"] = df["delta_x_m"].fillna(0.0).cumsum()
-    df["y"] = df["delta_y_m"].fillna(0.0).cumsum()
-    df["z"] = df["delta_z_m"].fillna(0.0).cumsum()
+    if {"x_m", "y_m", "z_m"}.issubset(df.columns):
+        for axis in ("x", "y", "z"):
+            absolute = df[f"{axis}_m"]
+            df[axis] = absolute - absolute.iloc[0]
+    else:
+        df["x"] = df["delta_x_m"].fillna(0.0).cumsum()
+        df["y"] = df["delta_y_m"].fillna(0.0).cumsum()
+        df["z"] = df["delta_z_m"].fillna(0.0).cumsum()
     df["altitude"] = -df["z"]
     df["dt"] = df["dt_s"].replace(0, np.nan)
 

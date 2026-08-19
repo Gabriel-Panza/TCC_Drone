@@ -107,3 +107,25 @@ class AStar3D:
             path.append(current)
         path.reverse()
         return path
+
+
+def compress_collinear_path(path):
+    """Remove voxels intermediarios quando a direcao discreta nao muda."""
+
+    path = [tuple(voxel) for voxel in path]
+    if len(path) <= 2:
+        return path
+
+    compressed = [path[0]]
+    previous_direction = None
+    for index in range(1, len(path)):
+        direction = tuple(
+            int(path[index][axis] > path[index - 1][axis])
+            - int(path[index][axis] < path[index - 1][axis])
+            for axis in range(3)
+        )
+        if previous_direction is not None and direction != previous_direction:
+            compressed.append(path[index - 1])
+        previous_direction = direction
+    compressed.append(path[-1])
+    return compressed
