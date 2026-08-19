@@ -329,6 +329,15 @@ def planning_metrics(events, reference):
     for map_kind in ("estimated", "reference"):
         selected = [event.get("plan") or {} for event in plans if event.get("map_kind") == map_kind]
         successful = [plan for plan in selected if plan.get("success")]
+        adoption_decisions = [
+            plan
+            for plan in selected
+            if plan.get("adopted_for_execution") is not None
+        ]
+        adopted = sum(
+            plan.get("adopted_for_execution") is True
+            for plan in adoption_decisions
+        )
         failure_reasons = Counter(
             plan.get("reason", "motivo ausente")
             for plan in selected
@@ -338,6 +347,8 @@ def planning_metrics(events, reference):
             "attempts": len(selected),
             "successes": len(successful),
             "success_rate": _ratio(len(successful), len(selected)),
+            "adopted_plans": adopted,
+            "adoption_rate": _ratio(adopted, len(adoption_decisions)),
             "failure_reasons": dict(failure_reasons),
             "mean_path_length_m": (
                 float(np.mean([plan.get("path_length_m", 0.0) for plan in successful]))

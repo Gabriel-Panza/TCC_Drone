@@ -16,16 +16,18 @@ drone_offboard_node:
     spatial_max_depth_m: 30.0
     spatial_obstacle_vertical_band_m: 0.8
     spatial_clearance_radius_m: 1.25
-    spatial_known_free_radius_m: 0.9
+    spatial_known_free_radius_m: 0.8
     spatial_local_plan_radius_m: 25.0
     spatial_min_subgoal_progress_m: 0.5
     spatial_vertical_tolerance_m: 0.5
-    spatial_max_waypoint_spacing_m: 6.5
+    spatial_max_waypoint_spacing_m: 6.0
     spatial_frontier_standoff_m: 2.5
     spatial_connectivity: 26
     spatial_replan_interval_s: 1.5
-    spatial_replan_remaining_distance_m: 4.0
-    spatial_recovery_retreat_distance_m: 2.5
+    spatial_replan_remaining_distance_m: 3.0
+    spatial_replan_min_extension_m: 1.0
+    spatial_min_executable_path_m: 1.5
+    spatial_recovery_retreat_distance_m: 1.5
     spatial_recovery_history_spacing_m: 1.0
     spatial_waypoint_acceptance_radius_m: 0.8
     spatial_global_goal_acceptance_radius_m: 1.5

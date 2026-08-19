@@ -129,6 +129,15 @@ class DroneOffboardNode(Node):
                 ).value
             ),
         )
+        self.spatial_replan_min_extension_m = max(
+            0.0,
+            float(
+                self.declare_parameter(
+                    'spatial_replan_min_extension_m',
+                    1.0,
+                ).value
+            ),
+        )
         self.spatial_recovery_retreat_distance_m = max(
             1.0,
             float(
@@ -153,6 +162,15 @@ class DroneOffboardNode(Node):
                 self.declare_parameter(
                     'spatial_waypoint_acceptance_radius_m',
                     0.8,
+                ).value
+            ),
+        )
+        self.spatial_min_executable_path_m = max(
+            self.spatial_waypoint_acceptance_radius_m + 0.1,
+            float(
+                self.declare_parameter(
+                    'spatial_min_executable_path_m',
+                    1.5,
                 ).value
             ),
         )
@@ -577,6 +595,12 @@ class DroneOffboardNode(Node):
                             'replan_interval_s': self.spatial_replan_interval_s,
                             'replan_remaining_distance_m': (
                                 self.spatial_replan_remaining_distance_m
+                            ),
+                            'replan_min_extension_m': (
+                                self.spatial_replan_min_extension_m
+                            ),
+                            'min_executable_path_m': (
+                                self.spatial_min_executable_path_m
                             ),
                             'recovery_retreat_distance_m': (
                                 self.spatial_recovery_retreat_distance_m
@@ -1216,31 +1240,87 @@ class DroneOffboardNode(Node):
             )
         self.spatial_reference_plan = reference_plan
 
+        waypoints = list(plan.waypoints_ned_m) if plan.success else []
         if plan.success:
-            waypoints = list(plan.waypoints_ned_m)
             while (
                 waypoints
                 and np.linalg.norm(np.asarray(waypoints[0]) - current)
                 <= self.spatial_waypoint_acceptance_radius_m
             ):
                 waypoints.pop(0)
-            with self.spatial_plan_lock:
-                self.spatial_current_plan = plan
-                self.spatial_path_waypoints = waypoints
-                self.spatial_path_index = 0
-                self.spatial_recovery_active = False
-            self.spatial_plan_successes += 1
-            self.get_logger().info(
-                f'A*: {plan.reason}, {len(plan.path_voxels)} voxels, '
-                f'{plan.path_length_m:.1f} m.'
+            executable_distance = self.distancia_restante_no_caminho(
+                current,
+                waypoints,
             )
+            if (
+                plan.reason == 'local_subgoal'
+                and executable_distance < self.spatial_min_executable_path_m
+            ):
+                plan.success = False
+                plan.adopted_for_execution = False
+                plan.reason = (
+                    'progresso executavel insuficiente apos recuo da fronteira '
+                    f'({executable_distance:.2f}m < '
+                    f'{self.spatial_min_executable_path_m:.2f}m)'
+                )
+                waypoints = []
+
+        if plan.success:
+            with self.spatial_plan_lock:
+                existing_path = list(self.spatial_path_waypoints)
+                existing_index = self.spatial_path_index
+                path_still_available = existing_index < len(existing_path)
+            preserve_existing = False
+            if preserve_path_on_failure and path_still_available and waypoints:
+                existing_goal_distance = float(
+                    np.linalg.norm(
+                        np.asarray(existing_path[-1], dtype=float) - global_goal
+                    )
+                )
+                new_goal_distance = float(
+                    np.linalg.norm(
+                        np.asarray(waypoints[-1], dtype=float) - global_goal
+                    )
+                )
+                progress_extension = existing_goal_distance - new_goal_distance
+                preserve_existing = (
+                    progress_extension < self.spatial_replan_min_extension_m
+                )
+            if preserve_existing:
+                plan.adopted_for_execution = False
+                self.spatial_plan_successes += 1
+                self.get_logger().info(
+                    'A* antecipado sem extensao suficiente; caminho atual preservado '
+                    f'({progress_extension:.2f}m < '
+                    f'{self.spatial_replan_min_extension_m:.2f}m).'
+                )
+            else:
+                plan.adopted_for_execution = True
+                with self.spatial_plan_lock:
+                    self.spatial_current_plan = plan
+                    self.spatial_path_waypoints = waypoints
+                    self.spatial_path_index = 0
+                    self.spatial_recovery_active = False
+                self.spatial_plan_successes += 1
+                self.get_logger().info(
+                    f'A*: {plan.reason}, {len(plan.path_voxels)} voxels, '
+                    f'{plan.path_length_m:.1f} m.'
+                )
         else:
+            plan.adopted_for_execution = False
             recovery_waypoints = []
             with self.spatial_plan_lock:
                 path_still_available = (
                     self.spatial_path_index < len(self.spatial_path_waypoints)
                 )
-            if not (preserve_path_on_failure and path_still_available):
+            with self.spatial_lock:
+                current_is_safe = self.spatial_estimated_navigator.position_is_safe(
+                    current
+                )
+            if (
+                not current_is_safe
+                and not (preserve_path_on_failure and path_still_available)
+            ):
                 recovery_waypoints = self.construir_caminho_de_recuperacao(current)
             with self.spatial_plan_lock:
                 self.spatial_current_plan = plan

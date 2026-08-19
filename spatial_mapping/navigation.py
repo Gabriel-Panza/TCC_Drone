@@ -59,6 +59,7 @@ class SpatialPlan:
     path_length_m: float = 0.0
     raw_path_length_m: float = 0.0
     frontier_standoff_applied_m: float = 0.0
+    adopted_for_execution: bool | None = None
     planning_time_ms: float = 0.0
 
 
