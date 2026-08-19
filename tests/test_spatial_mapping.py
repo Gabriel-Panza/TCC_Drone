@@ -175,6 +175,27 @@ class OccupancyAndPlanningTest(unittest.TestCase):
             navigator.path_is_safe((0.1, 0.1, 0.1), [(4.1, 0.1, 0.1)])
         )
 
+    def test_planning_includes_adjacent_current_and_goal_altitude_layers(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=0.75,
+                min_subgoal_progress_m=0.5,
+                vertical_tolerance_m=0.5,
+                drone_clearance_radius_m=0.1,
+            )
+        )
+        for x_index in range(8):
+            x = x_index * 0.75 + 0.1
+            navigator.grid.mark_free_sphere((x, 0.1, -1.2), 0.1)
+            navigator.grid.mark_free_sphere((x, 0.1, -1.65), 0.1)
+
+        plan = navigator.plan(
+            (0.1, 0.1, -1.22),
+            (5.35, 0.1, -1.66),
+        )
+
+        self.assertTrue(plan.success)
+
 
 class MetricsTest(unittest.TestCase):
     def test_depth_metrics_use_common_valid_pixels(self):

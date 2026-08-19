@@ -110,13 +110,20 @@ class SpatialNavigator:
         blocked = self.grid.inflated_occupied_voxels(
             self.config.drone_clearance_radius_m
         )
+        current_layer = self.grid.world_to_voxel(current)[2]
+        goal_layer = self.grid.world_to_voxel(requested_goal)[2]
+        layer_margin = int(
+            np.floor(
+                self.config.vertical_tolerance_m
+                / self.config.voxel_resolution_m
+            )
+        )
+        min_layer = min(current_layer, goal_layer) - layer_margin
+        max_layer = max(current_layer, goal_layer) + layer_margin
         traversable = {
             voxel
             for voxel in self.grid.free_voxels() - blocked
-            if abs(
-                float(self.grid.voxel_to_world(voxel)[2] - requested_goal[2])
-            )
-            <= self.config.vertical_tolerance_m
+            if min_layer <= voxel[2] <= max_layer
         }
         start = self._nearest_voxel(self.grid.world_to_voxel(current), traversable)
         if start is None:

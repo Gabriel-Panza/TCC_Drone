@@ -132,6 +132,15 @@ class DroneOffboardNode(Node):
             0.5,
             float(self.declare_parameter('spatial_takeoff_altitude_m', 1.65).value),
         )
+        self.spatial_takeoff_acceptance_radius_m = max(
+            0.05,
+            float(
+                self.declare_parameter(
+                    'spatial_takeoff_acceptance_radius_m',
+                    0.2,
+                ).value
+            ),
+        )
         self.spatial_global_goal_acceptance_radius_m = max(
             0.5,
             float(
@@ -883,9 +892,12 @@ class DroneOffboardNode(Node):
 
         if not self.spatial_takeoff_complete:
             self.publicar_setpoint_posicao(self.spatial_takeoff_target)
-            if np.linalg.norm(current - self.spatial_takeoff_target) <= 0.6:
+            if (
+                np.linalg.norm(current - self.spatial_takeoff_target)
+                <= self.spatial_takeoff_acceptance_radius_m
+            ):
                 self.spatial_takeoff_complete = True
-                self.spatial_hold_position = current.copy()
+                self.spatial_hold_position = self.spatial_takeoff_target.copy()
                 self.get_logger().info(
                     'Altitude inicial atingida. Planejamento espacial liberado.'
                 )

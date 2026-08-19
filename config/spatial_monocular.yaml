@@ -27,11 +27,12 @@ drone_offboard_node:
     spatial_waypoint_acceptance_radius_m: 0.8
     spatial_global_goal_acceptance_radius_m: 1.5
     spatial_takeoff_altitude_m: 1.65
+    spatial_takeoff_acceptance_radius_m: 0.2
     # Mantenha a mesma rota curta do ensaio ideal durante a calibracao.
     spatial_waypoints_relative_m: [-8.0, 8.0, -1.65, 0.0, 0.0, -1.65]
-    camera_offset_forward_m: 0.0
+    camera_offset_forward_m: 0.15
     camera_offset_right_m: 0.0
-    camera_offset_down_m: 0.0
+    camera_offset_down_m: -0.22
     camera_mount_roll_deg: 0.0
     camera_mount_pitch_deg: 0.0
     camera_mount_yaw_deg: 0.0
