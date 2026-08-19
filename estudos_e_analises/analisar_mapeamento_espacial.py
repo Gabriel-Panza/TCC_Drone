@@ -150,6 +150,27 @@ def movement_metrics(positions, timestamps, nominal_length=None):
     }
 
 
+def mission_boundary_index(event, positions, timestamps, *, prefer_last=False):
+    """Localiza um marco da missao mesmo com relogios de camera e ROS desalinhados."""
+
+    if event is None:
+        return len(positions) - 1 if prefer_last else 0
+
+    event_position = event.get("position_ned_m")
+    if event_position is not None:
+        distances = np.linalg.norm(
+            positions - np.asarray(event_position, dtype=float),
+            axis=1,
+        )
+        tolerance = max(0.25, float(np.min(distances)) + 0.10)
+        candidates = np.flatnonzero(distances <= tolerance)
+        if len(candidates):
+            return int(candidates[-1] if prefer_last else candidates[0])
+
+    event_timestamp = float(event.get("timestamp_s", timestamps[-1]))
+    return int(np.argmin(np.abs(timestamps - event_timestamp)))
+
+
 def trajectory_metrics(positions, timestamps, events, manifest):
     """Separa a missao completa do trecho entre decolagem e objetivo final."""
 
@@ -194,13 +215,29 @@ def trajectory_metrics(positions, timestamps, events, manifest):
             ),
             None,
         )
-    start_s = float(takeoff["timestamp_s"]) if takeoff else float(timestamps[0])
-    end_s = (
-        float(mission_complete["timestamp_s"])
-        if mission_complete
-        else float(timestamps[-1])
+    start_index = mission_boundary_index(
+        takeoff,
+        positions,
+        timestamps,
+        prefer_last=False,
     )
-    cruise_mask = (timestamps >= start_s) & (timestamps <= end_s)
+    end_index = mission_boundary_index(
+        mission_complete,
+        positions,
+        timestamps,
+        prefer_last=True,
+    )
+    if end_index <= start_index:
+        start_index = 0
+        end_index = len(positions) - 1
+        bounds_source = "full_mission_fallback"
+    else:
+        bounds_source = (
+            "mission_state_events"
+            if takeoff and mission_complete and states
+            else "estimated_from_available_events"
+        )
+    cruise_slice = slice(start_index, end_index + 1)
 
     return {
         "full_mission": movement_metrics(
@@ -209,15 +246,12 @@ def trajectory_metrics(positions, timestamps, events, manifest):
             full_nominal,
         ),
         "cruise": movement_metrics(
-            positions[cruise_mask],
-            timestamps[cruise_mask],
+            positions[cruise_slice],
+            timestamps[cruise_slice],
             cruise_nominal,
         ),
-        "cruise_bounds_source": (
-            "mission_state_events"
-            if takeoff and mission_complete and states
-            else "estimated_from_available_events"
-        ),
+        "cruise_bounds_source": bounds_source,
+        "cruise_frame_range": [start_index, end_index],
     }
 
 
