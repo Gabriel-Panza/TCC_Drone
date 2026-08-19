@@ -17,6 +17,10 @@ def load_events(path):
     ]
 
 
+def load_manifest(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def load_map(path):
     data = np.load(path)
     voxels = np.asarray(data["voxels"], dtype=np.int32)
@@ -85,6 +89,57 @@ def aggregate_mapping_metrics(events):
     return {
         "mean_integration_time_ms": float(np.mean(times)),
         "p95_integration_time_ms": float(np.percentile(times, 95)),
+    }
+
+
+def trajectory_metrics(run_dir, events, manifest):
+    frame_events = [
+        event
+        for event in events
+        if event.get("event") == "frame" and event.get("file")
+    ]
+    positions = []
+    timestamps = []
+    for event in frame_events:
+        with np.load(run_dir / event["file"]) as frame:
+            positions.append(
+                np.asarray(frame["camera_to_ned"], dtype=float)[:3, 3]
+            )
+        timestamps.append(float(event["timestamp_s"]))
+    if len(positions) < 2:
+        return {}
+
+    positions = np.asarray(positions)
+    segments = np.diff(positions, axis=0)
+    lengths = np.linalg.norm(segments, axis=1)
+    traveled = float(np.sum(lengths))
+    duration = max(0.0, timestamps[-1] - timestamps[0])
+    moving = segments[lengths > 0.05]
+    total_turn_deg = 0.0
+    if len(moving) >= 2:
+        unit = moving / np.linalg.norm(moving, axis=1, keepdims=True)
+        cosines = np.clip(np.sum(unit[:-1] * unit[1:], axis=1), -1.0, 1.0)
+        total_turn_deg = float(np.degrees(np.arccos(cosines)).sum())
+
+    route = (
+        manifest.get("metadata", {}).get("waypoints_relative_m")
+        or []
+    )
+    route_points = np.asarray([[0.0, 0.0, 0.0], *route], dtype=float)
+    nominal = (
+        float(np.linalg.norm(np.diff(route_points, axis=0), axis=1).sum())
+        if len(route_points) >= 2
+        else None
+    )
+    return {
+        "duration_s": duration,
+        "distance_traveled_m": traveled,
+        "nominal_route_length_m": nominal,
+        "distance_over_nominal": _ratio(traveled, nominal),
+        "mean_sampled_speed_m_s": _ratio(traveled, duration),
+        "altitude_range_m": float(np.ptp(-positions[:, 2])),
+        "total_turn_deg": total_turn_deg,
+        "turn_deg_per_meter": _ratio(total_turn_deg, traveled),
     }
 
 
@@ -218,12 +273,14 @@ def main():
     estimated = load_map(run_dir / "estimated_map.npz")
     reference = load_map(run_dir / "reference_map.npz")
     events = load_events(run_dir / "events.jsonl")
+    manifest = load_manifest(run_dir / "manifest.json")
     estimated_path = last_successful_path(events, "estimated")
     reference_path = last_successful_path(events, "reference")
     summary = {
         "run_dir": str(run_dir),
         "depth": aggregate_depth_metrics(events),
         "mapping": aggregate_mapping_metrics(events),
+        "trajectory": trajectory_metrics(run_dir, events, manifest),
         "occupancy": compare_maps(estimated, reference),
         "planning": planning_metrics(events, reference),
         "frames": sum(event.get("event") == "frame" for event in events),

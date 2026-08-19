@@ -124,7 +124,7 @@ class DroneOffboardNode(Node):
             float(
                 self.declare_parameter(
                     'spatial_waypoint_acceptance_radius_m',
-                    0.6,
+                    0.8,
                 ).value
             ),
         )
@@ -220,7 +220,7 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_vertical_tolerance_m', 0.5).value
             ),
             max_waypoint_spacing_m=float(
-                self.declare_parameter('spatial_max_waypoint_spacing_m', 2.25).value
+                self.declare_parameter('spatial_max_waypoint_spacing_m', 4.0).value
             ),
             connectivity=int(
                 self.declare_parameter('spatial_connectivity', 26).value
@@ -925,12 +925,25 @@ class DroneOffboardNode(Node):
             self.spatial_last_plan_request_s is None
             or now_s - self.spatial_last_plan_request_s >= self.spatial_replan_interval_s
         )
-        if plan_expired:
-            self.solicitar_plano_espacial(current, global_goal, now_s)
 
         with self.spatial_plan_lock:
             path = list(self.spatial_path_waypoints)
             path_index = self.spatial_path_index
+
+        path_missing = path_index >= len(path)
+        if plan_expired:
+            if path_missing:
+                self.solicitar_plano_espacial(current, global_goal, now_s)
+            else:
+                with self.spatial_lock:
+                    path_safe = self.spatial_estimated_navigator.path_is_safe(
+                        current,
+                        path[path_index:],
+                    )
+                if path_safe:
+                    self.spatial_last_plan_request_s = now_s
+                else:
+                    self.solicitar_plano_espacial(current, global_goal, now_s)
 
         if path_index >= len(path):
             if self.spatial_hold_position is None:

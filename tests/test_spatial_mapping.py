@@ -127,7 +127,10 @@ class OccupancyAndPlanningTest(unittest.TestCase):
                 plan.waypoints_ned_m[1:],
             )
         ]
-        self.assertLessEqual(max(distances), 2.25 + 1e-9)
+        self.assertLessEqual(
+            max(distances),
+            navigator.config.max_waypoint_spacing_m + 1e-9,
+        )
 
     def test_failed_local_subgoal_reports_reachable_progress(self):
         navigator = SpatialNavigator(
@@ -144,6 +147,33 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertFalse(plan.success)
         self.assertIn("alcancaveis=2", plan.reason)
         self.assertIn("max_progresso=1.40m", plan.reason)
+
+    def test_path_safety_rejects_new_obstacle(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                drone_clearance_radius_m=0.1,
+            )
+        )
+        for x in range(5):
+            navigator.grid.mark_free_sphere((x + 0.1, 0.1, 0.1), 0.1)
+
+        self.assertTrue(
+            navigator.path_is_safe((0.1, 0.1, 0.1), [(4.1, 0.1, 0.1)])
+        )
+
+        navigator.grid.integrate_points(
+            (1.1, 0.1, 0.1),
+            [(2.1, 0.1, 0.1)],
+        )
+        navigator.grid.integrate_points(
+            (1.1, 0.1, 0.1),
+            [(2.1, 0.1, 0.1)],
+        )
+
+        self.assertFalse(
+            navigator.path_is_safe((0.1, 0.1, 0.1), [(4.1, 0.1, 0.1)])
+        )
 
 
 class MetricsTest(unittest.TestCase):

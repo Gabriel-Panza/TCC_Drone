@@ -24,7 +24,7 @@ class SpatialNavigationConfig:
     local_plan_radius_m: float = 20.0
     min_subgoal_progress_m: float = 0.5
     vertical_tolerance_m: float = 1.5
-    max_waypoint_spacing_m: float = 2.25
+    max_waypoint_spacing_m: float = 4.0
     connectivity: int = 26
 
     def __post_init__(self):
@@ -192,6 +192,25 @@ class SpatialNavigator:
             "free_threshold": np.asarray(self.grid.config.free_threshold),
             "frames_integrated": np.asarray(self.frames_integrated),
         }
+
+    def path_is_safe(self, current_position_ned_m, waypoints_ned_m):
+        """Verifica se todo o caminho restante continua observado e desocupado."""
+
+        points = [np.asarray(current_position_ned_m, dtype=float)] + [
+            np.asarray(point, dtype=float) for point in waypoints_ned_m
+        ]
+        if len(points) < 2:
+            return False
+
+        blocked = self.grid.inflated_occupied_voxels(
+            self.config.drone_clearance_radius_m
+        )
+        free = self.grid.free_voxels()
+        for start, end in zip(points, points[1:]):
+            for voxel in self.grid._ray_voxels(start, end):
+                if voxel in blocked or voxel not in free:
+                    return False
+        return True
 
     def _select_local_subgoal(self, current, requested_goal, traversable):
         direction = requested_goal - current
