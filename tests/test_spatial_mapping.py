@@ -129,6 +129,22 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         ]
         self.assertLessEqual(max(distances), 2.25 + 1e-9)
 
+    def test_failed_local_subgoal_reports_reachable_progress(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                min_subgoal_progress_m=2.0,
+            )
+        )
+        navigator.grid.mark_free_sphere((0.1, 0.1, 0.1), 0.1)
+        navigator.grid.mark_free_sphere((1.1, 0.1, 0.1), 0.1)
+
+        plan = navigator.plan((0.1, 0.1, 0.1), (20.0, 0.1, 0.1))
+
+        self.assertFalse(plan.success)
+        self.assertIn("alcancaveis=2", plan.reason)
+        self.assertIn("max_progresso=1.40m", plan.reason)
+
 
 class MetricsTest(unittest.TestCase):
     def test_depth_metrics_use_common_valid_pixels(self):

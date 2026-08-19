@@ -214,7 +214,7 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_local_plan_radius_m', 20.0).value
             ),
             min_subgoal_progress_m=float(
-                self.declare_parameter('spatial_min_subgoal_progress_m', 2.0).value
+                self.declare_parameter('spatial_min_subgoal_progress_m', 0.5).value
             ),
             vertical_tolerance_m=float(
                 self.declare_parameter('spatial_vertical_tolerance_m', 0.5).value

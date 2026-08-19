@@ -19,7 +19,7 @@ drone_offboard_node:
     spatial_clearance_radius_m: 1.25
     spatial_known_free_radius_m: 0.8
     spatial_local_plan_radius_m: 20.0
-    spatial_min_subgoal_progress_m: 2.0
+    spatial_min_subgoal_progress_m: 0.5
     spatial_vertical_tolerance_m: 0.5
     spatial_max_waypoint_spacing_m: 2.25
     spatial_connectivity: 26

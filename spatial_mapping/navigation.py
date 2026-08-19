@@ -22,7 +22,7 @@ class SpatialNavigationConfig:
     drone_clearance_radius_m: float = 1.25
     known_free_radius_m: float = 0.8
     local_plan_radius_m: float = 20.0
-    min_subgoal_progress_m: float = 2.0
+    min_subgoal_progress_m: float = 0.5
     vertical_tolerance_m: float = 1.5
     max_waypoint_spacing_m: float = 2.25
     connectivity: int = 26
@@ -143,9 +143,18 @@ class SpatialNavigator:
                 reachable,
             )
         if selected_goal is None or selected_goal == start:
+            max_progress = self._max_progress(
+                current,
+                requested_goal,
+                reachable,
+            )
             return self._failure(
                 requested_goal,
-                "nenhum subobjetivo observado com progresso",
+                (
+                    "nenhum subobjetivo observado com progresso "
+                    f"(livres={len(traversable)}, alcancaveis={len(reachable)}, "
+                    f"max_progresso={max_progress:.2f}m)"
+                ),
                 self._elapsed_ms(started),
             )
 
@@ -209,6 +218,17 @@ class SpatialNavigator:
                 best_score = score
                 best_voxel = voxel
         return best_voxel
+
+    def _max_progress(self, current, requested_goal, traversable):
+        direction = requested_goal - current
+        norm = float(np.linalg.norm(direction))
+        if norm <= 1e-9 or not traversable:
+            return 0.0
+        direction /= norm
+        return max(
+            float(np.dot(self.grid.voxel_to_world(voxel) - current, direction))
+            for voxel in traversable
+        )
 
     @staticmethod
     def _nearest_voxel(requested, candidates, max_offset=2):
