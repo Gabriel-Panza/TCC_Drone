@@ -171,6 +171,21 @@ def mission_boundary_index(event, positions, timestamps, *, prefer_last=False):
     return int(np.argmin(np.abs(timestamps - event_timestamp)))
 
 
+def event_frame_index(events, target_event, frame_count, *, before_event=False):
+    """Converte a posicao de um evento no JSONL para o indice de frame."""
+
+    if target_event is None:
+        return None
+    seen_frames = 0
+    for event in events:
+        if event is target_event:
+            index = seen_frames - 1 if before_event else seen_frames
+            return int(np.clip(index, 0, frame_count - 1))
+        if event.get("event") == "frame" and event.get("file"):
+            seen_frames += 1
+    return None
+
+
 def trajectory_metrics(positions, timestamps, events, manifest):
     """Separa a missao completa do trecho entre decolagem e objetivo final."""
 
@@ -215,28 +230,39 @@ def trajectory_metrics(positions, timestamps, events, manifest):
             ),
             None,
         )
-    start_index = mission_boundary_index(
+    start_index = event_frame_index(
+        events,
         takeoff,
-        positions,
-        timestamps,
-        prefer_last=False,
+        len(positions),
+        before_event=False,
     )
-    end_index = mission_boundary_index(
+    end_index = event_frame_index(
+        events,
         mission_complete,
-        positions,
-        timestamps,
-        prefer_last=True,
+        len(positions),
+        before_event=True,
     )
+    bounds_source = "mission_event_order"
+    if start_index is None:
+        start_index = mission_boundary_index(
+            takeoff,
+            positions,
+            timestamps,
+            prefer_last=False,
+        )
+        bounds_source = "mission_state_position_or_time"
+    if end_index is None:
+        end_index = mission_boundary_index(
+            mission_complete,
+            positions,
+            timestamps,
+            prefer_last=True,
+        )
+        bounds_source = "mission_state_position_or_time"
     if end_index <= start_index:
         start_index = 0
         end_index = len(positions) - 1
         bounds_source = "full_mission_fallback"
-    else:
-        bounds_source = (
-            "mission_state_events"
-            if takeoff and mission_complete and states
-            else "estimated_from_available_events"
-        )
     cruise_slice = slice(start_index, end_index + 1)
 
     return {

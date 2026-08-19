@@ -12,7 +12,7 @@ def render_top_down(
     path_ned_m=(),
     extent_m=30.0,
     image_size=720,
-    vertical_band_m=1.0,
+    vertical_band_m=3.0,
 ):
     """Projeta os voxels 3D no plano horizontal ao redor do drone."""
 
@@ -29,6 +29,7 @@ def render_top_down(
             int(round(image_size / 2 - north * scale)),
         )
 
+    visible_free = 0
     for voxel in grid.free_voxels():
         world = grid.voxel_to_world(voxel)
         if abs(float(world[2] - center[2])) > vertical_band_m:
@@ -36,14 +37,17 @@ def render_top_down(
         x, y = pixel(world)
         if 0 <= x < image_size and 0 <= y < image_size:
             image[y, x] = (225, 238, 225)
+            visible_free += 1
 
+    visible_occupied = 0
     for voxel in grid.occupied_voxels():
         world = grid.voxel_to_world(voxel)
         if abs(float(world[2] - center[2])) > vertical_band_m:
             continue
         x, y = pixel(world)
         if 0 <= x < image_size and 0 <= y < image_size:
-            cv2.circle(image, (x, y), 2, (40, 40, 210), -1)
+            cv2.circle(image, (x, y), 4, (40, 40, 210), -1)
+            visible_occupied += 1
 
     path_pixels = [pixel(point) for point in path_ned_m]
     for start, end in zip(path_pixels, path_pixels[1:]):
@@ -77,7 +81,10 @@ def render_top_down(
     )
     cv2.putText(
         image,
-        "vermelho: ocupado | verde: caminho | azul: drone",
+        (
+            "vermelho: ocupado | verde: caminho | azul: drone | "
+            f"visiveis: {visible_occupied} ocupados, {visible_free} livres"
+        ),
         (14, image_size - 16),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.48,
