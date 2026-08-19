@@ -1,6 +1,7 @@
 """Gera resumo e visualizacao 3D de uma run do pipeline espacial."""
 
 import argparse
+from collections import Counter
 import json
 from pathlib import Path
 
@@ -78,18 +79,47 @@ def aggregate_depth_metrics(events):
 
 
 def aggregate_mapping_metrics(events):
-    times = [
-        float((event.get("map") or {}).get("integration_time_ms"))
+    maps = [
+        event.get("map") or {}
         for event in events
         if event.get("event") == "frame"
         and (event.get("map") or {}).get("integration_time_ms") is not None
     ]
-    if not times:
+    if not maps:
         return {}
-    return {
+    times = [float(mapping["integration_time_ms"]) for mapping in maps]
+    summary = {
         "mean_integration_time_ms": float(np.mean(times)),
         "p95_integration_time_ms": float(np.percentile(times, 95)),
     }
+    filtered = [
+        mapping
+        for mapping in maps
+        if mapping.get("points_rejected_vertical") is not None
+    ]
+    if filtered:
+        integrated = sum(int(mapping.get("points_integrated", 0)) for mapping in filtered)
+        rejected = sum(
+            int(mapping.get("points_rejected_vertical", 0))
+            for mapping in filtered
+        )
+        summary.update(
+            {
+                "mean_points_integrated": float(
+                    np.mean([mapping.get("points_integrated", 0) for mapping in filtered])
+                ),
+                "mean_points_rejected_vertical": float(
+                    np.mean(
+                        [mapping.get("points_rejected_vertical", 0) for mapping in filtered]
+                    )
+                ),
+                "vertical_rejection_rate": _ratio(
+                    rejected,
+                    integrated + rejected,
+                ),
+            }
+        )
+    return summary
 
 
 def load_trajectory(run_dir, events):
@@ -299,10 +329,16 @@ def planning_metrics(events, reference):
     for map_kind in ("estimated", "reference"):
         selected = [event.get("plan") or {} for event in plans if event.get("map_kind") == map_kind]
         successful = [plan for plan in selected if plan.get("success")]
+        failure_reasons = Counter(
+            plan.get("reason", "motivo ausente")
+            for plan in selected
+            if not plan.get("success")
+        )
         summary[map_kind] = {
             "attempts": len(selected),
             "successes": len(successful),
             "success_rate": _ratio(len(successful), len(selected)),
+            "failure_reasons": dict(failure_reasons),
             "mean_path_length_m": (
                 float(np.mean([plan.get("path_length_m", 0.0) for plan in successful]))
                 if successful
