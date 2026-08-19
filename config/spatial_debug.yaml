@@ -29,7 +29,7 @@ drone_offboard_node:
     spatial_takeoff_acceptance_radius_m: 0.2
     # Rota curta de calibracao, antes da primeira arvore. Amplie somente depois
     # que mapa, altitude e atualizacao em tempo real estiverem estaveis.
-    spatial_waypoints_relative_m: [-8.0, 8.0, -1.65, 0.0, 0.0, -1.65]
+    spatial_waypoints_relative_m: [-25.0, 25.0, -1.65, -50.0, 70.0, -1.65, -25.0, 25.0, -1.65, 0.0, 0.0, -1.65]
     camera_offset_forward_m: 0.15
     camera_offset_right_m: 0.0
     camera_offset_down_m: -0.22
