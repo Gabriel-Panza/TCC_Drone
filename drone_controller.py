@@ -211,7 +211,13 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_min_depth_m', 0.5).value
             ),
             max_depth_m=float(
-                self.declare_parameter('spatial_max_depth_m', 25.0).value
+                self.declare_parameter('spatial_max_depth_m', 30.0).value
+            ),
+            obstacle_vertical_band_m=float(
+                self.declare_parameter(
+                    'spatial_obstacle_vertical_band_m',
+                    1.5,
+                ).value
             ),
             drone_clearance_radius_m=float(
                 self.declare_parameter('spatial_clearance_radius_m', 1.25).value
@@ -220,7 +226,7 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_known_free_radius_m', 0.8).value
             ),
             local_plan_radius_m=float(
-                self.declare_parameter('spatial_local_plan_radius_m', 20.0).value
+                self.declare_parameter('spatial_local_plan_radius_m', 25.0).value
             ),
             min_subgoal_progress_m=float(
                 self.declare_parameter('spatial_min_subgoal_progress_m', 0.5).value

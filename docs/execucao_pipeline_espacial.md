@@ -84,6 +84,8 @@ Por padrao, `spatial_collect_legacy_metrics=false` desliga a estabilizacao e o f
 
 O planejador remove curvas discretas quando existe linha de visada inteiramente observada e livre. O caminho resultante e dividido em pontos com no maximo 5 m, e um caminho em andamento so e substituido se terminar ou deixar de ser seguro. A amostragem `spatial_depth_stride=40` preserva a grade de 0,75 m com menor custo de integracao.
 
+O mapa integra obstaculos ate 30 m, planeja subobjetivos em um raio local de 25 m e mantem somente pontos ate 1,5 m acima ou abaixo da camera. Essa faixa concentra a ocupacao no corredor de voo e reduz a influencia do solo e das partes altas das copas. A projecao superior mostra 35 m para cada lado e informa quantos voxels livres e ocupados estao visiveis.
+
 O YAML inicial usa uma rota curta ate `[-8, 8, -1.65]` e retorna ao inicio. Ela serve apenas para validar atualizacao em movimento e estabilidade. A rota entre arvores deve ser definida depois, com pontos intermediarios registrados e mantidos iguais nos ensaios ideal e monocular.
 
 ## 5. Profundidade monocular

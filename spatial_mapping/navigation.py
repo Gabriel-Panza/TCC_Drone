@@ -18,7 +18,8 @@ class SpatialNavigationConfig:
     voxel_resolution_m: float = 0.75
     depth_stride: int = 40
     min_depth_m: float = 0.5
-    max_depth_m: float = 25.0
+    max_depth_m: float = 30.0
+    obstacle_vertical_band_m: float = 1.5
     drone_clearance_radius_m: float = 1.25
     known_free_radius_m: float = 0.8
     local_plan_radius_m: float = 20.0
@@ -32,6 +33,8 @@ class SpatialNavigationConfig:
             raise ValueError("depth_stride deve ser maior ou igual a 1")
         if self.max_depth_m <= self.min_depth_m:
             raise ValueError("max_depth_m deve ser maior que min_depth_m")
+        if self.obstacle_vertical_band_m <= 0:
+            raise ValueError("obstacle_vertical_band_m deve ser positivo")
         if self.local_plan_radius_m <= 0:
             raise ValueError("local_plan_radius_m deve ser positivo")
         if self.vertical_tolerance_m <= 0:
@@ -82,6 +85,11 @@ class SpatialNavigator:
         camera_to_ned = np.asarray(camera_to_ned, dtype=np.float64)
         points_ned = transform_points(points_camera, camera_to_ned)
         camera_origin_ned = camera_to_ned[:3, 3]
+        points_before_vertical_filter = len(points_ned)
+        points_ned = points_ned[
+            np.abs(points_ned[:, 2] - camera_origin_ned[2])
+            <= self.config.obstacle_vertical_band_m
+        ]
         self.grid.mark_free_sphere(
             camera_origin_ned,
             self.config.known_free_radius_m,
@@ -95,6 +103,9 @@ class SpatialNavigator:
         return {
             "frame_index": self.frames_integrated,
             "points_integrated": int(len(points_ned)),
+            "points_rejected_vertical": int(
+                points_before_vertical_filter - len(points_ned)
+            ),
             "free_voxels": int(len(self.grid.free_voxels())),
             "occupied_voxels": int(len(self.grid.occupied_voxels())),
         }

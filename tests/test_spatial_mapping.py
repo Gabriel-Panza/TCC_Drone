@@ -56,6 +56,28 @@ class GeometryTest(unittest.TestCase):
 
 
 class OccupancyAndPlanningTest(unittest.TestCase):
+    def test_depth_integration_filters_points_outside_vertical_band(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                depth_stride=1,
+                min_depth_m=0.1,
+                max_depth_m=5.0,
+                obstacle_vertical_band_m=0.5,
+            )
+        )
+        depth = np.full((3, 1), 2.0, dtype=float)
+        intrinsics = CameraIntrinsics(fx=1.0, fy=1.0, cx=0.0, cy=1.0)
+        camera_to_ned = camera_to_ned_transform(
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        )
+
+        stats = navigator.integrate_depth(depth, intrinsics, camera_to_ned)
+
+        self.assertEqual(stats["points_integrated"], 1)
+        self.assertEqual(stats["points_rejected_vertical"], 2)
+
     def test_marks_ray_as_free_and_endpoint_as_occupied(self):
         config = OccupancyGridConfig(
             resolution_m=1.0,

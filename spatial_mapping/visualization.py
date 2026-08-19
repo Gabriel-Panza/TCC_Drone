@@ -10,9 +10,9 @@ def render_top_down(
     center_ned_m,
     target_ned_m=None,
     path_ned_m=(),
-    extent_m=30.0,
+    extent_m=35.0,
     image_size=720,
-    vertical_band_m=3.0,
+    vertical_band_m=1.5,
 ):
     """Projeta os voxels 3D no plano horizontal ao redor do drone."""
 
