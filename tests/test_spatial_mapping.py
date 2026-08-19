@@ -152,6 +152,22 @@ class DepthModelAndRecorderTest(unittest.TestCase):
 
         self.assertAlmostEqual(float(depth[0, 0]), 2.0)
 
+    @unittest.skipIf(MetricDepthOnnx is None, "OpenCV indisponivel neste ambiente")
+    def test_metric_depth_accepts_common_onnx_output_shapes(self):
+        model = MetricDepthOnnx.__new__(MetricDepthOnnx)
+        model.output_representation = "metric_depth"
+        model.output_scale = 1.0
+        model.output_shift = 0.0
+        model.min_depth_m = 0.1
+        model.max_depth_m = 50.0
+
+        for shape in ((1, 1, 2, 2), (1, 2, 2), (2, 2)):
+            with self.subTest(shape=shape):
+                raw = np.full(shape, 3.0, dtype=np.float32)
+                depth = model.postprocess(raw, (2, 2))
+                self.assertEqual(depth.shape, (2, 2))
+                self.assertTrue(np.allclose(depth, 3.0))
+
     def test_recorder_writes_manifest_frames_and_maps(self):
         navigator = SpatialNavigator(
             SpatialNavigationConfig(voxel_resolution_m=1.0)

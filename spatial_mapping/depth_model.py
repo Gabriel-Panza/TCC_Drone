@@ -68,9 +68,15 @@ class MetricDepthOnnx:
     def postprocess(self, raw_output, output_size):
         """Converte a saida configurada em metros e restaura a resolucao RGB."""
 
-        raw = np.asarray(raw_output, dtype=np.float32).squeeze()
+        raw = np.asarray(raw_output, dtype=np.float32)
+        while raw.ndim > 2 and raw.shape[0] == 1:
+            raw = raw[0]
+        if raw.ndim == 0:
+            raw = raw.reshape(1, 1)
+        elif raw.ndim == 1 and raw.size == 1:
+            raw = raw.reshape(1, 1)
         if raw.ndim != 2:
-            raise ValueError(f"saida ONNX inesperada apos squeeze: {raw.shape}")
+            raise ValueError(f"saida ONNX inesperada: {raw.shape}")
         converted = raw * self.output_scale + self.output_shift
         if self.output_representation == "inverse_depth":
             converted = 1.0 / np.maximum(converted, 1e-6)
