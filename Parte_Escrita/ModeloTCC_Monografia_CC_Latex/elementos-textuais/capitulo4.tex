@@ -1,0 +1,97 @@
+\chapter{Implementação}\label{cap:implementacao}
+
+\section{Introdução}
+
+Este capítulo descreve o ambiente de simulação, o pipeline de voo e coleta, o processamento visual e a geração do conjunto analisado. A implementação conecta PX4, Gazebo e ROS~2 e produz uma amostra a cada intervalo visual válido.
+
+\section{Ambiente experimental}
+
+Os experimentos usam SITL, com PX4 como piloto automático, Gazebo como ambiente físico e ROS~2 como camada de comunicação. O computador do laboratório possui processador Intel Core i7-14700K, com 20 núcleos e 28 \textit{threads}, 64~GB de memória de acesso aleatório (RAM) e uma unidade de processamento gráfico (GPU) NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo.
+
+O ambiente simulado utilizado nos experimentos foi desenvolvido com o apoio do pesquisador Eduardo Charles Vasconcellos, especialmente na configuração do cenário, do VANT e dos componentes relacionados ao voo autônomo.
+
+O sistema executa Ubuntu 22.04.5 com suporte de longo prazo (LTS) no \textit{Windows Subsystem for Linux}~2 (WSL~2), com kernel 6.6.87.2. Foram usados o PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. O veículo é o \texttt{x500\_mono\_cam} e o cenário é o \texttt{baylands}.
+
+\section{Pipeline de voo e coleta}
+
+O controlador recebe posição local e dados inerciais do PX4, publica comandos no modo \textit{Offboard} e processa imagens de uma câmera RGB monocular frontal. Uma câmera de profundidade alinhada fornece os valores de referência. A profundidade não participa da lógica reativa.
+
+O controlador executa a 25~Hz e limita a velocidade a 12~m/s. A missão percorre quatro pontos relativos no sistema norte-leste-baixo (NED), em metros: $(-25,25,-1{,}65)$, $(-50,70,-1{,}65)$, $(-25,25,-1{,}65)$ e $(0,0,-1{,}65)$. Os pontos intermediários são aceitos dentro de um raio de 4~m. A lógica de desvio fica desativada nos 8~m finais do retorno. A missão termina quando o veículo chega a menos de 3~m do último ponto e conclui o pouso e o desarme previstos pelo controlador.
+
+A versão final contém 40 execuções e 1.234 intervalos sincronizados. Os diretórios de \texttt{logs} e \texttt{datasets} são associados pela ordem e pelo horário de criação. Cada par corresponde à mesma execução, embora seus nomes possam diferir por alguns segundos.
+
+A Figura~\ref{fig:metodologia-trajetorias} apresenta quatro trajetórias distribuídas ao longo da coleta. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_trajetorias.png}
+    \caption{Trajetórias acumuladas de quatro execuções representativas.}
+    \label{fig:metodologia-trajetorias}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+A Figura~\ref{fig:metodologia-imu} mostra as velocidades angulares nas mesmas execuções. Esses sinais ajudam a caracterizar atitude e movimento durante os intervalos analisados.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_imu.png}
+    \caption{Variações das velocidades angulares em quatro execuções representativas.}
+    \label{fig:metodologia-imu}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\section{Processamento visual}
+
+As imagens passam por estabilização com uma homografia calculada a partir da orientação do veículo. A saída possui resolução de $640\times480$ pixels e fator de aproximação de 1,25. A compensação reduz o fluxo causado pela rotação do drone e facilita a análise do movimento ligado à translação e à cena.
+
+Os pontos de interesse são detectados por Shi--Tomasi \cite{ShiTomasi1994}, com até 180 pontos, qualidade mínima de 0,01, distância mínima de 12 pixels e bloco de 8 pixels. O rastreamento usa Lucas--Kanade piramidal \cite{LucasKanade1981}, janela de $21\times21$ pixels, três níveis adicionais de pirâmide e término após 20 iterações ou erro inferior a 0,04. O sistema registra quantidade e retenção de pontos, estatísticas do módulo do fluxo, componente radial e risco associado a cada ponto.
+
+Uma versão reduzida da diferença entre imagens estabilizadas também é armazenada. A partir dela são calculados média, desvio padrão, média do valor absoluto e percentil 90 do valor absoluto. A rede recebe esses descritores, e não os pixels completos.
+
+\section{Sincronização e armazenamento}
+
+O coletor associa cada intervalo RGB ao mapa de profundidade mais recente. Amostras sem fluxo, sem profundidade, com profundidade reutilizada ou tempos inválidos são descartadas. Os intervalos RGB e de profundidade precisam ser positivos e menores ou iguais a 0,5~s. A diferença temporal entre profundidade e RGB não pode ultrapassar 0,08~s.
+
+Os dados são gravados em arquivos NumPy com mapeamento em memória. Cada execução possui um manifesto \textit{JavaScript Object Notation} (JSON) com esquema, quantidade de amostras, parâmetros e nomes dos vetores. Esse formato permite ler as execuções sem manter todas as imagens e matrizes na RAM e também permite ignorar uma execução incompleta.
+
+A Figura~\ref{fig:metodologia-intervalos} apresenta a duração dos intervalos nas 40 execuções.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.png}
+    \caption{Distribuição do intervalo temporal entre atualizações visuais nas 40 execuções.}
+    \label{fig:metodologia-intervalos}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+A Figura~\ref{fig:metodologia-sincronizacao} coloca na mesma sequência o percentil 90 do fluxo visual e a variação de pixels com profundidade inferior a 5~m. O gráfico serve para inspecionar o pareamento produzido, sem pressupor uma relação causal entre as duas grandezas.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_sincronizacao.png}
+    \caption{Sequência sincronizada do fluxo visual e da variação de proximidade usada como referência.}
+    \label{fig:metodologia-sincronizacao}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\section{Notebook de análise}
+
+O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33 e 40 execuções, sempre preservando os casos anteriores.
+
+As entradas incluem duração e atraso de sincronização; deltas de posição e atitude; integrais e variações de giroscópio e acelerômetro; comandos de risco, frenagem e desvio; estatísticas do fluxo; retenção de pontos; e descritores da diferença de imagem. O notebook também testa a representação dos ângulos por seno e cosseno.
+
+O modelo principal é uma MLP multissaída em PyTorch. Entradas e alvos recebem padronização calculada somente no treino. A rede possui camadas ocultas de 64 e 16 unidades, ativação por unidade linear retificada (ReLU), \textit{dropout} de 0,30 após cada camada e saída linear com seis unidades. O treinamento usa Adam, taxa $10^{-3}$, regularização $L_2$ de $10^{-4}$, lotes de 64 amostras e erro quadrático médio (MSE) no espaço padronizado.
+
+O limite é de 300 épocas. A parada antecipada monitora a MSE da validação, exige melhora superior a $10^{-4}$ e encerra após 50 épocas sem avanço. Ao final, os pesos da melhor época retornam ao modelo. O \textit{dropout} e a parada antecipada são técnicas usuais para reduzir sobreajuste \cite{Srivastava2014,Prechelt1998}.
+
+\section{Núcleo da validação espacial}
+
+A validação espacial foi separada do nó ROS~2 para permitir testes da geometria e do planejamento sem executar o simulador. O módulo recebe um mapa de profundidade, os parâmetros intrínsecos e uma transformação homogênea entre a câmera e o referencial local. A reprojeção segue o modelo de câmera pinhole e produz pontos no espaço tridimensional.
+
+Uma grade esparsa acumula evidências de espaço livre ao longo dos raios e de ocupação em seus extremos. Antes do planejamento, os voxels ocupados são expandidos por uma distância configurável. O planejador A* trabalha apenas no espaço observado como livre e permite conectividade com 6, 18 ou 26 vizinhos. Testes sintéticos verificam a reprojeção, as transformações, a atualização da ocupação e a passagem por uma abertura conhecida.
+
+Essa separação também mantém explícita a origem da profundidade. O mapa estimado deve receber apenas a saída da percepção monocular. A profundidade do Gazebo constrói um segundo mapa, usado como referência. Os dois mapas compartilham resolução, margem e configuração do A*, para que a comparação não misture mudanças da percepção com mudanças do planejador.
+
+\section{Considerações finais}
+
+A implementação transforma sinais com frequências e formatos diferentes em intervalos comparáveis. O pipeline de voo produz os dados, enquanto o notebook mantém os critérios de validade, os conjuntos experimentais e as análises em um único local. O núcleo espacial acrescenta uma interface entre percepção e planejamento sem levar a lógica de controle para o escopo do estudo. O Capítulo~\ref{cap:validacao} apresenta a avaliação da representação.

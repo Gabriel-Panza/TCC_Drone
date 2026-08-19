@@ -1,0 +1,20 @@
+% ----------------------------------------------------------
+% RESUMOS
+% ----------------------------------------------------------
+
+\setlength{\absparsep}{18pt}
+
+\begin{resumo}
+Este trabalho defende que o aumento da complexidade de modelos para navegação monocular deve ser precedido por uma avaliação controlada dos dados que os alimentam. Para examinar essa posição, foi construída uma metodologia que sincroniza visão monocular, fluxo óptico, movimento, unidade de medição inercial (IMU) e comandos reativos por intervalo visual. Os experimentos foram realizados em simulação com PX4 e Gazebo, usando profundidade apenas como referência. O conjunto final contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP) multissaída, modelos de árvores e referências simples foram usados como instrumentos de análise. A avaliação também incluiu crescimento do treino com validação e teste fixos, curvas de perda, cinco sementes, eventos de proximidade, gradientes e ablação. O erro diminuiu em cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi contínua e nenhum modelo venceu em todos os alvos. A retirada de IMU e atitude aumentou o erro médio em 6,8\%, enquanto a análise de eventos indicou que o principal limite está na estimativa da magnitude e do sinal. Esses resultados sustentam seis princípios para estudos semelhantes e motivam uma validação espacial complementar, na qual a informação de proximidade forma um mapa tridimensional submetido ao planejamento com A*. A contribuição principal continua sendo esse posicionamento metodológico apoiado por evidências experimentais.
+
+\textbf{Palavras-chave}: Veículos aéreos não tripulados (VANTs); visão monocular; fluxo óptico; detecção de obstáculos; mapeamento tridimensional.
+\end{resumo}
+
+\begin{resumo}[Abstract]
+\begin{otherlanguage*}{english}
+This work argues that increasing model complexity for monocular navigation should be preceded by a controlled evaluation of the data used to train those models. To examine this position, a methodology was developed to synchronize monocular vision, optical flow, motion, inertial measurement unit (IMU) data, and reactive commands by visual interval. Experiments were conducted in simulation with PX4 and Gazebo, using depth only as reference. The final dataset contains 40 executions and 1,234 valid intervals. A multi-output multilayer perceptron (MLP), tree-based models, and simple baselines served as analysis instruments. The evaluation also included training-set growth with fixed validation and test sets, loss curves, five random seeds, proximity events, gradients, and ablation. Error decreased for five of the six targets between the first and final milestones, but improvement was not continuous and no model was best for every target. Removing IMU and attitude inputs increased average error by 6.8\%, while event analysis indicated that magnitude and sign estimation remain the main limitation. These results support six principles for similar studies and motivate a complementary spatial validation in which proximity information forms a three-dimensional map evaluated through A* path planning. The main contribution remains this methodological position supported by experimental evidence.
+
+\vspace{\onelineskip}
+\noindent\textbf{Keywords}: Unmanned aerial vehicles (UAVs); monocular vision; optical flow; obstacle detection; reactive navigation.
+\end{otherlanguage*}
+\end{resumo}

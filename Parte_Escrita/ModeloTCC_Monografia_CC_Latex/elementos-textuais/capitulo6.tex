@@ -1,0 +1,29 @@
+\chapter{Conclusão}\label{cap:conclusoes}
+
+Este trabalho defendeu que modelos mais complexos para navegação monocular devem ser precedidos por uma avaliação controlada dos dados que os alimentam. A posição foi examinada em um problema concreto: estimar variações de proximidade a partir de visão monocular, IMU, movimento e comandos reativos. Para isso, foi construído um processo que sincroniza sinais por intervalo visual e mantém as execuções completas separadas entre treino, validação e teste.
+
+O aumento do treino trouxe melhora em cinco dos seis alvos entre 9 e 40 execuções, embora a evolução tenha oscilado entre os marcos. Os testes com cinco sementes apresentaram variação inferior a 4\%, e a comparação com árvores mostrou que nenhum algoritmo possui vantagem geral. As curvas de perda confirmaram sobreajuste depois da melhor época de validação.
+
+Na análise dos eventos, a classificação não foi a principal responsável pelo erro final. Mesmo com a indicação correta dos eventos, o regressor apresentou pouca melhora. O problema mais importante permanece na estimativa da magnitude e do sinal. Gradientes e ablação também mostraram que IMU e atitude formam o grupo com contribuição mais consistente, enquanto a utilidade dos demais grupos muda conforme o alvo.
+
+\section{Posição e contribuição}
+
+A principal contribuição não é um novo controlador de desvio. O trabalho apresenta uma posição metodológica apoiada por uma avaliação experimental: antes de aumentar a arquitetura, é necessário examinar a unidade de análise, a separação das execuções, a estabilidade, as referências e a origem dos erros. O crescimento controlado do treino, os conjuntos fixos, as várias sementes, os modelos de referência, a análise de eventos e a ablação mostram como essa posição pode ser aplicada. A representação tridimensional e o planejamento com A* formam a próxima verificação dessa posição: observar se a informação analisada também sustenta uma decisão espacial, sem confundir essa verificação com o desenvolvimento de controle.
+
+O estudo também reúne seis princípios que podem orientar investigações semelhantes. Eles tratam da organização por intervalo visual, da divisão por execução, da diversidade das novas coletas, do uso de sementes e referências, da combinação de gradientes com ablação e da separação entre detecção e regressão dos eventos. IMU e atitude apresentaram a contribuição mais estável, e a regressão de mudanças maiores continuou como o principal limite. Esses resultados ajudam a direcionar trabalhos posteriores sem atribuir ao modelo atual uma capacidade que os testes não sustentam.
+
+\section{Limitações}
+
+Todos os experimentos ocorreram em um único cenário simulado e com o mesmo modelo de drone. O conjunto não cobre a variedade de obstáculos, iluminação, textura e perturbações de um voo real. A profundidade de referência também vem do simulador e não contém as falhas de um sensor físico.
+
+Validação e teste fixos tornam os marcos comparáveis, mas incluem apenas duas e três execuções. A MLP recebe estatísticas resumidas e não preserva toda a estrutura espacial da imagem. Além disso, a distribuição possui muitas variações próximas de zero e poucos casos extremos, o que fortalece previsões constantes e dificulta o aprendizado das mudanças maiores.
+
+Os gradientes descrevem sensibilidade local, não causalidade. A ablação oferece uma verificação complementar, mas seus resultados ainda dependem da arquitetura, das sementes e da forma escolhida para agrupar as entradas. Os arquivos brutos também não estão no repositório devido ao tamanho, embora o código e as saídas finais estejam disponíveis.
+
+\section{Agenda de trabalhos futuros}
+
+O próximo passo é preservar a estrutura espacial que as estatísticas resumidas não conseguem representar. Para isso, uma estimativa densa de profundidade será reprojetada em três dimensões e combinada com a pose da câmera em uma grade de ocupação. A profundidade sintética continuará como referência de avaliação. O mapa estimado e um mapa ideal produzido com a referência serão submetidos ao mesmo A*, permitindo comparar caminhos, regiões livres classificadas incorretamente, distância mínima dos obstáculos e tempo de planejamento.
+
+Esse teste não inclui uma nova lógica de controle. O resultado do planejador será uma sequência de pontos de passagem, e o piloto automático do PX4 continuará responsável por executá-los. Dessa forma, será possível medir a utilidade espacial da percepção sem transformar o trabalho em uma comparação de controladores.
+
+Também podem ser avaliadas funções de perda que deem mais peso aos erros de sinal e aos eventos de maior magnitude, além de modelos temporais que recebam sequências de intervalos. Uma validação cruzada por execuções ampliaria a estimativa da incerteza. Por fim, novos cenários simulados e testes graduais com um VANT real seriam necessários para estudar a transferência do método para condições externas ao ambiente atual.

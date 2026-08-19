@@ -1,0 +1,45 @@
+\chapter{Proposta}\label{cap:proposta}
+
+\section{Posição metodológica}
+
+Este trabalho propõe uma metodologia para organizar e avaliar dados multimodais de um VANT por intervalos visuais. O voo reativo fornece o contexto no qual os dados são produzidos, mas a investigação não busca provar que uma lógica específica de desvio é superior. O objeto de estudo é a informação disponível entre duas atualizações consecutivas da câmera e sua relação com mudanças de proximidade no ambiente.
+
+A posição central é que o aumento da complexidade do modelo deve ocorrer somente depois de uma avaliação controlada da representação, da divisão dos dados, da estabilidade e da origem dos erros. A MLP, os modelos de árvores e o pipeline de eventos funcionam como instrumentos para testar essa posição. Nenhum deles é apresentado como produto final do trabalho.
+
+A metodologia foi organizada para responder às perguntas apresentadas no Capítulo~\ref{cap:introducao}. Para isso, cada execução é tratada como uma unidade experimental, os sinais são sincronizados em uma representação comum e os modelos são avaliados com validação e teste fixos. Também são usados modelos de referência, várias sementes, análise de eventos, atribuição por gradientes e ablação de grupos de entradas.
+
+\section{Unidade de análise}
+
+Uma amostra corresponde ao intervalo entre duas atualizações consecutivas da lógica visual. Em vez de usar posição, atitude ou profundidade absolutas, a representação registra as variações ocorridas no intervalo. Essa escolha aproxima os dados da dinâmica usada pelo controlador e permite comparar sinais que possuem taxas de atualização diferentes.
+
+Cada execução completa permanece em apenas um dos conjuntos de treino, validação ou teste. Assim, intervalos vizinhos de uma mesma trajetória não aparecem em conjuntos diferentes. A separação por execução reduz o risco de medir como generalização aquilo que seria apenas semelhança temporal entre amostras próximas \cite{Kapoor2023}.
+
+\section{Organização dos dados multimodais}
+
+Os dados de cada intervalo são divididos em seis grupos: sincronização; movimento; IMU e atitude; fluxo óptico e risco; diferença de imagem; e comandos reativos. A câmera de profundidade fornece somente a referência para os alvos. Ela não participa do cálculo das entradas, da decisão de voo nem da geração dos comandos.
+
+Os alvos representam deltas dos percentis P10, P50 e P90 da profundidade, em metros, e deltas da porcentagem de pixels abaixo de 2, 5 e 10~m, em pontos percentuais. Dessa forma, o modelo tenta estimar como a distribuição de profundidade mudou durante o intervalo, e não reconstruir um mapa de profundidade completo.
+
+O alvo de pixels abaixo de 5~m recebe uma análise adicional. Ele representa a mudança da área próxima no campo visual e permite separar o problema em duas partes: reconhecer quando ocorreu uma mudança relevante e estimar seu sinal e sua magnitude.
+
+\section{Estratégia de avaliação}
+
+A primeira pergunta de pesquisa é avaliada por uma curva de aprendizado. Os conjuntos de validação e teste permanecem fixos, enquanto novas execuções entram somente no treino. Esse desenho permite associar as mudanças de desempenho ao aumento dos dados de treinamento sem trocar os casos usados na avaliação.
+
+A segunda pergunta usa treinamentos com cinco sementes e a comparação da MLP com Random Forest, Extra Trees e uma previsão constante baseada na média do treino. A análise considera MAE, RMSE e correlação nas unidades originais. O objetivo não é escolher um vencedor isolado, mas verificar a estabilidade dos resultados e a dificuldade de cada alvo.
+
+A terceira pergunta combina duas análises. Os gradientes medem a sensibilidade local do erro em relação às entradas. A ablação treina novamente a rede após retirar um grupo de variáveis e mede a mudança do MAE. A primeira técnica ajuda a localizar entradas influentes; a segunda verifica se o grupo realmente contribui para a generalização.
+
+A quarta pergunta usa um modelo em duas etapas para o alvo de pixels abaixo de 5~m. Um classificador identifica eventos e um regressor estima a mudança. Um diagnóstico adicional fornece ao regressor a indicação correta dos eventos. A diferença entre esse diagnóstico e o pipeline completo permite estimar quanto do erro vem da classificação e quanto permanece na regressão.
+
+A quinta pergunta acrescenta uma validação espacial. Uma estimativa densa de profundidade é reprojetada em três dimensões e transformada para o referencial local com a pose da câmera. As observações formam uma grade de ocupação, com expansão das regiões ocupadas por uma margem de segurança. O mesmo A* é executado no mapa estimado e em um mapa ideal construído com a profundidade do Gazebo. A comparação mede se os erros da percepção alteram a disponibilidade, a segurança ou o custo do caminho.
+
+\section{Reprodutibilidade}
+
+O repositório possui dois pontos centrais. O arquivo \texttt{main.py} executa o nó ROS~2 responsável pelo voo e pela coleta. O notebook \path{estudos_e_analises/estudo_das_metricas.ipynb} lê os dados, aplica os critérios de validade, treina os modelos e gera as tabelas e figuras.
+
+O código está disponível no \href{https://github.com/Gabriel-Panza/TCC_Drone}{GitHub}. A branch \texttt{main} contém a versão final analisada. Os arquivos brutos das 40 execuções não foram publicados devido ao volume ocupado por registros, imagens e mapas de profundidade. O notebook versionado mantém o código, as configurações e as saídas da análise final.
+
+\section{Considerações finais}
+
+A proposta reúne coleta, sincronização e avaliação em um único fluxo. O crescimento controlado do treino responde ao efeito da quantidade de dados; sementes e modelos de referência verificam a estabilidade; gradientes e ablação mostram como os grupos de entrada participam da estimativa; e o modelo em duas etapas localiza a principal fonte de erro nos eventos de proximidade. A validação espacial verifica se a informação também sustenta uma decisão concreta sem avaliar o controlador. Juntas, essas etapas formam o protocolo usado para sustentar ou limitar a posição defendida. O próximo capítulo apresenta sua implementação.

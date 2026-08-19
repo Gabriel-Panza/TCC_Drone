@@ -1,0 +1,77 @@
+\chapter{Fundamentação Teórica}\label{cap:fundamentacao}
+
+Este capítulo apresenta os conceitos usados na construção e na análise do conjunto de dados. A discussão cobre navegação visual, visão monocular, fluxo óptico, representação tridimensional, aprendizado com dados tabulares e explicabilidade.
+
+\section{Navegação visual em drones}
+
+A navegação autônoma integra percepção, decisão e controle. Em ambientes densos, imagens de drones podem apresentar oclusões, objetos finos, mudanças de iluminação, vibração e borramento. Em voos rápidos, a informação também precisa chegar a tempo de permitir uma reação \cite{Loquercio2021,Ramachandran2021}.
+
+Abordagens tradicionais dividem o problema em percepção, mapeamento, planejamento e controle. Essa organização facilita o desenvolvimento, mas pode introduzir latência e acumular erros. Estratégias reativas aproximam a percepção da ação e são úteis para produzir respostas rápidas, embora não substituam todas as funções de um sistema de navegação.
+
+\section{Visão monocular e profundidade}
+
+Uma câmera monocular registra a cena em duas dimensões e não preserva diretamente a escala métrica. A profundidade precisa ser inferida por perspectiva, textura, tamanho relativo, sombreamento, movimento ou conhecimento aprendido \cite{Vyas2022,Arampatzakis2024}. Modelos recentes alcançam bons resultados, mas ainda enfrentam problemas de generalização, incerteza e custo computacional \cite{RealTimeMonocular2022,Liu2023,Dhanushkodi2025}.
+
+Neste estudo, a profundidade sintética não é uma entrada. Ela permite calcular a variação real dos percentis P10, P50 e P90 e da porcentagem de pixels abaixo de 2, 5 e 10~m. Dessa forma, os sinais monoculares e inerciais são avaliados contra uma referência conhecida sem fornecer essa resposta ao modelo.
+
+\section{Representação tridimensional e planejamento}
+
+Um mapa de profundidade associa uma distância a cada pixel, mas essas distâncias ainda estão no referencial da câmera. Com os parâmetros intrínsecos, cada pixel pode ser reprojetado como um ponto tridimensional. A pose da câmera permite transformar esses pontos para um referencial comum e acumular observações ao longo do voo. Uma grade de ocupação divide o espaço em células livres, ocupadas ou ainda não observadas. Estruturas baseadas em octrees permitem representar esse tipo de mapa com diferentes níveis de resolução \cite{Hornung2013}.
+
+Depois da construção do mapa, o algoritmo A* procura um caminho de menor custo em um grafo usando o custo já percorrido e uma heurística até o destino \cite{Hart1968}. Neste trabalho, esse planejamento não substitui o controle de voo. Ele serve como teste posterior: se a representação construída a partir da percepção não distingue espaço livre e obstáculos, o planejador também não conseguirá produzir um caminho seguro. Para reduzir o risco de colisão, as células ocupadas devem receber uma margem compatível com o tamanho do drone e com a incerteza da estimativa.
+
+\section{Fluxo óptico e movimento visual}
+
+O fluxo óptico descreve o deslocamento aparente de pontos ou regiões entre quadros. Lucas--Kanade estima deslocamentos locais \cite{LucasKanade1981}, enquanto Shi--Tomasi seleciona pontos adequados ao rastreamento \cite{ShiTomasi1994}. Obstáculos próximos tendem a produzir movimento aparente maior durante o avanço, mas o fluxo também depende da rotação, da translação e da geometria da cena.
+
+Resolução, frequência, borramento e incerteza das correspondências afetam a qualidade do sinal \cite{SimoneGodio2022,Peidong2021,Estimation2109}. Por isso, o fluxo deve ser analisado junto à atitude e ao movimento do veículo. Essa combinação também aparece em odometria visual e em sistemas de prevenção de colisões \cite{Tarrio2015,Garcia2016,Xiao2021}.
+
+\section{Aprendizado com dados tabulares}
+
+Uma MLP permite verificar se atributos resumidos contêm informação suficiente para estimar os alvos sem processar a imagem completa. A rede aprende relações não lineares entre os atributos, mas pode apresentar sobreajuste em conjuntos pequenos. O \textit{dropout} e a parada antecipada ajudam a limitar esse problema \cite{Srivastava2014,Prechelt1998}.
+
+Modelos de árvores são referências importantes porque costumam ter bom desempenho em bases tabulares de tamanho moderado \cite{OyallonandGaelVaroquaux5220}. Uma comparação justa também precisa incluir um modelo simples, como a previsão constante da média do treino. Se um modelo complexo não supera essa referência, o resultado indica que a distribuição do alvo ainda favorece previsões próximas de zero.
+
+\section{Explicabilidade e ablação}
+
+Gradientes em relação às entradas mostram como o erro muda perto de uma amostra. Integrated Gradients é uma referência para métodos de atribuição baseados em gradiente \cite{Sundararajan2017}, e trabalhos posteriores discutem suas propriedades e limitações \cite{Walker5289,Axiomatic2025}. Como as entradas deste estudo são tabulares, a análise atribui importância aos atributos, e não a regiões da imagem como no Grad-CAM.
+
+A ablação responde a outra pergunta: o que acontece quando um grupo de entradas é removido e o modelo é treinado novamente? O gradiente mede sensibilidade local; a ablação mede a mudança no desempenho. Os dois resultados podem divergir quando há redundância entre os sinais.
+
+\section{Simulação e reprodutibilidade}
+
+O Gazebo permite configurar física, cenário e sensores \cite{Koenig7803}, enquanto o PX4 fornece o piloto automático e a interface com aplicações externas \cite{Meier8092}. No modo \textit{Software in the Loop} (SITL), o sistema pode repetir a missão e registrar uma referência de profundidade sem colocar um veículo físico em risco.
+
+Mesmo assim, processos concorrentes e pequenas diferenças temporais podem produzir trajetórias distintas. Por isso, cada voo completo é tratado como uma unidade experimental, e a divisão dos dados ocorre por execução.
+
+\chapter{Trabalhos Relacionados}\label{cap:relacionados}
+
+\section{Organização da revisão}
+
+A revisão reuniu trabalhos sobre navegação de drones, profundidade monocular, fluxo óptico, integração visual-inercial, aprendizado aplicado à percepção e explicabilidade. A busca priorizou artigos recentes e referências clássicas necessárias para explicar os métodos utilizados. A seleção não é apresentada como uma revisão sistemática; seu objetivo é posicionar a pergunta investigada e comparar escolhas próximas às deste trabalho.
+
+\section{Navegação e desvio com visão}
+
+Loquercio et al. aproximam percepção e planejamento para realizar voos rápidos em ambientes naturais e artificiais \cite{Loquercio2021}. Richter, Vega-Brown e Roy tratam a incerteza sobre regiões ainda não observadas durante a navegação \cite{BayesianLearning2015}. Bhattacharya et al. usam visão monocular baseada em eventos para desvio reativo \cite{Bhattacharya2024}.
+
+Esses trabalhos avaliam o comportamento de sistemas de navegação ou políticas de voo. O presente estudo usa a navegação reativa como fonte de dados, mas concentra a avaliação na relação entre sinais sincronizados e mudanças de proximidade.
+
+\section{Profundidade monocular}
+
+Revisões recentes organizam métodos de profundidade monocular e apontam avanços em redes profundas \cite{Vyas2022,Arampatzakis2024,Dhanushkodi2025}. Dong et al. discutem o equilíbrio entre precisão, robustez e velocidade em aplicações em tempo real \cite{RealTimeMonocular2022}. Liu et al. tratam a incerteza da estimativa \cite{Liu2023}.
+
+Diferentemente desses trabalhos, a primeira etapa desta pesquisa não tenta produzir diretamente um mapa completo de profundidade a partir da imagem. Ela usa a profundidade do simulador como referência para avaliar se atributos mais simples acompanham sua variação temporal. A etapa espacial acrescenta um teste de utilidade: verificar se uma estimativa densa, avaliada contra essa referência, preserva informação suficiente para formar um mapa de ocupação e planejar um caminho.
+
+\section{Fluxo óptico e informação inercial}
+
+Xiao et al. combinam divergência de fluxo e dados inerciais para prevenir colisões \cite{Xiao2021}. Hu et al. aprendem o desvio a partir do movimento dos pixels \cite{PixelMotion2025}, enquanto Deng et al. combinam fluxo translacional e uma máscara de incerteza \cite{Deng2026}. Ng, Li e Kim analisam a incerteza das correspondências do fluxo \cite{Estimation2109}.
+
+Esses estudos mostram que o fluxo carrega informação de movimento e proximidade, mas também reforçam a necessidade de considerar o movimento próprio. A diferença deste trabalho está no protocolo de dados: fluxo, IMU, deslocamento, comandos e profundidade de referência são reunidos no mesmo intervalo e avaliados por grupos.
+
+\section{Posicionamento do trabalho}
+
+A literatura avança principalmente pela criação de estimadores de profundidade, políticas de voo e mecanismos de desvio. Esses trabalhos mostram o potencial da visão monocular, mas também relatam ruído, dependência do movimento próprio, custo computacional e dificuldade de generalização. Há espaço, portanto, para estudos que examinem os dados antes de aumentar a complexidade do modelo.
+
+A posição defendida nesta pesquisa é que essa análise anterior deve fazer parte do desenvolvimento de sistemas de navegação aprendidos. A contribuição não é um novo controlador nem um algoritmo de planejamento. O trabalho propõe e aplica uma metodologia experimental para estudar dados multimodais produzidos durante a navegação. A avaliação controla as execuções de validação e teste, acompanha o crescimento do treino, compara modelos e investiga os erros por eventos, gradientes e ablação. O mapa tridimensional e o A* acrescentam uma verificação posterior da utilidade prática dos sinais, sem deslocar o foco da análise experimental.
+
+Esse posicionamento interessa a pesquisadores de navegação autônoma, visão computacional e aprendizado de máquina aplicado à robótica. Ele permite responder não apenas se um modelo alcança determinado MAE, mas também se o ganho permanece com mais dados, se depende da inicialização, quais sinais sustentam a previsão e em que ponto uma nova arquitetura realmente passa a ser necessária.
