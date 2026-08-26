@@ -1,6 +1,7 @@
 """Orquestracao independente de ROS para mapeamento e planejamento espacial."""
 
 from dataclasses import dataclass, field
+from itertools import product
 from math import sqrt
 from time import perf_counter
 
@@ -17,14 +18,25 @@ class SpatialNavigationConfig:
 
     voxel_resolution_m: float = 0.75
     depth_stride: int = 40
+    depth_edge_stride: int | None = None
+    depth_edge_relative_threshold: float = 0.10
     min_depth_m: float = 0.5
     max_depth_m: float = 30.0
+    depth_free_space_margin_m: float = 0.0
+    depth_occupied_uncertainty_m: float = 0.0
+    free_observations_required: int = 1
+    occupied_observations_required: int = 1
+    occupied_support_radius_voxels: int = 0
+    pending_clear_free_observations_required: int = 3
+    occupied_evidence_window_frames: int = 6
     obstacle_vertical_band_m: float = 1.5
     drone_clearance_radius_m: float = 1.25
+    drone_vertical_clearance_m: float | None = None
     known_free_radius_m: float = 0.8
     local_plan_radius_m: float = 20.0
     min_subgoal_progress_m: float = 0.5
     vertical_tolerance_m: float = 1.5
+    lock_path_altitude_to_goal: bool = False
     max_waypoint_spacing_m: float = 5.0
     frontier_standoff_m: float = 2.5
     connectivity: int = 26
@@ -32,10 +44,39 @@ class SpatialNavigationConfig:
     def __post_init__(self):
         if self.depth_stride < 1:
             raise ValueError("depth_stride deve ser maior ou igual a 1")
+        if self.depth_edge_stride is not None and self.depth_edge_stride < 1:
+            raise ValueError("depth_edge_stride deve ser maior ou igual a 1")
+        if self.depth_edge_relative_threshold <= 0:
+            raise ValueError(
+                "depth_edge_relative_threshold deve ser positivo"
+            )
         if self.max_depth_m <= self.min_depth_m:
             raise ValueError("max_depth_m deve ser maior que min_depth_m")
+        if self.depth_free_space_margin_m < 0:
+            raise ValueError("depth_free_space_margin_m nao pode ser negativo")
+        if self.depth_occupied_uncertainty_m < 0:
+            raise ValueError("depth_occupied_uncertainty_m nao pode ser negativo")
+        if self.free_observations_required < 1:
+            raise ValueError("free_observations_required deve ser maior ou igual a 1")
+        if not 1 <= self.occupied_observations_required <= 4:
+            raise ValueError(
+                "occupied_observations_required deve estar entre 1 e 4"
+            )
+        if self.occupied_support_radius_voxels < 0:
+            raise ValueError("occupied_support_radius_voxels nao pode ser negativo")
+        if self.pending_clear_free_observations_required < 1:
+            raise ValueError(
+                "pending_clear_free_observations_required deve ser positivo"
+            )
+        if self.occupied_evidence_window_frames < 1:
+            raise ValueError("occupied_evidence_window_frames deve ser positivo")
         if self.obstacle_vertical_band_m <= 0:
             raise ValueError("obstacle_vertical_band_m deve ser positivo")
+        if (
+            self.drone_vertical_clearance_m is not None
+            and self.drone_vertical_clearance_m <= 0
+        ):
+            raise ValueError("drone_vertical_clearance_m deve ser positivo")
         if self.local_plan_radius_m <= 0:
             raise ValueError("local_plan_radius_m deve ser positivo")
         if self.vertical_tolerance_m <= 0:
@@ -61,6 +102,7 @@ class SpatialPlan:
     frontier_standoff_applied_m: float = 0.0
     adopted_for_execution: bool | None = None
     planning_time_ms: float = 0.0
+    diagnostics: dict = field(default_factory=dict)
 
 
 class SpatialNavigator:
@@ -68,14 +110,40 @@ class SpatialNavigator:
 
     def __init__(self, config=None):
         self.config = config or SpatialNavigationConfig()
+        free_decrement = OccupancyGridConfig.free_decrement
+        occupied_increment = OccupancyGridConfig.occupied_increment
         occupancy_config = OccupancyGridConfig(
             resolution_m=self.config.voxel_resolution_m,
-            free_threshold=-0.35,
+            occupied_threshold=(
+                OccupancyGridConfig.occupied_threshold
+                + (self.config.occupied_observations_required - 1)
+                * occupied_increment
+            ),
+            free_threshold=(
+                -0.35
+                - (self.config.free_observations_required - 1) * free_decrement
+            ),
+            occupied_observations_required=(
+                self.config.occupied_observations_required
+            ),
+            occupied_support_radius_voxels=(
+                self.config.occupied_support_radius_voxels
+            ),
+            pending_clear_free_observations_required=(
+                self.config.pending_clear_free_observations_required
+            ),
+            occupied_evidence_window_frames=self.config.occupied_evidence_window_frames,
         )
         self.grid = OccupancyGrid3D(occupancy_config)
         self.frames_integrated = 0
 
-    def integrate_depth(self, depth_m, intrinsics, camera_to_ned):
+    def integrate_depth(
+        self,
+        depth_m,
+        intrinsics,
+        camera_to_ned,
+        sampling_edge_mask=None,
+    ):
         """Reprojeta e integra um frame, retornando estatisticas da atualizacao."""
 
         if not isinstance(intrinsics, CameraIntrinsics):
@@ -84,35 +152,63 @@ class SpatialNavigator:
             depth_m,
             intrinsics,
             stride=self.config.depth_stride,
+            edge_stride=self.config.depth_edge_stride,
+            edge_relative_threshold=self.config.depth_edge_relative_threshold,
+            sampling_edge_mask=sampling_edge_mask,
             min_depth_m=self.config.min_depth_m,
             max_depth_m=self.config.max_depth_m,
         )
         camera_to_ned = np.asarray(camera_to_ned, dtype=np.float64)
         points_ned = transform_points(points_camera, camera_to_ned)
         camera_origin_ned = camera_to_ned[:3, 3]
-        points_before_vertical_filter = len(points_ned)
-        points_ned = points_ned[
+        obstacle_endpoint_mask = (
             np.abs(points_ned[:, 2] - camera_origin_ned[2])
             <= self.config.obstacle_vertical_band_m
-        ]
+        )
         self.grid.mark_free_sphere(
             camera_origin_ned,
             self.config.known_free_radius_m,
         )
-        self.grid.integrate_points(
+        self.grid.integrate_rays(
             camera_origin_ned,
             points_ned,
+            obstacle_endpoint_mask,
             max_range_m=self.config.max_depth_m,
+            free_space_margin_m=self.config.depth_free_space_margin_m,
+            occupied_uncertainty_m=self.config.depth_occupied_uncertainty_m,
         )
+        ego_voxel_cleared_occupied = self.grid.mark_ego_voxel_free(
+            camera_origin_ned
+        )
+        points_integrated = int(np.count_nonzero(obstacle_endpoint_mask))
+        free_only_rays = int(len(points_ned) - points_integrated)
         self.frames_integrated += 1
         return {
             "frame_index": self.frames_integrated,
-            "points_integrated": int(len(points_ned)),
-            "points_rejected_vertical": int(
-                points_before_vertical_filter - len(points_ned)
+            "points_integrated": points_integrated,
+            "points_rejected_vertical": free_only_rays,
+            "free_only_rays": free_only_rays,
+            "total_valid_rays": int(len(points_ned)),
+            "ego_voxel_cleared_occupied": bool(
+                ego_voxel_cleared_occupied
             ),
             "free_voxels": int(len(self.grid.free_voxels())),
             "occupied_voxels": int(len(self.grid.occupied_voxels())),
+            "pending_occupied_voxels": int(
+                len(self.grid.pending_occupied_voxels())
+            ),
+            "occupied_observations_required": int(
+                self.config.occupied_observations_required
+            ),
+            "occupied_support_radius_voxels": int(
+                self.config.occupied_support_radius_voxels
+            ),
+            "pending_clear_free_observations_required": int(
+                self.config.pending_clear_free_observations_required
+            ),
+            "occupied_evidence_window_frames": int(
+                self.config.occupied_evidence_window_frames
+            ),
         }
 
     def plan(self, current_position_ned_m, requested_goal_ned_m):
@@ -124,10 +220,38 @@ class SpatialNavigator:
         if current.shape != (3,) or requested_goal.shape != (3,):
             raise ValueError("posicao e destino devem possuir tres coordenadas")
 
-        blocked = self.grid.inflated_occupied_voxels(
-            self.config.drone_clearance_radius_m
-        )
-        current_layer = self.grid.world_to_voxel(current)[2]
+        ego_voxel_cleared_occupied = self.grid.mark_ego_voxel_free(current)
+        blocked = self._inflated_obstacles()
+        current_voxel = self.grid.world_to_voxel(current)
+        neighbor_states = {"free": 0, "occupied": 0, "unknown": 0}
+        blocked_neighbors = 0
+        for offset in product((-1, 0, 1), repeat=3):
+            if offset == (0, 0, 0):
+                continue
+            neighbor = tuple(
+                current_voxel[axis] + offset[axis] for axis in range(3)
+            )
+            neighbor_states[self.grid.state(neighbor)] += 1
+            blocked_neighbors += int(neighbor in blocked)
+        diagnostics = {
+            "current_position_ned_m": tuple(current),
+            "requested_goal_ned_m": tuple(requested_goal),
+            "current_voxel": current_voxel,
+            "current_voxel_state": self.grid.state(current_voxel),
+            "current_voxel_inflated": current_voxel in blocked,
+            "ego_voxel_cleared_occupied_at_plan": bool(
+                ego_voxel_cleared_occupied
+            ),
+            "clearance_horizontal_m": self.config.drone_clearance_radius_m,
+            "clearance_vertical_m": (
+                self.config.drone_vertical_clearance_m
+                if self.config.drone_vertical_clearance_m is not None
+                else self.config.drone_clearance_radius_m
+            ),
+            "neighbor_states_26": neighbor_states,
+            "blocked_neighbors_26": blocked_neighbors,
+        }
+        current_layer = current_voxel[2]
         goal_layer = self.grid.world_to_voxel(requested_goal)[2]
         layer_margin = int(
             np.floor(
@@ -142,12 +266,25 @@ class SpatialNavigator:
             for voxel in self.grid.free_voxels() - blocked
             if min_layer <= voxel[2] <= max_layer
         }
-        start = self._nearest_voxel(self.grid.world_to_voxel(current), traversable)
+        if self.config.lock_path_altitude_to_goal:
+            min_layer = goal_layer
+            max_layer = goal_layer
+            traversable = {
+                voxel for voxel in traversable if voxel[2] == goal_layer
+            }
+        diagnostics["traversable_voxels"] = len(traversable)
+        diagnostics["vertical_layer_range"] = (min_layer, max_layer)
+        diagnostics["path_altitude_locked_to_goal"] = bool(
+            self.config.lock_path_altitude_to_goal
+        )
+        start = self._nearest_voxel(current_voxel, traversable)
+        diagnostics["start_voxel"] = start
         if start is None:
             return self._failure(
                 requested_goal,
                 "sem espaco livre ao redor do drone",
                 self._elapsed_ms(started),
+                diagnostics,
             )
 
         planner = AStar3D(
@@ -156,6 +293,9 @@ class SpatialNavigator:
             connectivity=self.config.connectivity,
         )
         reachable = planner.reachable_from(start)
+        max_progress = self._max_progress(current, requested_goal, reachable)
+        diagnostics["reachable_voxels"] = len(reachable)
+        diagnostics["max_reachable_progress_m"] = max_progress
 
         requested_goal_voxel = self.grid.world_to_voxel(requested_goal)
         if requested_goal_voxel in reachable:
@@ -167,11 +307,6 @@ class SpatialNavigator:
                 reachable,
             )
         if selected_goal is None or selected_goal == start:
-            max_progress = self._max_progress(
-                current,
-                requested_goal,
-                reachable,
-            )
             return self._failure(
                 requested_goal,
                 (
@@ -180,6 +315,7 @@ class SpatialNavigator:
                     f"max_progresso={max_progress:.2f}m)"
                 ),
                 self._elapsed_ms(started),
+                diagnostics,
             )
 
         try:
@@ -189,6 +325,7 @@ class SpatialNavigator:
                 requested_goal,
                 str(error),
                 self._elapsed_ms(started),
+                diagnostics,
             )
 
         shortcut = self._shortcut_path(path, traversable, blocked)
@@ -196,6 +333,15 @@ class SpatialNavigator:
         waypoints = self._densify_waypoints(
             [self.grid.voxel_to_world(voxel) for voxel in compressed]
         )
+        if self.config.lock_path_altitude_to_goal:
+            waypoints = [
+                (float(point[0]), float(point[1]), float(requested_goal[2]))
+                for point in waypoints
+            ]
+            diagnostics["commanded_altitude_ned_m"] = float(requested_goal[2])
+        raw_path_length_m = self._path_length(path)
+        shortcut_path_length_m = self._path_length(shortcut)
+        smoothed_path_length_m = self._waypoint_length([current, *waypoints])
         reason = (
             "goal_observed"
             if selected_goal == requested_goal_voxel
@@ -207,17 +353,34 @@ class SpatialNavigator:
                 current,
                 waypoints,
             )
+        post_standoff_path_length_m = self._waypoint_length([current, *waypoints])
+        diagnostics.update(
+            {
+                "selected_goal_voxel": selected_goal,
+                "raw_path_voxels": len(path),
+                "shortcut_path_voxels": len(shortcut),
+                "compressed_path_voxels": len(compressed),
+                "shortcut_path_length_m": shortcut_path_length_m,
+                "smoothed_path_length_m": smoothed_path_length_m,
+                "post_standoff_path_length_m": post_standoff_path_length_m,
+            }
+        )
+        selected_goal_ned_m = self.grid.voxel_to_world(selected_goal)
+        if self.config.lock_path_altitude_to_goal:
+            selected_goal_ned_m = selected_goal_ned_m.copy()
+            selected_goal_ned_m[2] = requested_goal[2]
         return SpatialPlan(
             success=True,
             reason=reason,
             requested_goal_ned_m=tuple(requested_goal),
-            selected_goal_ned_m=tuple(self.grid.voxel_to_world(selected_goal)),
+            selected_goal_ned_m=tuple(selected_goal_ned_m),
             path_voxels=path,
             waypoints_ned_m=waypoints,
-            path_length_m=self._waypoint_length([current, *waypoints]),
-            raw_path_length_m=self._path_length(path),
+            path_length_m=post_standoff_path_length_m,
+            raw_path_length_m=raw_path_length_m,
             frontier_standoff_applied_m=frontier_standoff_applied_m,
             planning_time_ms=self._elapsed_ms(started),
+            diagnostics=diagnostics,
         )
 
     def export_map(self):
@@ -240,9 +403,7 @@ class SpatialNavigator:
         if len(points) < 2:
             return False
 
-        blocked = self.grid.inflated_occupied_voxels(
-            self.config.drone_clearance_radius_m
-        )
+        blocked = self._inflated_obstacles()
         free = self.grid.free_voxels()
         for start, end in zip(points, points[1:]):
             for voxel in self.grid._ray_voxels(start, end):
@@ -250,16 +411,69 @@ class SpatialNavigator:
                     return False
         return True
 
+    def path_avoids_obstacles_allowing_initial_escape(
+        self, current_position_ned_m, waypoints_ned_m
+    ):
+        """Permite sair de inflacao inicial, mas proibe reentrada posterior."""
+
+        points = [np.asarray(current_position_ned_m, dtype=float)] + [
+            np.asarray(point, dtype=float) for point in waypoints_ned_m
+        ]
+        if len(points) < 2:
+            return False
+        path_voxels = []
+        for start, end in zip(points, points[1:]):
+            for voxel in self.grid._ray_voxels(start, end):
+                if not path_voxels or voxel != path_voxels[-1]:
+                    path_voxels.append(voxel)
+        blocked = self._inflated_obstacles()
+        reached_free = False
+        for voxel in path_voxels:
+            if voxel in blocked:
+                if reached_free:
+                    return False
+            else:
+                reached_free = True
+        return reached_free
+
+    def first_obstacle_reentry_voxel(
+        self, current_position_ned_m, waypoints_ned_m
+    ):
+        """Retorna o primeiro voxel inflado reentrado apos sair da inflacao."""
+
+        points = [np.asarray(current_position_ned_m, dtype=float)] + [
+            np.asarray(point, dtype=float) for point in waypoints_ned_m
+        ]
+        if len(points) < 2:
+            return None
+        blocked = self._inflated_obstacles()
+        reached_free = False
+        previous_voxel = None
+        for start, end in zip(points, points[1:]):
+            for voxel in self.grid._ray_voxels(start, end):
+                if voxel == previous_voxel:
+                    continue
+                previous_voxel = voxel
+                if voxel in blocked:
+                    if reached_free:
+                        return voxel
+                else:
+                    reached_free = True
+        return None
+
     def position_is_safe(self, position_ned_m):
         """Confirma que uma posicao pertence ao espaco livre fora da inflacao."""
 
         voxel = self.grid.world_to_voxel(position_ned_m)
         return (
             voxel in self.grid.free_voxels()
-            and voxel
-            not in self.grid.inflated_occupied_voxels(
-                self.config.drone_clearance_radius_m
-            )
+            and voxel not in self._inflated_obstacles()
+        )
+
+    def _inflated_obstacles(self):
+        return self.grid.inflated_occupied_voxels(
+            self.config.drone_clearance_radius_m,
+            self.config.drone_vertical_clearance_m,
         )
 
     def _select_local_subgoal(self, current, requested_goal, traversable):
@@ -405,12 +619,13 @@ class SpatialNavigator:
         return reserved, applied
 
     @staticmethod
-    def _failure(requested_goal, reason, planning_time_ms=0.0):
+    def _failure(requested_goal, reason, planning_time_ms=0.0, diagnostics=None):
         return SpatialPlan(
             success=False,
             reason=reason,
             requested_goal_ned_m=tuple(requested_goal),
             planning_time_ms=float(planning_time_ms),
+            diagnostics=dict(diagnostics or {}),
         )
 
     @staticmethod

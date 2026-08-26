@@ -2,7 +2,7 @@
 
 from heapq import heappop, heappush
 from itertools import combinations, product
-from math import sqrt
+from math import gcd, sqrt
 
 
 Voxel = tuple[int, int, int]
@@ -137,10 +137,16 @@ def compress_collinear_path(path):
     compressed = [path[0]]
     previous_direction = None
     for index in range(1, len(path)):
-        direction = tuple(
-            int(path[index][axis] > path[index - 1][axis])
-            - int(path[index][axis] < path[index - 1][axis])
+        delta = tuple(
+            path[index][axis] - path[index - 1][axis]
             for axis in range(3)
+        )
+        divisor = 0
+        for component in delta:
+            divisor = gcd(divisor, abs(component))
+        direction = tuple(
+            component // max(1, divisor)
+            for component in delta
         )
         if previous_direction is not None and direction != previous_direction:
             compressed.append(path[index - 1])

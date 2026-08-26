@@ -2,10 +2,13 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.signals import SignalHandlerOptions
 from px4_msgs.msg import VehicleOdometry
 import json
 import numpy as np
 import os
+import signal
+import time
 from datetime import datetime
 from drone_controller import DroneOffboardNode
 
@@ -301,7 +304,7 @@ def main(args=None):
     [ROS 2 rclpy] https://docs.ros.org/en/humble/p/rclpy/
     """
 
-    rclpy.init(args=args)
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     
     controller_node = DroneOffboardNode()
     logger_node = DataLogger(controller_node)
@@ -309,12 +312,39 @@ def main(args=None):
     executor.add_node(controller_node)
     executor.add_node(logger_node)
     
+    stop_requested = False
+
+    def request_stop(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+
     try:
         controller_node.get_logger().info('Iniciando Controlador e Gravador de Dados simultaneamente...')
-        executor.spin()
-    except KeyboardInterrupt:
-        controller_node.get_logger().info('Processo encerrado pelo usuário (Ctrl+C).')
-        logger_node.get_logger().info('Finalizando a gravação do voo...')
+        while rclpy.ok() and not stop_requested:
+            executor.spin_once(timeout_sec=0.2)
+        if stop_requested:
+            controller_node.get_logger().info(
+                'Encerramento solicitado; iniciando sequencia segura.'
+            )
+            logger_node.get_logger().info('Finalizando a gravação do voo...')
+            if (
+                controller_node.spatial_execute_path
+                and not controller_node.missao_concluida
+            ):
+                controller_node.get_logger().warning(
+                    'Interrupcao em voo: solicitando pouso ao PX4 antes de desmontar os nos.'
+                )
+                deadline = time.monotonic() + 8.0
+                next_land_command = 0.0
+                while rclpy.ok() and time.monotonic() < deadline:
+                    now = time.monotonic()
+                    if now >= next_land_command:
+                        controller_node.land()
+                        next_land_command = now + 1.0
+                    executor.spin_once(timeout_sec=0.25)
     except ExternalShutdownException:
         controller_node.get_logger().info('Encerramento automatico da missao solicitado.')
         logger_node.get_logger().info('Finalizando a gravacao do voo...')

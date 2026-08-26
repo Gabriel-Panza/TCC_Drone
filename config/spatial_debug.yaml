@@ -2,6 +2,7 @@ drone_offboard_node:
   ros__parameters:
     navigation_mode: spatial_astar
     spatial_execute_path: false
+    spatial_reference_safety_veto: false
     spatial_depth_source: ground_truth_debug
     ground_truth_depth_topic: /sim_depth_ground_truth
     save_ground_truth_dataset: false
@@ -10,16 +11,26 @@ drone_offboard_node:
     spatial_show_topdown: true
     spatial_collect_legacy_metrics: false
     spatial_process_every_n: 10
+    spatial_min_mapping_frames_before_plan: 4
     spatial_voxel_resolution_m: 0.75
     spatial_depth_stride: 35
     spatial_min_depth_m: 0.5
     spatial_max_depth_m: 30.0
+    spatial_depth_free_space_margin_m: 0.0
+    spatial_depth_occupied_uncertainty_m: 0.0
+    spatial_free_observations_required: 1
+    spatial_occupied_observations_required: 1
+    spatial_occupied_support_radius_voxels: 0
+    spatial_pending_clear_free_observations_required: 3
+    spatial_occupied_evidence_window_frames: 6
     spatial_obstacle_vertical_band_m: 0.8
     spatial_clearance_radius_m: 1.25
+    spatial_vertical_clearance_m: 0.4
     spatial_known_free_radius_m: 0.8
     spatial_local_plan_radius_m: 25.0
     spatial_min_subgoal_progress_m: 0.5
     spatial_vertical_tolerance_m: 0.5
+    spatial_lock_path_altitude_to_goal: true
     spatial_max_waypoint_spacing_m: 6.0
     spatial_frontier_standoff_m: 2.5
     spatial_connectivity: 26
@@ -32,7 +43,9 @@ drone_offboard_node:
     spatial_short_plan_recovery_threshold: 3
     spatial_wait_scan_amplitude_deg: 45.0
     spatial_wait_scan_period_s: 6.0
+    spatial_wait_scan_max_duration_s: 18.0
     spatial_waypoint_acceptance_radius_m: 0.8
+    spatial_strict_entry_acceptance_radius_m: 0.2
     spatial_global_goal_acceptance_radius_m: 1.5
     spatial_takeoff_altitude_m: 1.6
     spatial_takeoff_acceptance_radius_m: 0.2

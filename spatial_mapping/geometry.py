@@ -38,6 +38,9 @@ def backproject_depth(
     intrinsics,
     *,
     stride=1,
+    edge_stride=None,
+    edge_relative_threshold=0.10,
+    sampling_edge_mask=None,
     min_depth_m=0.1,
     max_depth_m=np.inf,
 ):
@@ -45,7 +48,9 @@ def backproject_depth(
 
     O referencial segue a convencao optica do ROS: X aponta para a direita, Y para
     baixo e Z para a frente. Pixels invalidos ou fora do intervalo configurado sao
-    descartados.
+    descartados. Quando edge_stride e informado, descontinuidades relativas de
+    profundidade recebem amostragem adicional para preservar superficies finas.
+    Uma mascara externa (por exemplo, bordas RGB) pode complementar essas bordas.
     """
 
     depth = np.asarray(depth_m, dtype=np.float64)
@@ -53,20 +58,56 @@ def backproject_depth(
         raise ValueError("depth_m deve possuir duas dimensoes")
     if stride < 1:
         raise ValueError("stride deve ser maior ou igual a 1")
+    if edge_stride is not None and edge_stride < 1:
+        raise ValueError("edge_stride deve ser maior ou igual a 1")
+    if edge_relative_threshold <= 0:
+        raise ValueError("edge_relative_threshold deve ser positivo")
+    if sampling_edge_mask is not None:
+        sampling_edge_mask = np.asarray(sampling_edge_mask, dtype=bool)
+        if sampling_edge_mask.shape != depth.shape:
+            raise ValueError("sampling_edge_mask deve possuir o formato de depth_m")
 
     rows, cols = np.indices(depth.shape)
-    rows = rows[::stride, ::stride]
-    cols = cols[::stride, ::stride]
-    sampled_depth = depth[::stride, ::stride]
-
     valid = (
-        np.isfinite(sampled_depth)
-        & (sampled_depth >= min_depth_m)
-        & (sampled_depth <= max_depth_m)
+        np.isfinite(depth)
+        & (depth >= min_depth_m)
+        & (depth <= max_depth_m)
     )
-    z = sampled_depth[valid]
-    x = (cols[valid] - intrinsics.cx) * z / intrinsics.fx
-    y = (rows[valid] - intrinsics.cy) * z / intrinsics.fy
+    sampled = np.zeros(depth.shape, dtype=bool)
+    sampled[::stride, ::stride] = True
+    if edge_stride is not None:
+        edge_mask = np.zeros(depth.shape, dtype=bool)
+        horizontal_valid = valid[:, 1:] & valid[:, :-1]
+        horizontal_scale = np.minimum(depth[:, 1:], depth[:, :-1])
+        horizontal_edge = horizontal_valid & (
+            np.abs(depth[:, 1:] - depth[:, :-1])
+            / np.maximum(horizontal_scale, min_depth_m)
+            >= edge_relative_threshold
+        )
+        edge_mask[:, 1:] |= horizontal_edge
+        edge_mask[:, :-1] |= horizontal_edge
+
+        vertical_valid = valid[1:, :] & valid[:-1, :]
+        vertical_scale = np.minimum(depth[1:, :], depth[:-1, :])
+        vertical_edge = vertical_valid & (
+            np.abs(depth[1:, :] - depth[:-1, :])
+            / np.maximum(vertical_scale, min_depth_m)
+            >= edge_relative_threshold
+        )
+        edge_mask[1:, :] |= vertical_edge
+        edge_mask[:-1, :] |= vertical_edge
+
+        if sampling_edge_mask is not None:
+            edge_mask |= sampling_edge_mask
+
+        edge_lattice = np.zeros(depth.shape, dtype=bool)
+        edge_lattice[::edge_stride, ::edge_stride] = True
+        sampled |= edge_mask & edge_lattice
+
+    selected = valid & sampled
+    z = depth[selected]
+    x = (cols[selected] - intrinsics.cx) * z / intrinsics.fx
+    y = (rows[selected] - intrinsics.cy) * z / intrinsics.fy
     return np.column_stack((x, y, z))
 
 

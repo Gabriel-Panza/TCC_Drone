@@ -20,10 +20,24 @@ class OccupancyGridConfig:
     free_threshold: float = -0.6
     min_log_odds: float = -2.0
     max_log_odds: float = 3.5
+    occupied_observations_required: int = 1
+    occupied_support_radius_voxels: int = 0
+    pending_clear_free_observations_required: int = 3
+    occupied_evidence_window_frames: int = 6
 
     def __post_init__(self):
         if self.resolution_m <= 0:
             raise ValueError("resolution_m deve ser positiva")
+        if self.occupied_observations_required < 1:
+            raise ValueError("occupied_observations_required deve ser positivo")
+        if self.occupied_support_radius_voxels < 0:
+            raise ValueError("occupied_support_radius_voxels nao pode ser negativo")
+        if self.pending_clear_free_observations_required < 1:
+            raise ValueError(
+                "pending_clear_free_observations_required deve ser positivo"
+            )
+        if self.occupied_evidence_window_frames < 1:
+            raise ValueError("occupied_evidence_window_frames deve ser positivo")
 
 
 class OccupancyGrid3D:
@@ -32,6 +46,10 @@ class OccupancyGrid3D:
     def __init__(self, config=None):
         self.config = config or OccupancyGridConfig()
         self._log_odds: dict[Voxel, float] = {}
+        self._integration_frame = 0
+        self._occupied_evidence_frames: dict[Voxel, set[int]] = {}
+        self._pending_free_observations: dict[Voxel, int] = {}
+        self._confirmed_occupied: set[Voxel] = set()
 
     def world_to_voxel(self, point):
         point_array = np.asarray(point, dtype=np.float64)
@@ -44,38 +62,132 @@ class OccupancyGrid3D:
     def integrate_points(self, sensor_origin, obstacle_points, max_range_m=np.inf):
         """Marca como livres os raios observados e como ocupados seus extremos."""
 
-        origin = np.asarray(sensor_origin, dtype=np.float64)
         points = np.asarray(obstacle_points, dtype=np.float64)
+        self.integrate_rays(
+            sensor_origin,
+            points,
+            endpoint_is_occupied=np.ones(len(points), dtype=bool),
+            max_range_m=max_range_m,
+        )
+
+    def integrate_rays(
+        self,
+        sensor_origin,
+        endpoints,
+        endpoint_is_occupied,
+        max_range_m=np.inf,
+        free_space_margin_m=0.0,
+        occupied_uncertainty_m=0.0,
+    ):
+        """Integra espaco livre observado e ocupa apenas extremos selecionados.
+
+        Um retorno de profundidade pode terminar fora da faixa vertical usada para
+        representar obstaculos de voo. Nesse caso, o trecho anterior ao retorno
+        continua sendo uma observacao valida de espaco livre, mas o extremo nao
+        deve ser inserido como obstaculo nessa representacao.
+        """
+
+        origin = np.asarray(sensor_origin, dtype=np.float64)
+        points = np.asarray(endpoints, dtype=np.float64)
+        occupied_mask = np.asarray(endpoint_is_occupied, dtype=bool)
         if origin.shape != (3,):
             raise ValueError("sensor_origin deve possuir tres coordenadas")
         if points.ndim != 2 or points.shape[1] != 3:
-            raise ValueError("obstacle_points deve possuir formato (N, 3)")
+            raise ValueError("endpoints deve possuir formato (N, 3)")
+        if occupied_mask.shape != (len(points),):
+            raise ValueError("endpoint_is_occupied deve possuir formato (N,)")
+        if free_space_margin_m < 0:
+            raise ValueError("free_space_margin_m nao pode ser negativo")
+        if occupied_uncertainty_m < 0:
+            raise ValueError("occupied_uncertainty_m nao pode ser negativo")
 
-        for point in points:
+        self._integration_frame += 1
+        self._expire_old_occupied_evidence()
+        free_observed_this_frame = set()
+        occupied_observed_this_frame = set()
+        for point, mark_endpoint_occupied in zip(points, occupied_mask):
             distance = float(np.linalg.norm(point - origin))
             if not np.isfinite(distance) or distance == 0 or distance > max_range_m:
                 continue
             ray = self._ray_voxels(origin, point)
-            for voxel in ray[:-1]:
-                self._update(voxel, -self.config.free_decrement)
-            self._update(ray[-1], self.config.occupied_increment)
+            if free_space_margin_m > 0:
+                free_distance = max(0.0, distance - free_space_margin_m)
+                free_endpoint = origin + (point - origin) * (
+                    free_distance / distance
+                )
+                free_voxels = self._ray_voxels(origin, free_endpoint)
+            else:
+                free_voxels = ray[:-1]
+            free_observed_this_frame.update(free_voxels)
+            if mark_endpoint_occupied:
+                occupied_start_distance = max(
+                    0.0,
+                    distance - occupied_uncertainty_m,
+                )
+                occupied_start = origin + (point - origin) * (
+                    occupied_start_distance / distance
+                )
+                occupied_observed_this_frame.update(
+                    self._ray_voxels(occupied_start, point)
+                )
+
+        for voxel in free_observed_this_frame - occupied_observed_this_frame:
+            if voxel in self._confirmed_occupied:
+                continue
+            if voxel in self._occupied_evidence_frames:
+                free_count = self._pending_free_observations.get(voxel, 0) + 1
+                self._pending_free_observations[voxel] = free_count
+                if (
+                    free_count
+                    < self.config.pending_clear_free_observations_required
+                ):
+                    continue
+                self._occupied_evidence_frames.pop(voxel, None)
+                self._pending_free_observations.pop(voxel, None)
+            self._update(voxel, -self.config.free_decrement)
+        for voxel in occupied_observed_this_frame:
+            if voxel not in self._confirmed_occupied:
+                self._occupied_evidence_frames.setdefault(voxel, set()).add(
+                    self._integration_frame
+                )
+                self._pending_free_observations.pop(voxel, None)
+            self._update(voxel, self.config.occupied_increment)
+        for voxel in occupied_observed_this_frame:
+            self._confirm_if_supported(voxel)
 
     def occupied_voxels(self):
-        return {
-            voxel
-            for voxel, value in self._log_odds.items()
-            if value >= self.config.occupied_threshold
-        }
+        return set(self._confirmed_occupied)
 
     def free_voxels(self):
+        unavailable = self._confirmed_occupied | set(self._occupied_evidence_frames)
         return {
             voxel
             for voxel, value in self._log_odds.items()
-            if value <= self.config.free_threshold
+            if value <= self.config.free_threshold and voxel not in unavailable
         }
 
     def observed_voxels(self):
         return set(self._log_odds)
+
+    def pending_occupied_voxels(self):
+        """Retorna evidencias positivas ainda insuficientes para ocupacao."""
+
+        return set(self._occupied_evidence_frames) - self._confirmed_occupied
+
+    def mark_ego_voxel_free(self, position):
+        """Usa a presenca fisica do sensor para liberar somente seu voxel."""
+
+        voxel = self.world_to_voxel(position)
+        was_confirmed = voxel in self._confirmed_occupied
+        self._confirmed_occupied.discard(voxel)
+        self._occupied_evidence_frames.pop(voxel, None)
+        self._pending_free_observations.pop(voxel, None)
+        evidence = min(
+            self.config.free_threshold - 1e-6,
+            -self.config.free_decrement,
+        )
+        self._log_odds[voxel] = evidence
+        return was_confirmed
 
     def mark_free_sphere(self, center, radius_m):
         """Marca a vizinhanca conhecida do drone como livre."""
@@ -109,6 +221,45 @@ class OccupancyGrid3D:
                 continue
             self._log_odds[voxel] = min(self._log_odds.get(voxel, 0.0), evidence)
 
+    def occupied_evidence_count(self, voxel):
+        """Conta frames distintos de evidencia no suporte espacial do voxel."""
+
+        voxel = tuple(voxel)
+        radius = self.config.occupied_support_radius_voxels
+        frames = set()
+        for dx, dy, dz in product(range(-radius, radius + 1), repeat=3):
+            neighbor = (voxel[0] + dx, voxel[1] + dy, voxel[2] + dz)
+            frames.update(self._occupied_evidence_frames.get(neighbor, ()))
+        return len(frames)
+
+    def _confirm_if_supported(self, voxel):
+        if voxel in self._confirmed_occupied:
+            return
+        if (
+            self.occupied_evidence_count(voxel)
+            < self.config.occupied_observations_required
+        ):
+            return
+        self._confirmed_occupied.add(voxel)
+        self._log_odds[voxel] = max(
+            self._log_odds.get(voxel, 0.0),
+            self.config.occupied_threshold,
+        )
+
+    def _expire_old_occupied_evidence(self):
+        oldest_frame = (
+            self._integration_frame
+            - self.config.occupied_evidence_window_frames
+            + 1
+        )
+        for voxel, frames in list(self._occupied_evidence_frames.items()):
+            frames.intersection_update(
+                frame for frame in frames if frame >= oldest_frame
+            )
+            if not frames and voxel not in self._confirmed_occupied:
+                self._occupied_evidence_frames.pop(voxel, None)
+                self._pending_free_observations.pop(voxel, None)
+
     def export_arrays(self):
         """Retorna coordenadas e log-odds em arrays adequados para NPZ."""
 
@@ -122,23 +273,53 @@ class OccupancyGrid3D:
         log_odds = np.asarray([item[1] for item in items], dtype=np.float32)
         return voxels, log_odds
 
-    def inflated_occupied_voxels(self, radius_m):
-        """Expande obstaculos para considerar dimensoes e margem do drone."""
+    def inflated_occupied_voxels(
+        self,
+        radius_m,
+        vertical_radius_m=None,
+    ):
+        """Expande obstaculos com raios horizontal e vertical independentes."""
 
         if radius_m < 0:
             raise ValueError("radius_m nao pode ser negativo")
-        radius_voxels = int(np.ceil(radius_m / self.config.resolution_m))
-        offsets = list(product(range(-radius_voxels, radius_voxels + 1), repeat=3))
+        if vertical_radius_m is None:
+            vertical_radius_m = radius_m
+        if vertical_radius_m <= 0:
+            raise ValueError("vertical_radius_m deve ser positivo")
+        if radius_m == 0:
+            return set(self.occupied_voxels())
+
+        resolution = self.config.resolution_m
+        horizontal_voxels = int(np.ceil(radius_m / resolution))
+        vertical_voxels = int(np.ceil(vertical_radius_m / resolution))
+        offsets = product(
+            range(-horizontal_voxels, horizontal_voxels + 1),
+            range(-horizontal_voxels, horizontal_voxels + 1),
+            range(-vertical_voxels, vertical_voxels + 1),
+        )
+        valid_offsets = [
+            (dx, dy, dz)
+            for dx, dy, dz in offsets
+            if (
+                (resolution * dx / radius_m) ** 2
+                + (resolution * dy / radius_m) ** 2
+                + (resolution * dz / vertical_radius_m) ** 2
+                <= 1.0 + 1e-9
+            )
+        ]
         return {
             (voxel[0] + dx, voxel[1] + dy, voxel[2] + dz)
             for voxel in self.occupied_voxels()
-            for dx, dy, dz in offsets
-            if self.config.resolution_m * np.sqrt(dx * dx + dy * dy + dz * dz)
-            <= radius_m + 1e-9
+            for dx, dy, dz in valid_offsets
         }
 
     def state(self, voxel):
-        value = self._log_odds.get(tuple(voxel), 0.0)
+        voxel = tuple(voxel)
+        if voxel in self._confirmed_occupied:
+            return "occupied"
+        if voxel in self._occupied_evidence_frames:
+            return "unknown"
+        value = self._log_odds.get(voxel, 0.0)
         if value >= self.config.occupied_threshold:
             return "occupied"
         if value <= self.config.free_threshold:

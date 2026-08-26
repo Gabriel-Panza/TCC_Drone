@@ -1,5 +1,6 @@
 """No ROS 2 que publica profundidade metrico-monocular a partir de um ONNX."""
 
+import threading
 import time
 
 import numpy as np
@@ -55,8 +56,22 @@ class MonocularMetricDepthNode(Node):
             min_depth_m=float(self.declare_parameter('min_depth_m', 0.1).value),
             max_depth_m=float(self.declare_parameter('max_depth_m', 50.0).value),
             use_cuda=bool(self.declare_parameter('use_cuda', False).value),
+            backend=str(
+                self.declare_parameter('inference_backend', 'opencv').value
+            ),
+            input_aspect_tolerance=float(
+                self.declare_parameter('input_aspect_tolerance', 0.03).value
+            ),
         )
         self.bridge = CvBridge()
+        self.frames = 0
+        self.frames_received = 0
+        self.frames_replaced = 0
+        self.last_log_s = time.perf_counter()
+        self._pending_lock = threading.Lock()
+        self._pending_image = None
+        self._inference_event = threading.Event()
+        self._stop_event = threading.Event()
         self.publisher = self.create_publisher(
             Image,
             output_topic,
@@ -66,15 +81,45 @@ class MonocularMetricDepthNode(Node):
             Image,
             image_topic,
             self.image_callback,
-            qos_profile_sensor_data,
+            1,
         )
-        self.frames = 0
-        self.last_log_s = time.perf_counter()
+        self._inference_worker = threading.Thread(
+            target=self.inference_loop,
+            name='monocular-latest-frame-inference',
+            daemon=True,
+        )
+        self._inference_worker.start()
         self.get_logger().info(
             f'Profundidade monocular: {image_topic} -> {output_topic}.'
         )
 
     def image_callback(self, msg):
+        """Mantem apenas o RGB mais recente para impedir backlog de inferencia."""
+
+        with self._pending_lock:
+            self.frames_received += 1
+            if self._pending_image is not None:
+                self.frames_replaced += 1
+            self._pending_image = (msg, time.perf_counter())
+        self._inference_event.set()
+
+    def inference_loop(self):
+        """Executa ONNX fora do callback ROS e descarta frames intermediarios."""
+
+        while not self._stop_event.is_set():
+            self._inference_event.wait(timeout=0.2)
+            if self._stop_event.is_set():
+                break
+            with self._pending_lock:
+                msg = self._pending_image
+                self._pending_image = None
+                self._inference_event.clear()
+            if msg is None:
+                continue
+            image_msg, received_s = msg
+            self.infer_and_publish(image_msg, received_s)
+
+    def infer_and_publish(self, msg, received_s):
         try:
             bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             started = time.perf_counter()
@@ -87,6 +132,7 @@ class MonocularMetricDepthNode(Node):
             self.publisher.publish(output)
             self.frames += 1
             now = time.perf_counter()
+            input_age_s = now - received_s
             if now - self.last_log_s >= 5.0:
                 valid = depth_m[depth_m > 0.0]
                 depth_summary = (
@@ -101,11 +147,21 @@ class MonocularMetricDepthNode(Node):
                 self.get_logger().info(
                     f'Depth publicado: frame={self.frames}, '
                     f'inferencia={(now - started) * 1000.0:.1f} ms, '
+                    f'idade_entrada={input_age_s * 1000.0:.1f} ms, '
+                    f'recebidos={self.frames_received}, '
+                    f'substituidos={self.frames_replaced}, '
                     f'{depth_summary}.'
                 )
                 self.last_log_s = now
         except Exception as error:
             self.get_logger().error(f'Falha na inferencia de profundidade: {error}')
+
+    def destroy_node(self):
+        self._stop_event.set()
+        self._inference_event.set()
+        if self._inference_worker.is_alive():
+            self._inference_worker.join(timeout=2.0)
+        return super().destroy_node()
 
 
 def main(args=None):

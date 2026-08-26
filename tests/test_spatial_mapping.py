@@ -16,6 +16,7 @@ from spatial_mapping import (
     SpatialNavigator,
     backproject_depth,
     camera_to_ned_transform,
+    compress_collinear_path,
     transform_points,
 )
 from spatial_mapping.metrics import depth_metrics, occupancy_metrics
@@ -35,6 +36,61 @@ class GeometryTest(unittest.TestCase):
         points = backproject_depth(depth, intrinsics)
 
         np.testing.assert_allclose(points, [[0.0, 0.0, 2.0]])
+
+    def test_edge_sampling_preserves_thin_depth_discontinuity(self):
+        depth = np.full((6, 6), 10.0, dtype=float)
+        depth[:, 1] = 2.0
+        intrinsics = CameraIntrinsics(fx=2.0, fy=2.0, cx=0.0, cy=0.0)
+
+        regular = backproject_depth(depth, intrinsics, stride=4)
+        adaptive = backproject_depth(
+            depth,
+            intrinsics,
+            stride=4,
+            edge_stride=1,
+            edge_relative_threshold=0.10,
+        )
+
+        self.assertNotIn(2.0, regular[:, 2])
+        self.assertIn(2.0, adaptive[:, 2])
+        self.assertGreater(len(adaptive), len(regular))
+
+    def test_edge_sampling_parameters_must_be_positive(self):
+        intrinsics = CameraIntrinsics(fx=1.0, fy=1.0, cx=0.0, cy=0.0)
+        with self.assertRaises(ValueError):
+            backproject_depth([[1.0]], intrinsics, edge_stride=0)
+        with self.assertRaises(ValueError):
+            backproject_depth(
+                [[1.0]], intrinsics, edge_relative_threshold=0.0
+            )
+
+    def test_external_edge_mask_preserves_a_thin_rgb_edge(self):
+        depth = np.full((6, 6), 10.0, dtype=float)
+        depth[:, 1] = 2.0
+        rgb_edges = np.zeros_like(depth, dtype=bool)
+        rgb_edges[:, 1] = True
+        intrinsics = CameraIntrinsics(fx=2.0, fy=2.0, cx=0.0, cy=0.0)
+
+        points = backproject_depth(
+            depth,
+            intrinsics,
+            stride=4,
+            edge_stride=1,
+            edge_relative_threshold=10.0,
+            sampling_edge_mask=rgb_edges,
+        )
+
+        self.assertIn(2.0, points[:, 2])
+
+    def test_external_edge_mask_must_match_depth_shape(self):
+        intrinsics = CameraIntrinsics(fx=1.0, fy=1.0, cx=0.0, cy=0.0)
+        with self.assertRaises(ValueError):
+            backproject_depth(
+                np.ones((2, 2)),
+                intrinsics,
+                edge_stride=1,
+                sampling_edge_mask=np.ones((1, 2), dtype=bool),
+            )
 
     def test_applies_homogeneous_transform(self):
         transform = np.eye(4)
@@ -71,6 +127,73 @@ class OccupancyAndPlanningTest(unittest.TestCase):
 
         self.assertEqual(grid.state(obstacle_voxel), "occupied")
 
+    def test_ego_position_clears_only_physically_occupied_voxel(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_threshold=0.6,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        ego_obstacle = np.array([2.1, 0.1, 0.1])
+        neighbor_obstacle = np.array([2.1, 1.1, 0.1])
+        grid.integrate_points(origin, [ego_obstacle, neighbor_obstacle])
+
+        cleared = grid.mark_ego_voxel_free(ego_obstacle)
+
+        self.assertTrue(cleared)
+        self.assertEqual(
+            grid.state(grid.world_to_voxel(ego_obstacle)),
+            "free",
+        )
+        self.assertEqual(
+            grid.state(grid.world_to_voxel(neighbor_obstacle)),
+            "occupied",
+        )
+
+    def test_ego_evidence_wins_over_same_frame_monocular_endpoint(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                min_depth_m=0.1,
+                known_free_radius_m=0.0,
+                obstacle_vertical_band_m=1.0,
+            )
+        )
+        stats = navigator.integrate_depth(
+            np.array([[0.5]]),
+            CameraIntrinsics(fx=1.0, fy=1.0, cx=0.0, cy=0.0),
+            np.eye(4),
+        )
+
+        self.assertTrue(stats["ego_voxel_cleared_occupied"])
+        self.assertEqual(
+            navigator.grid.state(
+                navigator.grid.world_to_voxel(np.zeros(3))
+            ),
+            "free",
+        )
+
+    def test_planner_clears_body_voxel_but_preserves_neighbor_obstacle(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                known_free_radius_m=0.0,
+            )
+        )
+        current = np.array([2.1, 0.1, 0.1])
+        neighbor = np.array([2.1, 1.1, 0.1])
+        navigator.grid.integrate_points(
+            np.array([0.1, 0.1, 0.1]),
+            [current, neighbor],
+        )
+
+        plan = navigator.plan(current, np.array([8.1, 0.1, 0.1]))
+
+        self.assertTrue(plan.diagnostics["ego_voxel_cleared_occupied_at_plan"])
+        self.assertEqual(navigator.grid.state((2, 0, 0)), "free")
+        self.assertEqual(navigator.grid.state((2, 1, 0)), "occupied")
+
     def test_obstacle_inflation_uses_euclidean_radius(self):
         grid = OccupancyGrid3D(
             OccupancyGridConfig(
@@ -85,6 +208,23 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertIn((1, 1, 0), inflated)
         self.assertNotIn((1, 1, 1), inflated)
         self.assertNotIn((2, 0, 0), inflated)
+
+    def test_anisotropic_inflation_preserves_horizontal_clearance(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=0.75,
+                occupied_threshold=0.6,
+            )
+        )
+        grid.integrate_points([-1.0, 0.1, 0.1], [[0.1, 0.1, 0.1]])
+
+        inflated = grid.inflated_occupied_voxels(
+            1.25,
+            vertical_radius_m=0.4,
+        )
+
+        self.assertIn((1, 0, 0), inflated)
+        self.assertNotIn((0, 0, 1), inflated)
 
     def test_depth_integration_filters_points_outside_vertical_band(self):
         navigator = SpatialNavigator(
@@ -107,6 +247,311 @@ class OccupancyAndPlanningTest(unittest.TestCase):
 
         self.assertEqual(stats["points_integrated"], 1)
         self.assertEqual(stats["points_rejected_vertical"], 2)
+        self.assertEqual(stats["free_only_rays"], 2)
+        self.assertEqual(stats["total_valid_rays"], 3)
+        self.assertEqual(navigator.grid.state((1, 0, -1)), "free")
+        self.assertEqual(navigator.grid.state((2, 0, -2)), "unknown")
+
+    def test_free_only_rays_preserve_safe_exit_near_obstacle(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                drone_clearance_radius_m=1.25,
+                min_subgoal_progress_m=0.5,
+                local_plan_radius_m=12.0,
+                max_waypoint_spacing_m=20.0,
+                frontier_standoff_m=2.5,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        safe_exit_end = np.array([8.1, 0.1, 0.1])
+        nearby_obstacle = np.array([2.1, 2.1, 0.1])
+
+        navigator.grid.integrate_rays(
+            origin,
+            [safe_exit_end],
+            endpoint_is_occupied=[False],
+        )
+        navigator.grid.integrate_points(origin, [nearby_obstacle])
+
+        plan = navigator.plan(origin, (20.0, 0.1, 0.1))
+
+        self.assertTrue(plan.success)
+        self.assertEqual(plan.reason, "local_subgoal")
+        self.assertGreaterEqual(plan.path_length_m, 1.5)
+        self.assertGreater(plan.diagnostics["max_reachable_progress_m"], 6.0)
+        self.assertGreater(
+            plan.diagnostics["post_standoff_path_length_m"],
+            1.5,
+        )
+        self.assertEqual(
+            navigator.grid.state(navigator.grid.world_to_voxel(nearby_obstacle)),
+            "occupied",
+        )
+
+    def test_free_only_ray_does_not_clear_confirmed_obstacle(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_threshold=0.5,
+                free_threshold=-0.3,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        obstacle = np.array([2.1, 0.1, 0.1])
+        grid.integrate_points(origin, [obstacle])
+
+        grid.integrate_rays(
+            origin,
+            [[4.1, 0.1, 0.1]],
+            endpoint_is_occupied=[False],
+        )
+
+        self.assertEqual(grid.state(grid.world_to_voxel(obstacle)), "occupied")
+
+    def test_navigator_requires_configured_free_observations(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                known_free_radius_m=0.0,
+                free_observations_required=2,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        endpoint = np.array([3.1, 0.1, 0.1])
+
+        navigator.grid.integrate_rays(
+            origin,
+            [endpoint],
+            endpoint_is_occupied=[False],
+        )
+        self.assertEqual(navigator.grid.state((1, 0, 0)), "unknown")
+
+        navigator.grid.integrate_rays(
+            origin,
+            [endpoint],
+            endpoint_is_occupied=[False],
+        )
+        self.assertEqual(navigator.grid.state((1, 0, 0)), "free")
+
+    def test_free_observations_required_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            SpatialNavigationConfig(free_observations_required=0)
+
+    def test_navigator_requires_configured_occupied_observations(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                known_free_radius_m=0.0,
+                occupied_observations_required=2,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        endpoint = np.array([3.1, 0.1, 0.1])
+        endpoint_voxel = navigator.grid.world_to_voxel(endpoint)
+
+        navigator.grid.integrate_rays(
+            origin,
+            [endpoint],
+            endpoint_is_occupied=[True],
+        )
+        self.assertEqual(navigator.grid.state(endpoint_voxel), "unknown")
+        self.assertIn(
+            endpoint_voxel,
+            navigator.grid.pending_occupied_voxels(),
+        )
+
+        navigator.grid.integrate_rays(
+            origin,
+            [endpoint],
+            endpoint_is_occupied=[True],
+        )
+        self.assertEqual(navigator.grid.state(endpoint_voxel), "occupied")
+        self.assertNotIn(
+            endpoint_voxel,
+            navigator.grid.pending_occupied_voxels(),
+        )
+
+    def test_pending_obstacle_is_not_cleared_by_one_free_observation(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_observations_required=2,
+                pending_clear_free_observations_required=3,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        obstacle = np.array([3.1, 0.1, 0.1])
+        voxel = grid.world_to_voxel(obstacle)
+        grid.integrate_rays(origin, [obstacle], [True])
+        grid.integrate_rays(origin, [[5.1, 0.1, 0.1]], [False])
+
+        self.assertEqual(grid.state(voxel), "unknown")
+        self.assertIn(voxel, grid.pending_occupied_voxels())
+
+    def test_pending_obstacle_requires_repeated_free_evidence_to_expire(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_observations_required=2,
+                pending_clear_free_observations_required=3,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        obstacle = np.array([3.1, 0.1, 0.1])
+        voxel = grid.world_to_voxel(obstacle)
+        grid.integrate_rays(origin, [obstacle], [True])
+        for _ in range(3):
+            grid.integrate_rays(origin, [[5.1, 0.1, 0.1]], [False])
+
+        self.assertNotIn(voxel, grid.pending_occupied_voxels())
+
+    def test_neighboring_observations_confirm_with_spatial_support(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_observations_required=2,
+                occupied_support_radius_voxels=1,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        first = np.array([3.1, 0.1, 0.1])
+        second = np.array([3.1, 1.1, 0.1])
+        grid.integrate_rays(origin, [first], [True])
+        grid.integrate_rays(origin, [second], [True])
+
+        self.assertEqual(grid.state(grid.world_to_voxel(second)), "occupied")
+
+    def test_neighboring_observations_do_not_confirm_without_support(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_observations_required=2,
+                occupied_support_radius_voxels=0,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        first = np.array([3.1, 0.1, 0.1])
+        second = np.array([3.1, 1.1, 0.1])
+        grid.integrate_rays(origin, [first], [True])
+        grid.integrate_rays(origin, [second], [True])
+
+        self.assertEqual(grid.state(grid.world_to_voxel(second)), "unknown")
+
+    def test_occupied_observations_required_has_supported_range(self):
+        with self.assertRaises(ValueError):
+            SpatialNavigationConfig(occupied_observations_required=0)
+        with self.assertRaises(ValueError):
+            SpatialNavigationConfig(occupied_observations_required=5)
+
+    def test_depth_stats_distinguish_pending_and_confirmed_occupancy(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                known_free_radius_m=0.0,
+                occupied_observations_required=2,
+                obstacle_vertical_band_m=3.0,
+            )
+        )
+        depth = np.array([[2.0]])
+        intrinsics = CameraIntrinsics(fx=1.0, fy=1.0, cx=0.0, cy=0.0)
+
+        first = navigator.integrate_depth(depth, intrinsics, np.eye(4))
+        second = navigator.integrate_depth(depth, intrinsics, np.eye(4))
+
+        self.assertEqual(first["occupied_voxels"], 0)
+        self.assertEqual(first["pending_occupied_voxels"], 1)
+        self.assertEqual(second["occupied_voxels"], 1)
+        self.assertEqual(second["pending_occupied_voxels"], 0)
+        self.assertEqual(second["occupied_observations_required"], 2)
+
+    def test_overlapping_rays_count_once_per_integration_frame(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                free_threshold=-0.75,
+            )
+        )
+        origin = np.array([0.1, 0.1, 0.1])
+        endpoints = np.array(
+            [
+                [3.1, 0.1, 0.1],
+                [3.1, 0.2, 0.1],
+                [3.1, 0.3, 0.1],
+            ]
+        )
+
+        grid.integrate_rays(
+            origin,
+            endpoints,
+            endpoint_is_occupied=[False, False, False],
+        )
+        self.assertEqual(grid.state((1, 0, 0)), "unknown")
+
+        grid.integrate_rays(
+            origin,
+            endpoints,
+            endpoint_is_occupied=[False, False, False],
+        )
+        self.assertEqual(grid.state((1, 0, 0)), "free")
+
+    def test_occupied_uncertainty_marks_near_side_of_surface(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_threshold=0.5,
+            )
+        )
+        grid.integrate_rays(
+            [0.1, 0.1, 0.1],
+            [[5.1, 0.1, 0.1]],
+            endpoint_is_occupied=[True],
+            free_space_margin_m=2.0,
+            occupied_uncertainty_m=1.5,
+        )
+
+        self.assertEqual(grid.state((4, 0, 0)), "occupied")
+        self.assertEqual(grid.state((5, 0, 0)), "occupied")
+
+    def test_occupied_uncertainty_cannot_be_negative(self):
+        with self.assertRaises(ValueError):
+            OccupancyGrid3D().integrate_rays(
+                [0.0, 0.0, 0.0],
+                [[1.0, 0.0, 0.0]],
+                endpoint_is_occupied=[True],
+                occupied_uncertainty_m=-0.1,
+            )
+
+    def test_free_space_margin_keeps_uncertain_voxels_unknown(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_threshold=0.5,
+                free_threshold=-0.3,
+            )
+        )
+
+        grid.integrate_rays(
+            [0.1, 0.1, 0.1],
+            [[5.1, 0.1, 0.1]],
+            endpoint_is_occupied=[True],
+            free_space_margin_m=2.0,
+        )
+
+        self.assertEqual(grid.state((3, 0, 0)), "free")
+        self.assertEqual(grid.state((4, 0, 0)), "unknown")
+        self.assertEqual(grid.state((5, 0, 0)), "occupied")
+
+    def test_free_space_margin_cannot_be_negative(self):
+        grid = OccupancyGrid3D()
+
+        with self.assertRaises(ValueError):
+            grid.integrate_rays(
+                [0.0, 0.0, 0.0],
+                [[1.0, 0.0, 0.0]],
+                endpoint_is_occupied=[True],
+                free_space_margin_m=-0.1,
+            )
 
     def test_marks_ray_as_free_and_endpoint_as_occupied(self):
         config = OccupancyGridConfig(
@@ -232,6 +677,44 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertIn("alcancaveis=2", plan.reason)
         self.assertIn("max_progresso=1.40m", plan.reason)
 
+    def test_reference_guardian_allows_initial_escape_but_not_reentry(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=1.0,
+                drone_clearance_radius_m=0.0,
+                drone_vertical_clearance_m=0.4,
+            )
+        )
+        current = np.array([0.1, 0.1, 0.1])
+        navigator.grid.integrate_points([-1.1, 0.1, 0.1], [current])
+
+        self.assertTrue(
+            navigator.path_avoids_obstacles_allowing_initial_escape(
+                current,
+                [[3.1, 0.1, 0.1]],
+            )
+        )
+
+        navigator.grid.integrate_points(
+            [1.1, 0.1, 0.1],
+            [[2.1, 0.1, 0.1]],
+        )
+
+        self.assertFalse(
+            navigator.path_avoids_obstacles_allowing_initial_escape(
+                current,
+                [[3.1, 0.1, 0.1]],
+            )
+        )
+
+        self.assertEqual(
+            navigator.first_obstacle_reentry_voxel(
+                current,
+                [[3.1, 0.1, 0.1]],
+            ),
+            (2, 0, 0),
+        )
+
     def test_path_safety_rejects_new_obstacle(self):
         navigator = SpatialNavigator(
             SpatialNavigationConfig(
@@ -280,6 +763,54 @@ class OccupancyAndPlanningTest(unittest.TestCase):
 
         self.assertTrue(plan.success)
 
+    def test_level_route_keeps_continuous_goal_altitude_across_voxel_boundary(self):
+        navigator = SpatialNavigator(
+            SpatialNavigationConfig(
+                voxel_resolution_m=0.75,
+                min_subgoal_progress_m=0.5,
+                vertical_tolerance_m=0.5,
+                drone_clearance_radius_m=0.1,
+                frontier_standoff_m=0.0,
+                lock_path_altitude_to_goal=True,
+            )
+        )
+        for x_index in range(8):
+            x = x_index * 0.75 + 0.1
+            navigator.grid.mark_free_sphere((x, 0.1, -1.13), 0.1)
+            navigator.grid.mark_free_sphere((x, 0.1, -1.60), 0.1)
+
+        requested_altitude = -1.60
+        plan = navigator.plan(
+            (0.1, 0.1, -1.13),
+            (5.35, 0.1, requested_altitude),
+        )
+
+        self.assertTrue(plan.success)
+        self.assertTrue(plan.diagnostics["path_altitude_locked_to_goal"])
+        self.assertEqual(plan.diagnostics["vertical_layer_range"], (-3, -3))
+        self.assertTrue(plan.waypoints_ned_m)
+        self.assertTrue(
+            all(
+                abs(point[2] - requested_altitude) < 1e-9
+                for point in plan.waypoints_ned_m
+            )
+        )
+
+    def test_collinear_compression_preserves_changes_in_slope(self):
+        path = [
+            (0, 0, 0),
+            (1, 1, 0),
+            (3, 2, 0),
+            (5, 3, 0),
+        ]
+
+        compressed = compress_collinear_path(path)
+
+        self.assertEqual(
+            compressed,
+            [(0, 0, 0), (1, 1, 0), (5, 3, 0)],
+        )
+
     def test_shortcut_removes_voxel_zigzag_in_open_space(self):
         navigator = SpatialNavigator(
             SpatialNavigationConfig(voxel_resolution_m=1.0)
@@ -323,6 +854,38 @@ class MetricsTest(unittest.TestCase):
 
 
 class DepthModelAndRecorderTest(unittest.TestCase):
+    @unittest.skipIf(MetricDepthOnnx is None, "OpenCV indisponivel neste ambiente")
+    def test_depth_model_preprocess_preserves_expected_camera_aspect(self):
+        model = MetricDepthOnnx.__new__(MetricDepthOnnx)
+        model.input_width = 686
+        model.input_height = 518
+        model.input_aspect_tolerance = 0.03
+        model.mean = np.asarray(
+            [0.485, 0.456, 0.406],
+            dtype=np.float32,
+        ).reshape(1, 1, 3)
+        model.std = np.asarray(
+            [0.229, 0.224, 0.225],
+            dtype=np.float32,
+        ).reshape(1, 1, 3)
+
+        blob = model.preprocess(np.zeros((240, 320, 3), dtype=np.uint8))
+
+        self.assertEqual(blob.shape, (1, 3, 518, 686))
+        self.assertEqual(blob.dtype, np.float32)
+
+    @unittest.skipIf(MetricDepthOnnx is None, "OpenCV indisponivel neste ambiente")
+    def test_depth_model_rejects_unexpected_camera_aspect(self):
+        model = MetricDepthOnnx.__new__(MetricDepthOnnx)
+        model.input_width = 686
+        model.input_height = 518
+        model.input_aspect_tolerance = 0.03
+        model.mean = np.zeros((1, 1, 3), dtype=np.float32)
+        model.std = np.ones((1, 1, 3), dtype=np.float32)
+
+        with self.assertRaises(ValueError):
+            model.preprocess(np.zeros((180, 320, 3), dtype=np.uint8))
+
     @unittest.skipIf(MetricDepthOnnx is None, "OpenCV indisponivel neste ambiente")
     def test_inverse_depth_output_is_converted_to_meters(self):
         model = MetricDepthOnnx.__new__(MetricDepthOnnx)
