@@ -2,184 +2,36 @@
 
 \section{Introdução}
 
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-A validação foi organizada para responder às perguntas de pesquisa e examinar a posição metodológica apresentada no Capítulo~\ref{cap:proposta}. Os modelos não são tratados como produtos finais, mas como instrumentos para verificar o efeito da representação, da divisão dos dados e das formas de análise. Primeiro, a curva de aprendizado mede o crescimento do treino. Depois, várias sementes e modelos de referência verificam a estabilidade. Eventos, gradientes e ablação ajudam a localizar as entradas úteis e as principais fontes de erro. A quinta pergunta acrescenta uma validação espacial em duas etapas: uma referência com profundidade do Gazebo e um portão offline para a profundidade monocular antes de qualquer bateria de voo.
-\fi
-
 \section{Material e métodos}
 
 \subsection{Divisão dos dados e métricas}
 
-A separação ocorre por execução completa. Duas execuções permanecem fixas na validação e três no teste em todos os marcos. Somente o treino cresce. As proporções mudam ao longo da curva, mas os casos avaliados permanecem os mesmos. A validação orienta a parada antecipada e as decisões de representação; o teste fica reservado à comparação final.
-
-O desempenho é medido principalmente por MAE e RMSE nas unidades originais. A correlação entra como medida complementar. A MLP é comparada a um modelo constante que prevê a média do treino. Também são avaliadas Random Forest e Extra Trees com 500 árvores, no mínimo duas amostras por folha, 70\% das entradas candidatas em cada divisão e semente 42.
-
-Para medir a influência da inicialização, a MLP é treinada com as sementes 7, 21, 42, 84 e 123. Divisão, hiperparâmetros e execuções avaliadas permanecem iguais. A comparação angular também mantém a mesma divisão e confronta os valores originais com seno e cosseno dos ângulos.
-
 \subsection{Eventos e análise das entradas}
-
-Um evento de proximidade é definido por $|\Delta p_{<5m}|\geq0{,}5$ ponto percentual. O classificador recebe as entradas atuais, os valores de um, dois e três intervalos anteriores e uma tendência de três intervalos. A MLP classificadora possui camadas de 32 e 16 unidades, ReLU, regularização $\alpha=0{,}05$ e limiar 0,35. O regressor usa somente os eventos e aplica a transformação \textit{signed-log1p}. A classificação é avaliada por acurácia balanceada, precisão, sensibilidade, F1 e precisão média.
-
-Na explicabilidade, o gradiente do erro quadrático em relação às entradas é calculado na validação. Como entradas e alvos estão padronizados, o módulo dos gradientes pode ser comparado e reunido por grupo. Essa leitura mede sensibilidade local e não estabelece causalidade \cite{Sundararajan2017}.
-
-A ablação retira, em rodadas separadas, os grupos de sincronização, movimento, IMU e atitude, fluxo óptico e risco, diferença de imagem e comandos reativos. Cada configuração usa as sementes 21, 42 e 84. Um aumento do MAE após a retirada indica que o grupo contribuía para o modelo completo.
 
 \section{Evidências experimentais}
 
-% Conteudo reservado para revisao com o orientador.
-\iffalse
 \subsection{Crescimento do conjunto de treino}
-
-A Figura~\ref{fig:resultados-curva-aprendizado} apresenta o MAE no teste fixo para os cinco marcos. A evolução não foi monotônica: alguns alvos pioraram em etapas intermediárias e voltaram a melhorar. Portanto, a diversidade das novas execuções teve efeito junto com a quantidade de amostras.
-
-\begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
-    \caption{MAE da MLP e da média do treino nos cinco marcos, usando o mesmo teste fixo.}
-    \label{fig:resultados-curva-aprendizado}
-    \legend{Fonte: elaborado pelo autor.}
-\end{figure}
-
-Entre 9 e 40 execuções, o MAE caiu de 0,1998 para 0,1717~m em P50, de 0,9706 para 0,8943~m em P90, de 1,8853 para 1,7181 pontos percentuais em pixels abaixo de 5~m e de 0,9381 para 0,8401 pontos percentuais em pixels abaixo de 10~m. P10 caiu de 0,0891 para 0,0872~m. Pixels abaixo de 2~m ficaram praticamente estáveis, de 1,0441 para 1,0419 pontos percentuais.
-
-No marco final, a MLP superou a média do treino em P50 e nos três alvos de ocupação próxima, mas perdeu em P10 e P90. A melhora entre 33 e 40 execuções em cinco alvos não permite afirmar que a curva chegou a um platô definitivo.
 
 \subsection{Perdas e representação angular}
 
-A menor perda de validação ocorreu na época 17. Depois disso, a perda de treino continuou caindo, enquanto validação e teste oscilaram e cresceram. A parada antecipada encerrou o treino na época 67 e restaurou os pesos da época 17. A curva do teste foi registrada apenas para diagnóstico e não participou da escolha da época.
-
-\begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
-    \caption{Curvas de perda da MLP no marco final. A parada antecipada usa apenas a validação.}
-    \label{fig:resultados-loss}
-    \legend{Fonte: elaborado pelo autor.}
-\end{figure}
-
-A representação angular por seno e cosseno não trouxe melhora geral. Ela reduziu o MAE de validação em P50 e pixels abaixo de 10~m, mas piorou os outros quatro alvos. No teste fixo, os ângulos originais tiveram erro menor nos seis alvos. Essa transformação, portanto, não foi adotada como resultado final.
-
 \subsection{Sementes e modelos de referência}
-
-A Tabela~\ref{tab:resultados-sementes} resume cinco treinamentos. O coeficiente de variação ficou entre 2,4\% e 3,8\%, indicando que a inicialização altera os valores, mas não muda o nível geral de erro.
-
-\begin{table}[htb]
-    \centering
-    \caption{MAE da MLP no teste fixo com cinco sementes.}
-    \label{tab:resultados-sementes}
-    \renewcommand{\arraystretch}{1.1}
-    \begin{tabular}{lcc}
-        \hline
-        \textbf{Alvo} & \textbf{MAE médio} & \textbf{Desvio padrão} \\
-        \hline
-        $\Delta P10$ (m) & 0,0921 & 0,0034 \\
-        $\Delta P50$ (m) & 0,1820 & 0,0056 \\
-        $\Delta P90$ (m) & 0,9259 & 0,0273 \\
-        $\Delta$ pixels $<2$ m (p.p.) & 1,0566 & 0,0268 \\
-        $\Delta$ pixels $<5$ m (p.p.) & 1,7834 & 0,0436 \\
-        $\Delta$ pixels $<10$ m (p.p.) & 0,8423 & 0,0318 \\
-        \hline
-    \end{tabular}
-    \legend{Fonte: elaborado pelo autor.}
-\end{table}
-
-A época escolhida variou de 22 a 182, enquanto a menor MSE de validação ficou entre 0,5146 e 0,5306. O caminho do treinamento depende da semente, embora as métricas finais permaneçam próximas.
-
-\begin{table}[htb]
-    \centering
-    \caption{MAE no teste fixo da MLP e dos modelos de referência.}
-    \label{tab:resultados-arvores}
-    \renewcommand{\arraystretch}{1.1}
-    \resizebox{\textwidth}{!}{%
-    \begin{tabular}{lcccc}
-        \hline
-        \textbf{Alvo} & \textbf{MLP média} & \textbf{Random Forest} & \textbf{Extra Trees} & \textbf{Média do treino} \\
-        \hline
-        $\Delta P10$ (m) & 0,0921 & 0,0886 & 0,0910 & \textbf{0,0867} \\
-        $\Delta P50$ (m) & 0,1820 & \textbf{0,1762} & 0,1838 & 0,1886 \\
-        $\Delta P90$ (m) & 0,9259 & 0,9235 & 0,9391 & \textbf{0,8246} \\
-        $\Delta$ pixels $<2$ m (p.p.) & \textbf{1,0566} & 1,0735 & 1,1229 & 1,0869 \\
-        $\Delta$ pixels $<5$ m (p.p.) & 1,7834 & \textbf{1,7659} & 1,7981 & 1,8488 \\
-        $\Delta$ pixels $<10$ m (p.p.) & \textbf{0,8423} & 0,8602 & 0,8712 & 0,9096 \\
-        \hline
-    \end{tabular}%
-    }
-    \legend{Fonte: elaborado pelo autor.}
-\end{table}
-
-Nenhum modelo venceu em todos os alvos. A MLP foi melhor em pixels abaixo de 2 e 10~m. A Random Forest venceu em P50 e pixels abaixo de 5~m, mas a vantagem de cerca de 1\% no alvo de 5~m foi menor que a variação entre sementes da rede. A média do treino permaneceu melhor em P10 e P90.
 
 \subsection{Eventos de proximidade}
 
-O classificador final alcançou acurácia balanceada de 0,615, precisão de 0,789, sensibilidade de 0,870 e F1 de 0,828 no teste. A classe majoritária tem sensibilidade 1, mas acurácia balanceada 0,5. A MLP separou melhor as classes, embora tenha produzido 16 falsos positivos e 9 falsos negativos entre 94 intervalos.
-
-O melhor resultado intermediário ocorreu com 25 execuções, quando a acurácia balanceada chegou a 0,689. Ela caiu nos marcos seguintes e terminou em 0,615. A taxa real de eventos no teste, 73,4\%, ajuda a explicar por que F1 e sensibilidade ficaram mais altas que a acurácia balanceada.
-
-O pipeline completo apresentou MAE de 1,770 pontos percentuais. Quando o regressor recebeu a indicação correta dos eventos apenas para diagnóstico, o MAE caiu para 1,744. A pequena diferença mostra que o erro está concentrado na estimativa da magnitude e do sinal, e não principalmente na classificação.
-
 \subsection{Gradientes e ablação}
-
-A Figura~\ref{fig:resultados-explicabilidade} reúne a sensibilidade média dos gradientes e a mudança do MAE após a retirada de cada grupo. Os dois painéis respondem a perguntas diferentes: um descreve o comportamento local do erro; o outro mede o efeito de treinar novamente sem determinado conjunto de entradas.
-
-\begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
-    \caption{Importância média por gradientes e efeito médio da retirada dos grupos de entradas.}
-    \label{fig:resultados-explicabilidade}
-    \legend{Fonte: elaborado pelo autor.}
-\end{figure}
-
-IMU e atitude concentraram 43,4\% da sensibilidade média. A retirada desse grupo aumentou o MAE médio em 6,8\% e piorou cinco dos seis alvos. Os aumentos chegaram a 12,9\% em pixels abaixo de 2~m, 9,7\% em P50, 7,9\% em pixels abaixo de 10~m e 7,3\% em pixels abaixo de 5~m.
-
-Fluxo óptico e risco reuniram 24,6\% da sensibilidade, mas sua retirada teve efeito médio próximo de zero. Ainda assim, houve piora de 3,1\% em P50 e 1,4\% em pixels abaixo de 10~m. Comandos reativos e sincronização produziram aumentos médios de 1,7\% e 1,3\%. Movimento e diferença de imagem alternaram entre melhora e piora conforme o alvo.
-
-Entre os 12 maiores erros de validação em pixels abaixo de 5~m, seis amostras apresentaram gradiente local zero. Nesses casos, a saída era localmente plana e não havia ranking válido de entradas. Essa condição foi indicada explicitamente na tabela do notebook para evitar a apresentação de atributos arbitrários com importância de 0\%.
 
 \section{Implicações para o posicionamento}
 
 \subsection{Efeito da quantidade de dados}
 
-O crescimento do treino melhorou cinco dos seis alvos entre o primeiro e o último marco, com ganhos mais claros em P50 e pixels abaixo de 5 e 10~m. Porém, as oscilações entre marcos mostram que adicionar execuções não garante melhora imediata. Os resultados ainda melhoraram no marco final, portanto não há evidência suficiente de um platô definitivo.
-
 \subsection{Estabilidade e modelos de referência}
-
-As cinco sementes produziram coeficientes de variação abaixo de 4\%, o que dá suporte às tendências gerais. Ao mesmo tempo, nenhum modelo superou todos os demais. As árvores obtiveram pequenas vantagens em dois alvos, a MLP venceu em outros dois e a média do treino permaneceu mais forte em P10 e P90. A dificuldade depende mais do alvo do que de uma única escolha de algoritmo.
 
 \subsection{Entradas e concentração dos erros}
 
-IMU e atitude formaram o grupo com evidência mais consistente nas duas análises. Os demais grupos apresentaram contribuições específicas por alvo e algum grau de redundância. A presença de gradiente zero em parte dos maiores erros também indica regiões nas quais a MLP produz respostas pouco sensíveis às entradas locais.
-
 \subsection{Classificação ou regressão dos eventos}
-
-O classificador identifica grande parte dos eventos, mas sua acurácia balanceada ainda é moderada. Mesmo assim, fornecer a classe correta ao regressor reduziu pouco o MAE. O principal limite do pipeline de duas etapas está, portanto, na estimativa do sinal e da magnitude das mudanças.
 
 \subsection{Validação espacial}
 
-A validação espacial começou pelo mapa produzido com a profundidade do Gazebo. Dez execuções completas da bateria final serviram como referência do pipeline de reprojeção, ocupação, A* e envio de pontos ao PX4. Essa etapa foi aceita e mostrou que, quando a profundidade é consistente, a representação espacial e o planejador conseguem sustentar a missão no cenário usado. Esse resultado não mede visão monocular; ele isola o limite superior da geometria e do planejamento.
-
-Em seguida, o Depth Anything V2 métrico foi ajustado com dados do cenário. As versões v12 a v19 foram comparadas por métricas de profundidade e por repetição espacial offline. Os ensaios variaram de forma controlada a escala e o deslocamento da saída, a margem de espaço livre, a incerteza dos retornos ocupados, a persistência temporal e a faixa vertical usada no mapa. A configuração v19 foi tratada como tentativa final, com 20 execuções completas no treino. A matriz espacial previa uma run primária e quatro secundárias. A primária não entrou nos gradientes, mas foi usada como validação durante o treinamento; as quatro secundárias não foram alcançadas porque todos os candidatos reprovaram na etapa primária.
-
-Nenhuma configuração v19 aprovou o portão espacial completo. Em parte dos casos, o erro por pixel era aceitável e não houve colisão no replay primário, mas a taxa de falso espaço livre excedeu o limite e poucos planejamentos produziram caminhos executáveis. Como o critério anterior ao teste exigia aprovação completa antes do voo, a bateria SITL monocular não foi autorizada. Nenhum arquivo operacional foi removido e nenhum voo monocular foi iniciado. O modelo ONNX, sua configuração, o ranking e a proveniência foram preservados como artefatos do resultado.
-
-Esse resultado responde à quinta pergunta em duas partes. A profundidade de referência permitiu construir um mapa útil ao A*, mas a estimativa monocular final não manteve segurança suficiente para autorizar sua execução. Portanto, qualidade média de profundidade não implica, por si só, espaço livre correto nem caminho seguro. A decisão de interromper antes do SITL é uma evidência do protocolo defendido: o teste posterior evitou transformar uma melhora de métrica em uma alegação de navegação que os dados não sustentavam.
-
 \section{Princípios metodológicos derivados}
 
-As evidências não definem uma receita universal, mas sustentam sete princípios para estudos que usam sinais visuais e inerciais em conjuntos formados por execuções de voo:
-
-\begin{enumerate}
-    \item \textbf{Organizar a amostra pelo intervalo de percepção.} Quando a decisão depende da variação entre atualizações visuais, a unidade de análise deve reunir os sinais produzidos nesse mesmo intervalo.
-    \item \textbf{Separar os conjuntos por execução completa.} A divisão por quadro ou intervalo pode colocar amostras temporalmente vizinhas no treino e no teste e produzir uma avaliação otimista.
-    \item \textbf{Interpretar o crescimento dos dados pela diversidade.} Mais execuções não garantem melhora monotônica. É necessário observar quais condições e eventos entraram em cada novo grupo.
-    \item \textbf{Usar várias sementes e referências simples antes de aumentar a arquitetura.} Uma rede só apresenta ganho útil quando supera modelos constantes e alternativas tabulares de forma estável.
-    \item \textbf{Combinar sensibilidade local com ablação.} Gradientes mostram onde o erro responde às entradas, enquanto a retirada de grupos verifica a contribuição para a generalização. Uma técnica isolada pode levar a uma leitura incompleta.
-    \item \textbf{Separar a detecção do evento da estimativa de magnitude e sinal.} Essa decomposição ajuda a localizar o estágio que concentra o erro e evita mudanças de arquitetura sem diagnóstico.
-    \item \textbf{Validar a saída na tarefa que a consumirá.} Um estimador de profundidade pode melhorar MAE e ainda criar falsos espaços livres. Antes do voo, mapa e caminho devem ser avaliados em execuções reservadas e contra uma referência independente.
-\end{enumerate}
-
-Esses princípios dão forma ao posicionamento do trabalho: a escolha de um modelo mais complexo deve vir depois da análise da representação e das falhas observadas. No conjunto estudado, essa análise aponta IMU e atitude como sinais consistentes e a regressão dos eventos como prioridade para uma nova arquitetura.
-
 \section{Considerações finais}
-
-Os resultados respondem às perguntas sem apontar um único modelo como solução final. A representação por intervalos contém informação útil e melhora com mais treino em parte dos alvos, mas ainda sofre com sobreajuste, alvos próximos de zero e eventos de maior magnitude. A etapa espacial reforça a mesma leitura: o estimador monocular chegou a um artefato reproduzível, porém não passou no portão de segurança. Mais importante para a posição defendida, a análise conjunta mostra que o desempenho isolado não basta: divisão, estabilidade, referências, tarefa posterior e diagnóstico dos erros mudam a decisão sobre o próximo passo.
-\fi

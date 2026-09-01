@@ -2,11 +2,6 @@
 
 \section{Introdução}
 
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-Este capítulo descreve o ambiente de simulação, o pipeline de voo e coleta, o processamento visual e a geração do conjunto analisado. A implementação conecta PX4, Gazebo e ROS~2 e produz uma amostra a cada intervalo visual válido.
-\fi
-
 \section{Ambiente experimental}
 
 Os experimentos usam SITL, com PX4 como piloto automático, Gazebo como ambiente físico e ROS~2 como camada de comunicação. O computador do laboratório possui processador Intel Core i7-14700K, com 20 núcleos e 28 \textit{threads}, 64~GB de memória de acesso aleatório (RAM) e uma unidade de processamento gráfico (GPU) NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo.
@@ -112,8 +107,3 @@ O fluxo legado, usado na coleta das 40 execuções, mantém a lógica reativa ba
 Por segurança, \texttt{spatial\_execute\_path} permanece falso nos arquivos YAML. Com esse valor, o sistema constrói mapas e planos sem armar. O voo com profundidade de referência exige ativação explícita desse parâmetro. O modo monocular possui um portão adicional: mesmo com a ativação explícita, sua bateria só deve ocorrer depois da aprovação offline. O roteiro completo e os comandos ficam em \path{docs/execucao_pipeline_espacial.md}.
 
 \section{Considerações finais}
-
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-A implementação transforma sinais com frequências e formatos diferentes em intervalos comparáveis. O pipeline de voo produz os dados, enquanto o notebook mantém os critérios de validade, os conjuntos experimentais e as análises tabulares em um único local. O núcleo espacial acrescenta uma interface auditável entre percepção e planejamento, com repetição offline antes do voo e sem levar a comparação de controle para o escopo do estudo. O Capítulo~\ref{cap:validacao} apresenta a avaliação da representação.
-\fi

@@ -5,22 +5,9 @@
 \setlength{\absparsep}{18pt}
 
 \begin{resumo}
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-Este trabalho defende que o aumento da complexidade de modelos para navegação monocular deve ser precedido por uma avaliação controlada dos dados que os alimentam. Para examinar essa posição, foi construída uma metodologia que sincroniza visão monocular, fluxo óptico, movimento, unidade de medição inercial (IMU) e comandos reativos por intervalo visual. Os experimentos foram realizados em simulação com PX4 e Gazebo. O conjunto tabular final contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP) multissaída, modelos de árvores e referências simples foram usados como instrumentos de análise. O erro diminuiu em cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi contínua e nenhum modelo venceu em todos os alvos. A retirada de IMU e atitude aumentou o erro médio em 6,8\%, enquanto a análise de eventos indicou que o principal limite está na estimativa da magnitude e do sinal. Em uma etapa espacial, uma grade de ocupação tridimensional e o A* foram validados com a profundidade do Gazebo. Um estimador Depth Anything V2 foi então refinado até a versão v19 e avaliado offline. Embora alguns candidatos não tenham colidido no replay primário, nenhuma configuração aprovou simultaneamente disponibilidade de caminhos, falso espaço livre e segurança espacial; por isso, a bateria de voo monocular não foi autorizada. O resultado mostra que melhorar métricas por pixel não garante espaço livre correto nem caminho seguro. A principal contribuição é esse posicionamento metodológico, resumido em sete princípios e apoiado por evidências experimentais positivas e negativas.
-
-\textbf{Palavras-chave}: Veículos aéreos não tripulados (VANTs); visão monocular; fluxo óptico; detecção de obstáculos; mapeamento tridimensional.
-\fi
 \end{resumo}
 
 \begin{resumo}[Abstract]
 \begin{otherlanguage*}{english}
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-This work argues that increasing model complexity for monocular navigation should be preceded by a controlled evaluation of the data used to train those models. To examine this position, a methodology was developed to synchronize monocular vision, optical flow, motion, inertial measurement unit (IMU) data, and reactive commands by visual interval. Experiments were conducted in simulation with PX4 and Gazebo. The final tabular dataset contains 40 executions and 1,234 valid intervals. A multi-output multilayer perceptron (MLP), tree-based models, and simple baselines served as analysis instruments. Error decreased for five of the six targets between the first and final milestones, but improvement was not continuous and no model was best for every target. Removing IMU and attitude inputs increased average error by 6.8\%, while event analysis indicated that magnitude and sign estimation remain the main limitation. In a spatial stage, a three-dimensional occupancy grid and A* were validated with Gazebo depth. A Depth Anything V2 estimator was then refined up to version v19 and evaluated offline. Although some candidates were collision-free in the primary replay, no configuration simultaneously passed path availability, false-free-space, and spatial-safety checks; therefore, the monocular flight battery was not authorized. This result shows that improved pixel-level metrics do not guarantee correct free space or safe paths. The main contribution is this methodological position, summarized in seven principles and supported by both positive and negative experimental evidence.
-
-\vspace{\onelineskip}
-\noindent\textbf{Keywords}: Unmanned aerial vehicles (UAVs); monocular vision; optical flow; obstacle detection; reactive navigation.
-\fi
 \end{otherlanguage*}
 \end{resumo}

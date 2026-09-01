@@ -1,98 +1,13 @@
-% ----------------------------------------------------------
-% Apêndices
-% ----------------------------------------------------------
-
-% Inicia os apêndices
 \begin{apendicesenv}
 
-% Imprime uma página indicando o início dos apêndices
 \partapendices
 
 \chapter[Configurações]{Configurações técnicas do experimento}
 
-Este apêndice reúne os principais parâmetros usados na coleta e no treinamento. O objetivo é facilitar a reprodução do estudo sem interromper a leitura da metodologia com listas extensas de configurações.
-
 \section{Ambiente e missão}
-
-\begin{table}[H]
-    \centering
-    \caption{Configurações do ambiente simulado e da missão.}
-    \label{tab:apendice-ambiente}
-    \renewcommand{\arraystretch}{1.12}
-    \begin{tabular}{p{0.36\textwidth}p{0.52\textwidth}}
-        \hline
-        \textbf{Item} & \textbf{Configuração} \\
-        \hline
-        Piloto automático & PX4, commit \texttt{e2708705a8ca6258}\newline\texttt{54f1129fd9dde2ae8ae16d59} \\
-        Comunicação & ROS~2 Humble \\
-        Simulador & Gazebo Harmonic 8.10.0 \\
-        Veículo e cenário & \texttt{x500\_mono\_cam} no mundo \texttt{baylands} \\
-        Frequência do controlador & 25~Hz \\
-        Velocidade máxima & 12~m/s \\
-        Pontos de passagem NED & $(-25,25,-1{,}65)$; $(-50,70,-1{,}65)$; $(-25,25,-1{,}65)$; $(0,0,-1{,}65)$~m \\
-        Raio dos pontos intermediários & 4~m \\
-        Raio de encerramento & 3~m do ponto final \\
-        \hline
-    \end{tabular}
-    \legend{Fonte: elaborado pelo autor.}
-\end{table}
 
 \section{Processamento e sincronização}
 
-\begin{table}[H]
-    \centering
-    \caption{Parâmetros do processamento visual e da validação dos intervalos.}
-    \label{tab:apendice-processamento}
-    \renewcommand{\arraystretch}{1.12}
-    \begin{tabular}{p{0.42\textwidth}p{0.46\textwidth}}
-        \hline
-        \textbf{Item} & \textbf{Configuração} \\
-        \hline
-        Resolução após estabilização & $640\times480$ pixels \\
-        Fator de aproximação & 1,25 \\
-        Pontos Shi--Tomasi & até 180 pontos \\
-        Qualidade e distância mínima & 0,01 e 12 pixels \\
-        Janela Lucas--Kanade & $21\times21$ pixels \\
-        Pirâmide e término & três níveis adicionais; 20 iterações ou erro inferior a 0,04 \\
-        Maior intervalo RGB ou de profundidade aceito & 0,5~s \\
-        Maior diferença temporal entre profundidade e RGB & 0,08~s \\
-        Total analisado & 40 execuções e 1.234 intervalos válidos \\
-        \hline
-    \end{tabular}
-    \legend{Fonte: elaborado pelo autor.}
-\end{table}
-
-As entradas do regressor são formadas por duração e atraso de sincronização, deltas de posição e atitude, integrais e variações da IMU, comandos reativos, quantidade e retenção de pontos, estatísticas do fluxo e descritores da diferença entre imagens. Os descritores adicionais são média, desvio padrão, média absoluta e percentil 90 absoluto da diferença de imagem, além do desvio dos vetores, média das coordenadas, componente radial média e risco médio do fluxo.
-
 \section{Treinamento da MLP}
-
-\begin{table}[H]
-    \centering
-    \caption{Hiperparâmetros da MLP principal.}
-    \label{tab:apendice-mlp}
-    \renewcommand{\arraystretch}{1.12}
-    \begin{tabular}{p{0.42\textwidth}p{0.46\textwidth}}
-        \hline
-        \textbf{Item} & \textbf{Configuração} \\
-        \hline
-        Camadas ocultas & 64 e 16 unidades \\
-        Ativação & ReLU \\
-        \textit{Dropout} & 0,30 após cada camada oculta \\
-        Saída & linear, com seis alvos \\
-        Otimizador e taxa de aprendizado & Adam, $10^{-3}$ \\
-        Regularização $L_2$ & $10^{-4}$ \\
-        Tamanho do lote & 64 amostras \\
-        Limite de treinamento & 300 épocas \\
-        Parada antecipada & MSE da validação, paciência 50 e melhora mínima $10^{-4}$ \\
-        Semente & 42 \\
-        Marcos cumulativos & 9, 17, 25, 33 e 40 execuções \\
-        Divisão fixa & duas execuções de validação e três de teste \\
-        Sementes da análise de robustez & 7, 21, 42, 84 e 123 \\
-        Modelos de árvores & Random Forest e Extra Trees, com 500 árvores \\
-        Ablação & retirada de um grupo por vez; sementes 21, 42 e 84 \\
-        \hline
-    \end{tabular}
-    \legend{Fonte: elaborado pelo autor.}
-\end{table}
 
 \end{apendicesenv}

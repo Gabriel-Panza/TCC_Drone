@@ -1,35 +1,7 @@
 \chapter{Conclusão}\label{cap:conclusoes}
 
-% Conteudo reservado para revisao com o orientador.
-\iffalse
-
-Este trabalho defendeu que modelos mais complexos para navegação monocular devem ser precedidos por uma avaliação controlada dos dados que os alimentam. A posição foi examinada em um problema concreto: estimar variações de proximidade a partir de visão monocular, IMU, movimento e comandos reativos. Para isso, foi construído um processo que sincroniza sinais por intervalo visual e mantém as execuções completas separadas entre treino, validação e teste.
-
-O aumento do treino trouxe melhora em cinco dos seis alvos entre 9 e 40 execuções, embora a evolução tenha oscilado entre os marcos. Os testes com cinco sementes apresentaram variação inferior a 4\%, e a comparação com árvores mostrou que nenhum algoritmo possui vantagem geral. As curvas de perda confirmaram sobreajuste depois da melhor época de validação.
-
-Na análise dos eventos, a classificação não foi a principal responsável pelo erro final. Mesmo com a indicação correta dos eventos, o regressor apresentou pouca melhora. O problema mais importante permanece na estimativa da magnitude e do sinal. Gradientes e ablação também mostraram que IMU e atitude formam o grupo com contribuição mais consistente, enquanto a utilidade dos demais grupos muda conforme o alvo.
-
-A validação espacial chegou a uma conclusão diferente para suas duas fontes de profundidade. A bateria com a referência do Gazebo confirmou o funcionamento da reprojeção, do mapa, do A* e da interface de pontos com o PX4. Já o estimador monocular refinado até a v19 não aprovou o portão espacial completo: mesmo candidatos sem colisão no replay primário falharam em disponibilidade de caminhos e falso espaço livre. Por isso, o protocolo bloqueou a bateria SITL monocular e registrou a etapa como resultado negativo controlado.
-
 \section{Posição e contribuição}
-
-A principal contribuição não é um novo controlador de desvio. O trabalho apresenta uma posição metodológica apoiada por uma avaliação experimental: antes de aumentar a arquitetura ou executar uma percepção aprendida, é necessário examinar a unidade de análise, a separação das execuções, a estabilidade, as referências, a origem dos erros e o efeito na tarefa posterior. O crescimento controlado do treino, os conjuntos fixos, as várias sementes, os modelos de referência, a análise de eventos, a ablação e o portão espacial mostram como essa posição pode ser aplicada. A representação tridimensional e o planejamento com A* completam essa verificação ao revelar que melhora por pixel não garante um caminho seguro.
-
-O estudo também reúne sete princípios que podem orientar investigações semelhantes. Eles tratam da organização por intervalo visual, da divisão por execução, da diversidade das novas coletas, do uso de sementes e referências, da combinação de gradientes com ablação, da separação entre detecção e regressão dos eventos e da validação na tarefa que consome a saída. IMU e atitude apresentaram a contribuição mais estável, e a regressão de mudanças maiores continuou como o principal limite. Esses resultados ajudam a direcionar trabalhos posteriores sem atribuir ao modelo atual uma capacidade que os testes não sustentam.
 
 \section{Limitações}
 
-Todos os experimentos ocorreram em um único cenário simulado e com o mesmo modelo de drone. O conjunto não cobre a variedade de obstáculos, iluminação, textura e perturbações de um voo real. A profundidade de referência também vem do simulador e não contém as falhas de um sensor físico.
-
-Validação e teste fixos tornam os marcos comparáveis, mas incluem apenas duas e três execuções. A MLP recebe estatísticas resumidas e não preserva toda a estrutura espacial da imagem. Além disso, a distribuição possui muitas variações próximas de zero e poucos casos extremos, o que fortalece previsões constantes e dificulta o aprendizado das mudanças maiores.
-
-Os gradientes descrevem sensibilidade local, não causalidade. A ablação oferece uma verificação complementar, mas seus resultados ainda dependem da arquitetura, das sementes e da forma escolhida para agrupar as entradas. Na etapa espacial, o mapa ideal usa a mesma referência sintética que supervisiona o ajuste e atua como guardião da avaliação; isso permite detectar colisões no simulador, mas não representa as incertezas de um sensor físico. A bateria monocular foi interrompida antes do SITL e, portanto, o trabalho não afirma desempenho de voo para a v19. Os arquivos brutos e os pesos também não estão no repositório devido ao tamanho, embora configurações, código e artefatos de decisão tenham sido preservados.
-
 \section{Agenda de trabalhos futuros}
-
-O próximo passo da percepção é reduzir falsos espaços livres, e não apenas diminuir o erro médio de profundidade. Isso pode envolver perdas voltadas às regiões próximas e às descontinuidades, estimativa explícita de incerteza, calibração por cenário e modelos que preservem consistência temporal entre quadros. Qualquer nova versão deve repetir o mesmo portão espacial em execuções que não participaram do ajuste.
-
-O fluxo reativo anterior e o fluxo espacial foram mantidos separados. Um trabalho futuro pode usar os mapas e caminhos produzidos aqui para estudar controle reativo, acompanhamento de trajetória e dinâmica perto de obstáculos. Essa continuação deverá comparar controladores de forma própria; o resultado atual termina na representação, no planejamento e na entrega de pontos ao PX4.
-
-Também podem ser avaliados novos cenários, perturbações, sensores físicos e um VANT real. Uma validação cruzada por execuções ampliaria a estimativa da incerteza. Para aproximar a avaliação de condições reais, será necessário substituir o veto ideal do Gazebo por mecanismos de segurança independentes e testar a transferência do estimador sem usar a referência durante a execução.
-\fi
