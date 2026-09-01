@@ -26,7 +26,16 @@ PY
 
 ## 2. Simulador e topicos
 
-Use os mesmos terminais do pipeline anterior para PX4, Gazebo, MicroXRCEAgent e as duas pontes de imagem. Confirme antes de iniciar o no:
+Use os mesmos terminais do pipeline anterior para PX4, Gazebo, MicroXRCEAgent e as duas pontes de imagem. Inicie o simulador com:
+
+```bash
+cd ~/PX4-Autopilot
+PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
+```
+
+O MicroXRCEAgent deve permanecer ativo entre as runs. Ao interromper uma run,
+encerre e reinicie somente PX4 e Gazebo com
+`~/TCC_Drone/scripts/cleanup_spatial_sim.sh`. Confirme antes de iniciar o no:
 
 ```bash
 ros2 topic hz /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image
@@ -84,7 +93,7 @@ Por padrao, `spatial_collect_legacy_metrics=false` desliga a estabilizacao e o f
 
 O planejador remove curvas discretas quando existe linha de visada inteiramente observada e livre. O caminho resultante e dividido em pontos com no maximo 6 m. Caminhos locais terminam 2,5 m antes da fronteira observada, e um novo plano e solicitado quando restam menos de 3 m. Um subcaminho menor que 1,5 m nao e executado, pois ficaria proximo do raio de aceitacao de 0,8 m. Um replanejamento antecipado so substitui o caminho atual quando acrescenta pelo menos 1 m de progresso. Se a posicao atual entrar na regiao inflada, ou se tres microcaminhos consecutivos forem rejeitados, o drone tenta recuar 1,5 m por posicoes seguras ja voadas. Quando ainda nao existe historico suficiente para o recuo, ele permanece parado e faz uma varredura de yaw de 45 graus para cada lado em seis segundos, ampliando a area observada antes da proxima tentativa. A amostragem `spatial_depth_stride=35` preserva a grade de 0,75 m com menor custo de integracao.
 
-O mapa integra obstaculos ate 30 m, planeja subobjetivos em um raio local de 25 m e mantem somente pontos ate 0,8 m acima ou abaixo da camera. Essa faixa concentra a ocupacao no corredor de voo e reduz a influencia do solo e das partes altas das copas. A projecao superior mostra 35 m para cada lado e informa quantos voxels livres e ocupados estao visiveis. A esfera livre ao redor do drone nunca remove um voxel com ocupacao confirmada, e a margem de seguranca usa distancia euclidiana na grade.
+O mapa integra obstaculos ate 30 m, planeja subobjetivos em um raio local de 25 m e, na configuracao final, mantem como obstaculos os pontos na banda de 0,1 m ao redor da altura do corpo. Essa faixa concentra a ocupacao no corredor de voo e reduz a influencia do solo e das partes altas das copas. A projecao superior mostra 35 m para cada lado e informa quantos voxels livres e ocupados estao visiveis. A esfera livre ao redor do drone nunca remove um voxel com ocupacao confirmada, e a margem de seguranca usa distancia euclidiana na grade.
 
 O YAML inicial usa uma rota curta ate `[-8, 8, -1.65]` e retorna ao inicio. Ela serve apenas para validar atualizacao em movimento e estabilidade. A rota entre arvores deve ser definida depois, com pontos intermediarios registrados e mantidos iguais nos ensaios ideal e monocular.
 
@@ -120,13 +129,48 @@ Compare no `events.jsonl` os campos `mae_m`, `rmse_m` e `abs_rel`. Inspecione ta
 
 ## 7. Voo monocular com A*
 
-Habilite somente depois das etapas anteriores:
+Esta etapa esta **bloqueada no resultado final**. O comando e apenas
+documental e nao deve ser executado enquanto o relatorio mantiver
+`monocular_sitl_battery=not_authorized`:
 
 ```bash
 PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   --params-file config/spatial_monocular.yaml \
   -p spatial_execute_path:=true
 ```
+
+## Pipeline legado reativo
+
+Depois de iniciar PX4, Gazebo, MicroXRCEAgent e a ponte RGB, execute:
+
+```bash
+cd ~/TCC_Drone
+source /opt/ros/humble/setup.bash
+source ~/TCC_Drone/ws_ros2/install/setup.bash
+PYTHONNOUSERSITE=1 python3 main.py --ros-args \
+  -p navigation_mode:=legacy_reactive \
+  -p ground_truth_depth_topic:=/sim_depth_ground_truth \
+  -p save_ground_truth_dataset:=true
+```
+
+O fluxo requer imagem RGB, pose e atitude do PX4 e os topicos offboard. A
+profundidade e exigida quando a coleta RGB--profundidade estiver habilitada.
+As saidas ficam em `logs/voo_teste_*` e `datasets/spatial_mapping/run_*`.
+Encerre ao concluir a rota ou diante de oscilacao, perda de altitude ou
+aproximacao insegura; em seguida reinicie PX4 e Gazebo.
+
+## Significado de sem controle reativo
+
+Em `spatial_astar`, os comandos do fluxo optico legado nao alteram o voo. O
+A* tambem nao controla motores nem atitude: ele produz pontos de posicao em
+NED. O PX4 estabiliza o veiculo, controla o baixo nivel e acompanha esses
+pontos. Sem controle reativo significa sem a lei visual antiga, nao ausencia
+de controle.
+
+## Parametros verticais finais
+
+Os YAMLs finais usam banda de obstaculos e inflacao vertical de 0,1 m em
+torno do corpo. A margem horizontal permanece independente e nao foi reduzida.
 
 ## Arquivos de cada run
 

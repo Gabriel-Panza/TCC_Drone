@@ -5,23 +5,23 @@
   "datasets": {
     "reference_reserved_03": {
       "path": "datasets/spatial_mapping/run_20260831_082836_332335",
-      "description": "Run 3 completa da bateria final, reservada para validacao v14."
+      "description": "Run 3 da bateria final; validacao de treino v19 e gate espacial primario, nao teste independente."
     },
     "reference_reserved_06": {
       "path": "datasets/spatial_mapping/run_20260831_083521_770086",
-      "description": "Run 6 completa da bateria final, reservada para validacao v14."
+      "description": "Run 6 completa da bateria final, secundaria sem uso no treino v19."
     },
     "reference_reserved_10": {
       "path": "datasets/spatial_mapping/run_20260831_084356_708163",
-      "description": "Run 10 completa da bateria final, reservada para validacao v14."
+      "description": "Run 10 completa da bateria final, secundaria sem uso no treino v19."
     },
     "independent_old": {
       "path": "datasets/spatial_mapping/run_20260820_225114_611267",
-      "description": "Run independente antiga, nunca usada no treino v14."
+      "description": "Run independente antiga, secundaria e ausente do treino v19."
     },
     "heldout_old": {
       "path": "datasets/spatial_mapping/run_20260819_191346_877996",
-      "description": "Historical complete heldout, excluded from v16."
+      "description": "Run historica completa, secundaria e excluida do treino v19."
     }
   },
   "models": {

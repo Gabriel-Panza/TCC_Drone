@@ -136,6 +136,7 @@ class RecoveryExitWindow:
             object.__setattr__(self, name, tuple(tuple(p) for p in getattr(self, name)))
 
     def observe(self, current, path, index, now_s, progress_step_m):
+        """Atualiza progresso medido na polilinha NED sem reiniciar o prazo."""
         key = tuple(tuple(float(v) for v in p) for p in path) if index < len(path) else ()
         if (not key or not np.isfinite([current, *key]).all()
                 or not np.isfinite(now_s) or progress_step_m <= 0):
@@ -167,6 +168,7 @@ class RecoveryExitWindow:
 
     def decide(self, now_s, *, base_deadline_s, path_safe, endpoint_progress_m,
                arrival, min_progress_m, corridor_m):
+        """Decide se a janela limitada de saida continua segura e produtiva."""
         deadline = (self.grace_deadline_s if self.grace_deadline_s is not None
                     else base_deadline_s + self.GRACE_LIMIT_S)
         reason = (
@@ -260,6 +262,7 @@ class RecoveryProgressGuard:
         return asdict(self)
 
     def endpoint_progress(self, endpoint):
+        """Retorna a reducao, em metros, da distancia ao objetivo NED."""
         goal = np.asarray(self.goal_ned_m, dtype=float)
         baseline = min(
             np.linalg.norm(np.asarray(self.stopped_position_ned_m) - goal),
@@ -268,12 +271,14 @@ class RecoveryProgressGuard:
         return float(baseline - np.linalg.norm(np.asarray(endpoint) - goal))
 
     def actual_progress_reached(self, current, extension_m, arrival_radius_m):
+        """Confirma extensao mensuravel ou chegada ao objetivo global."""
         return bool(
             self.endpoint_progress(current) >= extension_m
             or np.linalg.norm(np.asarray(current) - self.goal_ned_m) <= arrival_radius_m
         )
 
     def observation_expired(self, now_s, limit_s):
+        """Indica se o prazo total de observacao terminou, sem reinicios."""
         return (
             self.observation_started_s is not None
             and now_s - self.observation_started_s >= limit_s
@@ -371,6 +376,7 @@ class RecoveryCandidatePolicy:
         return cls(**values)
 
     def evaluate(self, navigator, current, plan, reference_navigator=None):
+        """Aplica os gates de execucao e referencia a um plano candidato."""
         result = {"accepted": False, "reason": "planner_failure"}
         if not plan.success:
             return result

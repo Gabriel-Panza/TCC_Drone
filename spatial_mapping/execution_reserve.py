@@ -115,6 +115,7 @@ class ExecutionReserveNavigator(SpatialNavigator):
         return distance > self.extra_radius_m + 1e-9
 
     def plan(self, current_position_ned_m, requested_goal_ned_m, **kwargs):
+        """Planeja em NED exigindo a reserva extra ao redor de cada segmento."""
         started = perf_counter()
         current = np.asarray(current_position_ned_m, dtype=float)
         goal = np.asarray(requested_goal_ned_m, dtype=float)
@@ -242,6 +243,7 @@ class ExecutionReserveNavigator(SpatialNavigator):
         return simplified
 
     def path_safety_diagnostics(self, current_position_ned_m, waypoints_ned_m):
+        """Combina seguranca conhecida com a reserva geometrica adicional."""
         result = super().path_safety_diagnostics(current_position_ned_m, waypoints_ned_m)
         if result["safe"] and not self._has_reserve([current_position_ned_m, *waypoints_ned_m]):
             result.update(safe=False, failure_reason="execution_reserve",
@@ -271,6 +273,7 @@ def prepare_executable_command(navigator, current, plan, acceptance_m, minimum_m
 
 def executable_candidate_diagnostics(navigator, current, plan, *, acceptance_m,
                                      minimum_m, require_goal_progress=True):
+    """Explica por que um plano pos-processado pode ou nao ser executado."""
     command, strict, safety, length, executable = prepare_executable_command(
         navigator, current, plan, acceptance_m, minimum_m)
     current = np.asarray(current, dtype=float)

@@ -40,6 +40,47 @@ MODEL_INPUTS = {
             "reports/v14__v14_flight_envelope/reference_reserved_03.json"
         ),
     },
+    "v15": {
+        "model": "models/depth_anything_v2_metric_baylands_vits_v15_686x518_fp32.onnx",
+        "depth": "models/monocular_validation_v15_independent.json",
+        "spatial": (
+            "logs/spatial_offline_sweep/manual_v15_validation_01/"
+            "reports/v15__v15_flight_envelope/reference_reserved_03.json"
+        ),
+    },
+    "v16": {
+        "model": "models/depth_anything_v2_metric_baylands_vits_v16_686x518_fp32.onnx",
+        "depth": "models/monocular_validation_v16_independent.json",
+        "spatial": (
+            "logs/spatial_offline_sweep/manual_v16_validation_01/"
+            "reports/v16__v16_flight_envelope/reference_reserved_03.json"
+        ),
+    },
+    "v17": {
+        "model": "models/depth_anything_v2_metric_baylands_vits_v17_686x518_fp32.onnx",
+        "depth": "models/monocular_validation_v17_independent.json",
+        "spatial": (
+            "logs/spatial_offline_sweep/manual_v17_validation_01/"
+            "reports/v17__v17_flight_envelope/reference_reserved_03.json"
+        ),
+    },
+    "v18": {
+        "model": "models/depth_anything_v2_metric_baylands_vits_v18_686x518_fp32.onnx",
+        "depth": "models/monocular_validation_v18_independent.json",
+        "spatial": (
+            "logs/spatial_offline_sweep/manual_v18_validation_01/"
+            "reports/v18__v18_shift0p0/reference_reserved_03.json"
+        ),
+    },
+    "v19": {
+        "model": "models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx",
+        "depth": "models/monocular_validation_v19_final_independent.json",
+        "spatial": (
+            "logs/spatial_offline_sweep/manual_v19_final_validation_01/"
+            "reports/v19_final__v19_scale1p0_shift1p2/"
+            "reference_reserved_03.json"
+        ),
+    },
 }
 FREEZE_INPUTS = [
     "config/spatial_debug.yaml",
@@ -50,6 +91,19 @@ FREEZE_INPUTS = [
     "config/spatial_v12_validation_sweep.json",
     "config/spatial_v13_validation_sweep.json",
     "config/spatial_v14_validation_sweep.json",
+    "config/depth_v15_training.json",
+    "config/depth_v16_training.json",
+    "config/depth_v17_training.json",
+    "config/depth_v18_training.json",
+    "config/depth_v19_final_training.json",
+    "config/spatial_v15_validation_sweep.json",
+    "config/spatial_v16_validation_sweep.json",
+    "config/spatial_v17_validation_sweep.json",
+    "config/spatial_v18_validation_sweep.json",
+    "config/spatial_v19_final_validation_sweep.json",
+    "logs/spatial_offline_sweep/manual_v19_final_validation_01/ranking.csv",
+    "logs/spatial_offline_sweep/manual_v19_final_validation_01/summary.csv",
+    "models/depth_anything_v2_metric_baylands_vits_v19_final.training.json",
     str(REFERENCE_BATTERY),
 ]
 
@@ -226,6 +280,11 @@ def model_rows():
         planning = spatial["planning"]
         mapping = spatial["map"]
         qualification = spatial["qualification"]
+        failed_spatial_checks = [
+            name
+            for name, passed in qualification.get("checks", {}).items()
+            if not passed
+        ]
         validation = depth["validation_raw"]
         rows.append(
             {
@@ -238,6 +297,7 @@ def model_rows():
                 "depth_bias_m": validation["bias_m"],
                 "spatial_dataset": spatial["run"],
                 "spatial_qualified": qualification["passed"],
+                "failed_spatial_checks": ";".join(failed_spatial_checks),
                 "frames": spatial["frames_integrated"],
                 "plan_attempts": planning["attempts"],
                 "plan_successes": planning["successes"],
@@ -265,6 +325,73 @@ def write_csv(path, rows):
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def decision_rows(reference, models):
+    """Summarize the two evaluated pipelines without mixing their evidence."""
+
+    v19 = next(row for row in models if row["model"] == "v19")
+    return [
+        {
+            "pipeline": "Gazebo ground-truth depth + spatial map + A*",
+            "evidence": "10-run SITL battery",
+            "result": (
+                f'{reference["completed_runs"]}/{reference["runs"]} complete; '
+                f'{reference["unsafe_adopted_paths"]} unsafe adopted paths'
+            ),
+            "sitl_status": "authorized_and_completed",
+            "justification": (
+                "Reference-depth pipeline completed the fixed tree route "
+                "without adopting a path rejected by the reference guardian."
+            ),
+        },
+        {
+            "pipeline": "Monocular Depth Anything V2 v19 + spatial map + A*",
+            "evidence": "independent pixel test + reserved offline spatial replay",
+            "result": (
+                f'pixel_gate={v19["depth_qualified"]}; '
+                f'spatial_gate={v19["spatial_qualified"]}; '
+                f'failed={v19["failed_spatial_checks"]}'
+            ),
+            "sitl_status": "blocked",
+            "justification": (
+                "Pixel metrics passed, but the complete spatial gate failed; "
+                "zero collisions in one primary replay does not compensate "
+                "for insufficient observed-path availability and false-free "
+                "space above the configured limit."
+            ),
+        },
+    ]
+
+
+def v19_split_rows():
+    """Classify each final-gate run against v19 training provenance."""
+
+    training = load_json(
+        "models/depth_anything_v2_metric_baylands_vits_v19_final.training.json"
+    )
+    matrix = load_json("config/spatial_v19_final_validation_sweep.json")
+    train = {str(Path(path).resolve()) for path in training["train_runs"]}
+    validation = {
+        str(Path(path).resolve()) for path in training.get("validation_runs", [])
+    }
+    model = matrix["models"]["v19_final"]
+    primary = model["primary_dataset"]
+    rows = []
+    for name, item in matrix["datasets"].items():
+        path = str((ROOT / item["path"]).resolve())
+        rows.append(
+            {
+                "dataset": name,
+                "path": path,
+                "gate_stage": "primary" if name == primary else "secondary",
+                "used_for_gradients": path in train,
+                "used_for_training_validation": path in validation,
+                "independent_test": path not in train and path not in validation,
+                "executed_in_final_sweep": name == primary,
+            }
+        )
+    return rows
 
 
 def main():
@@ -300,20 +427,25 @@ def main():
             }
         )
 
+    reference = aggregate_reference(references)
+    decisions = decision_rows(reference, models)
+    split_audit = v19_split_rows()
     report = {
         "schema_version": 1,
         "scope": (
             "Spatial mapping and navigation experiment freeze; no thesis "
             "documentation, legacy notebook or dashboard modified."
         ),
-        "reference": aggregate_reference(references),
+        "reference": reference,
         "monocular_models": models,
         "decision": {
             "reference_baseline": "accepted",
             "monocular_sitl_battery": "not_authorized",
             "reason": (
-                "All v12-v14 models failed the spatial gate; v13 and v14 "
-                "produced reference collisions in offline replay."
+            "All evaluated v12-v19 models failed the complete spatial gate. "
+            "Some v19 candidates had zero collisions on the primary reserved "
+            "replay, but still failed availability and false-free criteria "
+            "and therefore were not eligible for monocular SITL."
             ),
             "interpretation": (
                 "Pixel-level depth qualification did not imply safe occupancy "
@@ -321,9 +453,13 @@ def main():
             ),
         },
         "artifacts": artifacts,
+        "decision_table": decisions,
+        "v19_split_audit": split_audit,
     }
     write_csv(output / "reference_runs.csv", references)
     write_csv(output / "monocular_comparison.csv", models)
+    write_csv(output / "decision_table.csv", decisions)
+    write_csv(output / "v19_split_audit.csv", split_audit)
     (output / "final_report.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

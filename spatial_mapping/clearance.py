@@ -10,6 +10,7 @@ def _points(value):
 
 
 def point_to_path(point, points):
+    """Mede a menor distancia de um ponto NED a uma polilinha NED."""
     points = _points(points)
     point = _points([point])[0]
     best = None

@@ -99,6 +99,7 @@ def write_planning_snapshot(run_dir, snapshot):
 
 
 def load_planning_snapshot(run_dir, relative_path):
+    """Carrega um snapshot pertencente a run e rejeita escape de diretorio."""
     root = Path(run_dir).resolve()
     path = (root / relative_path).resolve()
     if not path.is_relative_to(root):

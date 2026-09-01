@@ -1,4 +1,8 @@
-"""Cobertura conservadora de segmentos: nao e o raycast de integracao."""
+"""Cobertura conservadora de segmentos: nao e o raycast de integracao.
+
+Inspirada na travessia de voxels de Amanatides e Woo (1987),
+doi:10.2312/egtp.19871000, com inclusao conservadora de contatos.
+"""
 from itertools import product
 from math import ceil, floor, isfinite
 

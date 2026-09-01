@@ -1,4 +1,8 @@
-"""Planejamento A* em uma grade tridimensional discreta."""
+"""Planejamento A* em grade 3D.
+
+Base conceitual: Hart, Nilsson e Raphael (1968),
+doi:10.1109/TSSC.1968.300136.
+"""
 
 from heapq import heappop, heappush
 from itertools import combinations, product

@@ -54,15 +54,29 @@ Essa separacao permite atribuir diferencas de caminho ao mapa, sem misturar muda
 - comprimento do caminho e distancia minima dos obstaculos;
 - tempo de atualizacao do mapa e tempo do A*.
 
-## Ordem de implementacao
+## Metodologia implementada
 
-1. Validar reprojecao e transformacoes com cenas sinteticas.
-2. Construir um mapa de um frame usando profundidade do Gazebo.
-3. Acumular varios frames usando a pose do drone.
-4. Comparar o mapa acumulado com a geometria do simulador.
-5. Integrar a fonte monocular de profundidade.
-6. Executar o A* nos mapas ideal e estimado.
-7. Somente depois publicar os pontos de passagem para o PX4.
+1. aquisicao sincronizada de RGB e profundidade;
+2. inferencia monocular;
+3. calibracao de escala e deslocamento;
+4. reprojecao pinhole para a camera optica;
+5. transformacao camera optica, corpo e NED;
+6. integracao temporal dos raios;
+7. marcacao de voxels livres e ocupados;
+8. manutencao das observacoes desconhecidas;
+9. faixa vertical de obstaculos em torno do corpo;
+10. confirmacao temporal da evidencia;
+11. expansao dos obstaculos pela margem de seguranca;
+12. geracao do espaco observado e navegavel;
+13. A* com conectividade tridimensional;
+14. selecao de fronteiras quando o destino nao esta observado;
+15. simplificacao por linha de visada conhecida e livre;
+16. divisao do caminho em pontos;
+17. validacao final dos segmentos;
+18. publicacao de setpoints de posicao;
+19. replanejamento;
+20. frenagem, recuo e recuperacao;
+21. registro de mapas, planos, estados e metricas.
 
 ## Estado da v1
 
@@ -74,4 +88,12 @@ Essa separacao permite atribuir diferencas de caminho ao mapa, sem misturar muda
 - `spatial_execute_path=false` impede o armamento durante a primeira inspecao;
 - cada run salva frames sincronizados, mapas, planos e metricas;
 - cada tentativa registra tempo, comprimento e sucesso do A*, e a analise verifica o caminho estimado contra o mapa ideal final;
-- ainda faltam os testes com Gazebo e PX4 no computador do laboratorio.
+- a referencia do Gazebo completou 10 de 10 runs na rota fixa;
+- nenhuma configuracao monocular v12--v19 passou o gate espacial completo;
+- candidatos v19 sem colisao no replay primario ainda reprovaram
+  disponibilidade de caminho e falso espaco livre;
+- a run primaria v19 foi validacao durante o treino, embora nao tenha
+  participado dos gradientes, e nao constitui teste independente;
+- os quatro conjuntos secundarios nao foram executados porque todos os
+  candidatos falharam na etapa primaria;
+- a bateria SITL monocular permaneceu bloqueada.

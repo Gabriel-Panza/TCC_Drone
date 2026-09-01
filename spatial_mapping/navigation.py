@@ -1,4 +1,9 @@
-"""Orquestracao independente de ROS para mapeamento e planejamento espacial."""
+"""Orquestracao independente de ROS para mapeamento e planejamento espacial.
+
+A selecao de fronteiras segue a ideia de Yamauchi (1997),
+doi:10.1109/CIRA.1997.613851; as politicas de seguranca sao especificas deste
+projeto e mantem espaco desconhecido fora do conjunto navegavel.
+"""
 
 from dataclasses import dataclass, field
 from itertools import product
@@ -764,6 +769,12 @@ class SpatialNavigator:
     def initial_escape_path_safety_diagnostics(
         self, current_position_ned_m, waypoints_ned_m
     ):
+        """Valida uma unica saida da inflacao inicial por voxels livres NED.
+
+        A excecao existe somente quando a pose corrente ja esta inflada. O
+        caminho deve sair por espaco conhecido e nao pode reentrar na regiao
+        inflada; desconhecido continua proibido.
+        """
         # Permite apenas sair da inflacao inicial por espaco conhecido.
         points = [np.asarray(current_position_ned_m, dtype=float)] + [
             np.asarray(point, dtype=float) for point in waypoints_ned_m

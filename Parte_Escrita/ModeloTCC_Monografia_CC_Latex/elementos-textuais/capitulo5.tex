@@ -2,7 +2,10 @@
 
 \section{Introdução}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 A validação foi organizada para responder às perguntas de pesquisa e examinar a posição metodológica apresentada no Capítulo~\ref{cap:proposta}. Os modelos não são tratados como produtos finais, mas como instrumentos para verificar o efeito da representação, da divisão dos dados e das formas de análise. Primeiro, a curva de aprendizado mede o crescimento do treino. Depois, várias sementes e modelos de referência verificam a estabilidade. Eventos, gradientes e ablação ajudam a localizar as entradas úteis e as principais fontes de erro. A quinta pergunta acrescenta uma validação espacial em duas etapas: uma referência com profundidade do Gazebo e um portão offline para a profundidade monocular antes de qualquer bateria de voo.
+\fi
 
 \section{Material e métodos}
 
@@ -24,6 +27,8 @@ A ablação retira, em rodadas separadas, os grupos de sincronização, moviment
 
 \section{Evidências experimentais}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 \subsection{Crescimento do conjunto de treino}
 
 A Figura~\ref{fig:resultados-curva-aprendizado} apresenta o MAE no teste fixo para os cinco marcos. A evolução não foi monotônica: alguns alvos pioraram em etapas intermediárias e voltaram a melhorar. Portanto, a diversidade das novas execuções teve efeito junto com a quantidade de amostras.
@@ -152,9 +157,9 @@ O classificador identifica grande parte dos eventos, mas sua acurácia balancead
 
 A validação espacial começou pelo mapa produzido com a profundidade do Gazebo. Dez execuções completas da bateria final serviram como referência do pipeline de reprojeção, ocupação, A* e envio de pontos ao PX4. Essa etapa foi aceita e mostrou que, quando a profundidade é consistente, a representação espacial e o planejador conseguem sustentar a missão no cenário usado. Esse resultado não mede visão monocular; ele isola o limite superior da geometria e do planejamento.
 
-Em seguida, o Depth Anything V2 métrico foi ajustado com dados do cenário. As versões v12 a v19 foram comparadas por métricas de profundidade e por repetição espacial offline. Os ensaios variaram de forma controlada a escala e o deslocamento da saída, a margem de espaço livre, a incerteza dos retornos ocupados, a persistência temporal e a faixa vertical usada no mapa. A configuração v19 foi tratada como tentativa final, com 20 execuções completas no treino, uma execução apenas para calibração e cinco execuções de avaliação que permaneceram fora desse ajuste: três da bateria final, uma execução antiga independente e uma execução histórica reservada.
+Em seguida, o Depth Anything V2 métrico foi ajustado com dados do cenário. As versões v12 a v19 foram comparadas por métricas de profundidade e por repetição espacial offline. Os ensaios variaram de forma controlada a escala e o deslocamento da saída, a margem de espaço livre, a incerteza dos retornos ocupados, a persistência temporal e a faixa vertical usada no mapa. A configuração v19 foi tratada como tentativa final, com 20 execuções completas no treino. A matriz espacial previa uma run primária e quatro secundárias. A primária não entrou nos gradientes, mas foi usada como validação durante o treinamento; as quatro secundárias não foram alcançadas porque todos os candidatos reprovaram na etapa primária.
 
-Nenhuma configuração v19 permaneceu livre de colisões de referência em todos esses conjuntos. Em parte dos casos, o erro por pixel era aceitável, mas o mapa liberava regiões que continham obstáculos ou produzia caminhos que não passavam no mapa ideal. Como o critério anterior ao teste exigia segurança em todas as execuções reservadas, a bateria SITL monocular não foi autorizada. Nenhum arquivo operacional foi removido e nenhum voo monocular foi iniciado. O modelo ONNX, sua configuração, o ranking e a proveniência foram preservados como artefatos do resultado.
+Nenhuma configuração v19 aprovou o portão espacial completo. Em parte dos casos, o erro por pixel era aceitável e não houve colisão no replay primário, mas a taxa de falso espaço livre excedeu o limite e poucos planejamentos produziram caminhos executáveis. Como o critério anterior ao teste exigia aprovação completa antes do voo, a bateria SITL monocular não foi autorizada. Nenhum arquivo operacional foi removido e nenhum voo monocular foi iniciado. O modelo ONNX, sua configuração, o ranking e a proveniência foram preservados como artefatos do resultado.
 
 Esse resultado responde à quinta pergunta em duas partes. A profundidade de referência permitiu construir um mapa útil ao A*, mas a estimativa monocular final não manteve segurança suficiente para autorizar sua execução. Portanto, qualidade média de profundidade não implica, por si só, espaço livre correto nem caminho seguro. A decisão de interromper antes do SITL é uma evidência do protocolo defendido: o teste posterior evitou transformar uma melhora de métrica em uma alegação de navegação que os dados não sustentavam.
 
@@ -177,3 +182,4 @@ Esses princípios dão forma ao posicionamento do trabalho: a escolha de um mode
 \section{Considerações finais}
 
 Os resultados respondem às perguntas sem apontar um único modelo como solução final. A representação por intervalos contém informação útil e melhora com mais treino em parte dos alvos, mas ainda sofre com sobreajuste, alvos próximos de zero e eventos de maior magnitude. A etapa espacial reforça a mesma leitura: o estimador monocular chegou a um artefato reproduzível, porém não passou no portão de segurança. Mais importante para a posição defendida, a análise conjunta mostra que o desempenho isolado não basta: divisão, estabilidade, referências, tarefa posterior e diagnóstico dos erros mudam a decisão sobre o próximo passo.
+\fi

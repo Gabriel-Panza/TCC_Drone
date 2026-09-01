@@ -145,12 +145,15 @@ Dr. Eduardo Charles Vasconcellos\footnote{Pesquisador e coorientador.}
 \vspace{-.3cm}
 
 \noindent
-Este trabalho defende que o aumento da complexidade de modelos para navegação monocular deve ser precedido por uma avaliação controlada dos dados que os alimentam. A posição é examinada por uma metodologia que sincroniza visão monocular, fluxo óptico, movimento, unidade de medição inercial (IMU) e comandos reativos por intervalo visual. Os experimentos foram realizados em simulação com PX4 e Gazebo. O conjunto tabular final contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP), modelos de árvores e referências simples serviram como instrumentos de análise. O erro diminuiu em cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi contínua e nenhum modelo venceu em todos os alvos. A retirada de IMU e atitude aumentou o erro médio em 6,8\%, enquanto a análise de eventos apontou a regressão da magnitude e do sinal como principal limite. Na etapa espacial, uma grade de ocupação e o A* foram validados com a profundidade do Gazebo. Um estimador Depth Anything V2 foi refinado até a v19 e avaliado offline em execuções reservadas. Como nenhuma configuração permaneceu livre de colisões no mapa de referência, a bateria de voo monocular não foi autorizada. O resultado mostra que melhorar métricas por pixel não garante espaço livre correto nem caminho seguro. A contribuição principal é esse posicionamento metodológico apoiado por evidências positivas e negativas.
+% Conteudo reservado para revisao com o orientador.
+\iffalse
+Este trabalho defende que o aumento da complexidade de modelos para navegação monocular deve ser precedido por uma avaliação controlada dos dados que os alimentam. A posição é examinada por uma metodologia que sincroniza visão monocular, fluxo óptico, movimento, unidade de medição inercial (IMU) e comandos reativos por intervalo visual. Os experimentos foram realizados em simulação com PX4 e Gazebo. O conjunto tabular final contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP), modelos de árvores e referências simples serviram como instrumentos de análise. O erro diminuiu em cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi contínua e nenhum modelo venceu em todos os alvos. A retirada de IMU e atitude aumentou o erro médio em 6,8\%, enquanto a análise de eventos apontou a regressão da magnitude e do sinal como principal limite. Na etapa espacial, uma grade de ocupação e o A* foram validados com a profundidade do Gazebo. Um estimador Depth Anything V2 foi refinado até a v19 e avaliado offline. Embora alguns candidatos não tenham colidido no replay primário, nenhuma configuração aprovou simultaneamente disponibilidade de caminhos, falso espaço livre e segurança espacial; por isso, a bateria de voo monocular não foi autorizada. O resultado mostra que melhorar métricas por pixel não garante espaço livre correto nem caminho seguro. A contribuição principal é esse posicionamento metodológico apoiado por evidências positivas e negativas.
+\fi
 
 \vspace{.4cm}
  
 \noindent
-\textbf{Palavras-chave}: Veículos aéreos não tripulados (VANTs); visão monocular; fluxo óptico; detecção de obstáculos; mapeamento tridimensional.
+\textbf{Palavras-chave}:
  
 \vspace{\onelineskip}
 
@@ -161,17 +164,23 @@ Este trabalho defende que o aumento da complexidade de modelos para navegação 
 \vspace{-.3cm}
 \begin{hyphenrules}{english}
 \noindent
-This work argues that increasing model complexity for monocular navigation should be preceded by a controlled evaluation of the data used to train those models. The position is examined through a methodology that synchronizes monocular vision, optical flow, motion, inertial measurement unit (IMU) data, and reactive commands by visual interval. Experiments were conducted in simulation with PX4 and Gazebo. The final tabular dataset contains 40 executions and 1,234 valid intervals. A multilayer perceptron (MLP), tree-based models, and simple baselines served as analysis instruments. Error decreased for five of the six targets between the first and final milestones, but improvement was not continuous and no model was best for every target. Removing IMU and attitude inputs increased average error by 6.8\%, while event analysis identified magnitude and sign regression as the main limitation. In the spatial stage, an occupancy grid and A* were validated with Gazebo depth. A Depth Anything V2 estimator was refined up to v19 and evaluated offline on reserved executions. Because no configuration remained collision-free in the reference map, the monocular flight battery was not authorized. The result shows that improved pixel-level metrics do not guarantee correct free space or safe paths. The main contribution is this methodological position supported by positive and negative evidence.
+% Conteudo reservado para revisao com o orientador.
+\iffalse
+This work argues that increasing model complexity for monocular navigation should be preceded by a controlled evaluation of the data used to train those models. The position is examined through a methodology that synchronizes monocular vision, optical flow, motion, inertial measurement unit (IMU) data, and reactive commands by visual interval. Experiments were conducted in simulation with PX4 and Gazebo. The final tabular dataset contains 40 executions and 1,234 valid intervals. A multilayer perceptron (MLP), tree-based models, and simple baselines served as analysis instruments. Error decreased for five of the six targets between the first and final milestones, but improvement was not continuous and no model was best for every target. Removing IMU and attitude inputs increased average error by 6.8\%, while event analysis identified magnitude and sign regression as the main limitation. In the spatial stage, an occupancy grid and A* were validated with Gazebo depth. A Depth Anything V2 estimator was refined up to v19 and evaluated offline. Although some candidates were collision-free in the primary replay, no configuration simultaneously passed path availability, false-free-space, and spatial-safety checks; therefore, the monocular flight battery was not authorized. The result shows that improved pixel-level metrics do not guarantee correct free space or safe paths. The main contribution is this methodological position supported by positive and negative evidence.
+\fi
 \end{hyphenrules}
 \vspace{.4cm}
  
-\noindent \textbf{Keywords}: Unmanned aerial vehicles (UAVs); monocular vision; optical flow; obstacle detection; reactive navigation.
+\noindent \textbf{Keywords}:
 
 \vspace{.4cm}
 
 \noindent \textbf{Aprovado em:} dd/mm/aaaa.~~~\textbf{Versão Final em:} dd/mm/aaaa
 
 \section{Introdução}
+
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 
 Veículos aéreos não tripulados (VANTs) são usados em tarefas como inspeção, monitoramento, busca e navegação em locais de difícil acesso. Para operar de forma autônoma em ambientes com árvores, galhos, postes e construções próximas, o drone precisa detectar riscos e corrigir a trajetória antes de uma colisão. Quanto maior a velocidade, menor é o tempo disponível para perceber o obstáculo e executar o desvio.
 
@@ -186,6 +195,7 @@ Os dados são representados por variações entre intervalos visuais. A versão 
 A pergunta principal é: até que ponto as métricas desses intervalos, combinadas com IMU e movimento, permitem estimar variações de proximidade e produzir informação espacial útil? Cinco perguntas complementares orientam o estudo: o aumento do treino melhora a generalização; os resultados permanecem estáveis entre sementes e modelos de referência; quais grupos de entradas contribuem e onde os maiores erros ficam concentrados; nos eventos de proximidade, o limite aparece na classificação ou na estimativa de magnitude e sinal; e uma representação tridimensional construída a partir dessas informações permite ao A* gerar um caminho livre dos obstáculos observados?
 
 A contribuição está no processo experimental usado para responder a essas perguntas e nos princípios derivados dos resultados. O voo reativo fornece o contexto da coleta, mas o trabalho concentra a análise na organização, na sincronização e na avaliação dos dados, e não na comparação de controladores de desvio. O mapa tridimensional e o A* entram como teste posterior da utilidade espacial da percepção. Assim, o artigo assume um posicionamento metodológico e usa os experimentos para sustentar, limitar ou revisar esse posicionamento.
+\fi
 
 \section{Desenvolvimento}
 
@@ -307,6 +317,9 @@ Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de
 
 \subsection{Evidências experimentais}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
+
 A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo conforme o conjunto cresce. Entre 9 e 40 execuções, o erro caiu em cinco dos seis alvos. As reduções mais claras ocorreram em P50, de 0,1998 para 0,1717~m, pixels abaixo de 5~m, de 1,8853 para 1,7181 pontos percentuais, e pixels abaixo de 10~m, de 0,9381 para 0,8401 pontos percentuais. O alvo de pixels abaixo de 2~m ficou praticamente estável. A evolução oscilou entre os marcos, portanto a diversidade das execuções acrescentadas também influenciou o resultado.
 
 \begin{figure}[htb]
@@ -385,14 +398,19 @@ Os experimentos não definem uma receita universal, mas sustentam seis princípi
 \end{enumerate}
 
 No conjunto estudado, esses princípios evitam duas conclusões precipitadas: que mais dados sempre melhoram o modelo e que o classificador é o principal responsável pelo erro. Eles também direcionam o próximo passo para o processamento dos grupos de entrada e para a regressão das mudanças maiores.
+\fi
 
 \section{Conclusão}
+
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 
 O trabalho defendeu que uma análise controlada dos dados deve vir antes do aumento da complexidade do modelo. O pipeline permitiu relacionar, em intervalos sincronizados, fluxo óptico, movimento, IMU, comandos reativos e variações de profundidade. A separação por execução completa, os conjuntos fixos de validação e teste e os treinamentos com várias sementes deram maior controle à avaliação. O crescimento do treino melhorou cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi monotônica e P10 e P90 continuaram abaixo da média do treino.
 
 Os modelos de árvores não apresentaram uma vantagem geral sobre a MLP, e a variação entre sementes ficou abaixo de 4\%. A análise de eventos mostrou que a estimativa de magnitude e sinal ainda limita o resultado. Já a combinação entre gradientes e ablação identificou IMU e atitude como o grupo mais consistente, com aumento médio de 6,8\% no erro após sua retirada. Essas respostas mostram que os atributos estudados carregam informação útil, mas a arquitetura atual ainda apresenta sobreajuste e dificuldade em mudanças extremas.
 
 Assim, a principal contribuição é um posicionamento metodológico apoiado por evidências experimentais, e não um novo controlador de desvio. Os seis princípios derivados organizam decisões que costumam ficar dispersas entre coleta, treinamento e interpretação. As principais limitações são o uso de um único cenário simulado, o tamanho reduzido dos conjuntos fixos de validação e teste, a concentração dos alvos perto de zero e o uso de estatísticas que não preservam toda a estrutura espacial da imagem. A validação espacial proposta responde diretamente a essa última limitação: a profundidade por pixel será organizada em um mapa tridimensional e submetida ao A* para verificar se os sinais sustentam uma decisão espacial. Essa extensão não altera o foco para o controle; ela examina a utilidade da representação antes da escolha de uma arquitetura mais complexa.
+\fi
 
 \newpage
 \bibliography{references}
@@ -420,6 +438,9 @@ O código está disponível em \url{https://github.com/Gabriel-Panza/TCC_Drone},
 \newpage
 \chapter*{Agradecimentos}
 \noindent
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 Agradeço à minha família, por todo o apoio ao longo da graduação e por sempre acreditar em mim. Agradeço também aos professores que fizeram parte da minha formação e contribuíram para construir o pesquisador que sou hoje. Em especial, agradeço ao professor Leandro Augusto Frata Fernandes, meu orientador, pelo acompanhamento próximo e pelas discussões sobre visão computacional e análise dos dados. Agradeço ao pesquisador Eduardo Charles Vasconcellos, meu coorientador, pelo apoio na criação do ambiente simulado e pelas discussões sobre drones e voo autônomo. Por fim, agradeço aos meus amigos, que nunca largaram a minha mão e caminharam ao meu lado durante estes cinco anos de UFF.
+\fi
 
 \end{document}

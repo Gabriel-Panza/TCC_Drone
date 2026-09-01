@@ -2,7 +2,10 @@
 
 \section{Introdução}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 Este capítulo descreve o ambiente de simulação, o pipeline de voo e coleta, o processamento visual e a geração do conjunto analisado. A implementação conecta PX4, Gazebo e ROS~2 e produz uma amostra a cada intervalo visual válido.
+\fi
 
 \section{Ambiente experimental}
 
@@ -100,7 +103,7 @@ Essa separação mantém explícita a origem da profundidade. No modo \texttt{gr
 
 O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A sequência de versões v12 a v19 testou mudanças controladas no ajuste fino e nas margens usadas para converter a profundidade em ocupação. A versão v19 descongelou apenas os dois últimos blocos do codificador, com taxa de aprendizado baixa, preservando as demais partes do modelo anterior.
 
-A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. A configuração final exigia ausência de colisões em três execuções da bateria final, uma execução antiga independente e uma execução histórica mantida fora do ajuste. Como nenhuma configuração v19 atendeu simultaneamente a esse requisito, o voo SITL monocular não foi iniciado.
+A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. A configuração final previa uma etapa primária e quatro conjuntos secundários. A etapa primária reprovou todos os candidatos antes da execução dos conjuntos secundários. Essa run não entrou nos gradientes, mas foi usada como validação durante o treinamento da v19 e, portanto, não deve ser descrita como teste independente. Como nenhuma configuração v19 aprovou o portão completo, o voo SITL monocular não foi iniciado.
 
 \section{Dois fluxos de execução}
 
@@ -110,4 +113,7 @@ Por segurança, \texttt{spatial\_execute\_path} permanece falso nos arquivos YAM
 
 \section{Considerações finais}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
 A implementação transforma sinais com frequências e formatos diferentes em intervalos comparáveis. O pipeline de voo produz os dados, enquanto o notebook mantém os critérios de validade, os conjuntos experimentais e as análises tabulares em um único local. O núcleo espacial acrescenta uma interface auditável entre percepção e planejamento, com repetição offline antes do voo e sem levar a comparação de controle para o escopo do estudo. O Capítulo~\ref{cap:validacao} apresenta a avaliação da representação.
+\fi

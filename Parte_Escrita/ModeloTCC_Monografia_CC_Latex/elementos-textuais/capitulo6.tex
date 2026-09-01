@@ -1,12 +1,15 @@
 \chapter{Conclusão}\label{cap:conclusoes}
 
+% Conteudo reservado para revisao com o orientador.
+\iffalse
+
 Este trabalho defendeu que modelos mais complexos para navegação monocular devem ser precedidos por uma avaliação controlada dos dados que os alimentam. A posição foi examinada em um problema concreto: estimar variações de proximidade a partir de visão monocular, IMU, movimento e comandos reativos. Para isso, foi construído um processo que sincroniza sinais por intervalo visual e mantém as execuções completas separadas entre treino, validação e teste.
 
 O aumento do treino trouxe melhora em cinco dos seis alvos entre 9 e 40 execuções, embora a evolução tenha oscilado entre os marcos. Os testes com cinco sementes apresentaram variação inferior a 4\%, e a comparação com árvores mostrou que nenhum algoritmo possui vantagem geral. As curvas de perda confirmaram sobreajuste depois da melhor época de validação.
 
 Na análise dos eventos, a classificação não foi a principal responsável pelo erro final. Mesmo com a indicação correta dos eventos, o regressor apresentou pouca melhora. O problema mais importante permanece na estimativa da magnitude e do sinal. Gradientes e ablação também mostraram que IMU e atitude formam o grupo com contribuição mais consistente, enquanto a utilidade dos demais grupos muda conforme o alvo.
 
-A validação espacial chegou a uma conclusão diferente para suas duas fontes de profundidade. A bateria com a referência do Gazebo confirmou o funcionamento da reprojeção, do mapa, do A* e da interface de pontos com o PX4. Já o estimador monocular refinado até a v19 não permaneceu livre de colisões de referência em todas as execuções reservadas. Por isso, o protocolo bloqueou a bateria SITL monocular e registrou a etapa como resultado negativo controlado.
+A validação espacial chegou a uma conclusão diferente para suas duas fontes de profundidade. A bateria com a referência do Gazebo confirmou o funcionamento da reprojeção, do mapa, do A* e da interface de pontos com o PX4. Já o estimador monocular refinado até a v19 não aprovou o portão espacial completo: mesmo candidatos sem colisão no replay primário falharam em disponibilidade de caminhos e falso espaço livre. Por isso, o protocolo bloqueou a bateria SITL monocular e registrou a etapa como resultado negativo controlado.
 
 \section{Posição e contribuição}
 
@@ -29,3 +32,4 @@ O próximo passo da percepção é reduzir falsos espaços livres, e não apenas
 O fluxo reativo anterior e o fluxo espacial foram mantidos separados. Um trabalho futuro pode usar os mapas e caminhos produzidos aqui para estudar controle reativo, acompanhamento de trajetória e dinâmica perto de obstáculos. Essa continuação deverá comparar controladores de forma própria; o resultado atual termina na representação, no planejamento e na entrega de pontos ao PX4.
 
 Também podem ser avaliados novos cenários, perturbações, sensores físicos e um VANT real. Uma validação cruzada por execuções ampliaria a estimativa da incerteza. Para aproximar a avaliação de condições reais, será necessário substituir o veto ideal do Gazebo por mecanismos de segurança independentes e testar a transferência do estimador sem usar a referência durante a execução.
+\fi

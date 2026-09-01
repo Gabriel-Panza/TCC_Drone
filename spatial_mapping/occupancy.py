@@ -1,4 +1,8 @@
-"""Grade probabilistica simples para representar ocupacao em tres dimensoes."""
+"""Grade probabilistica simples para representar ocupacao em tres dimensoes.
+
+Base conceitual: Elfes (1989), doi:10.1109/2.30720, e Hornung et al.
+(2013), doi:10.1007/s10514-012-9321-0.
+"""
 
 from dataclasses import dataclass
 from itertools import product
