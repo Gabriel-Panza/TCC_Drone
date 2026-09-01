@@ -2,7 +2,7 @@
 
 \section{Introdução}
 
-A validação foi organizada para responder às perguntas de pesquisa e examinar a posição metodológica apresentada no Capítulo~\ref{cap:proposta}. Os modelos não são tratados como produtos finais, mas como instrumentos para verificar o efeito da representação, da divisão dos dados e das formas de análise. Primeiro, a curva de aprendizado mede o crescimento do treino. Depois, várias sementes e modelos de referência verificam a estabilidade. Eventos, gradientes e ablação ajudam a localizar as entradas úteis e as principais fontes de erro. A quinta pergunta acrescenta uma validação espacial, ainda sem resultados nesta versão, para testar se a informação analisada sustenta um mapa tridimensional e um caminho produzido pelo A*.
+A validação foi organizada para responder às perguntas de pesquisa e examinar a posição metodológica apresentada no Capítulo~\ref{cap:proposta}. Os modelos não são tratados como produtos finais, mas como instrumentos para verificar o efeito da representação, da divisão dos dados e das formas de análise. Primeiro, a curva de aprendizado mede o crescimento do treino. Depois, várias sementes e modelos de referência verificam a estabilidade. Eventos, gradientes e ablação ajudam a localizar as entradas úteis e as principais fontes de erro. A quinta pergunta acrescenta uma validação espacial em duas etapas: uma referência com profundidade do Gazebo e um portão offline para a profundidade monocular antes de qualquer bateria de voo.
 
 \section{Material e métodos}
 
@@ -150,11 +150,17 @@ O classificador identifica grande parte dos eventos, mas sua acurácia balancead
 
 \subsection{Validação espacial}
 
-A quinta pergunta permanece aberta nesta versão do texto. O núcleo de reprojeção, ocupação e A* possui testes sintéticos, mas ainda falta integrar a estimativa densa de profundidade e executar a comparação com o mapa ideal no ambiente do laboratório. Por esse motivo, nenhum resultado de segurança do caminho ou qualidade do mapa é antecipado. Essa distinção preserva o caráter experimental do posicionamento: a utilidade espacial só será afirmada depois da avaliação com os mesmos critérios para os mapas estimado e de referência.
+A validação espacial começou pelo mapa produzido com a profundidade do Gazebo. Dez execuções completas da bateria final serviram como referência do pipeline de reprojeção, ocupação, A* e envio de pontos ao PX4. Essa etapa foi aceita e mostrou que, quando a profundidade é consistente, a representação espacial e o planejador conseguem sustentar a missão no cenário usado. Esse resultado não mede visão monocular; ele isola o limite superior da geometria e do planejamento.
+
+Em seguida, o Depth Anything V2 métrico foi ajustado com dados do cenário. As versões v12 a v19 foram comparadas por métricas de profundidade e por repetição espacial offline. Os ensaios variaram de forma controlada a escala e o deslocamento da saída, a margem de espaço livre, a incerteza dos retornos ocupados, a persistência temporal e a faixa vertical usada no mapa. A configuração v19 foi tratada como tentativa final, com 20 execuções completas no treino, uma execução apenas para calibração e cinco execuções de avaliação que permaneceram fora desse ajuste: três da bateria final, uma execução antiga independente e uma execução histórica reservada.
+
+Nenhuma configuração v19 permaneceu livre de colisões de referência em todos esses conjuntos. Em parte dos casos, o erro por pixel era aceitável, mas o mapa liberava regiões que continham obstáculos ou produzia caminhos que não passavam no mapa ideal. Como o critério anterior ao teste exigia segurança em todas as execuções reservadas, a bateria SITL monocular não foi autorizada. Nenhum arquivo operacional foi removido e nenhum voo monocular foi iniciado. O modelo ONNX, sua configuração, o ranking e a proveniência foram preservados como artefatos do resultado.
+
+Esse resultado responde à quinta pergunta em duas partes. A profundidade de referência permitiu construir um mapa útil ao A*, mas a estimativa monocular final não manteve segurança suficiente para autorizar sua execução. Portanto, qualidade média de profundidade não implica, por si só, espaço livre correto nem caminho seguro. A decisão de interromper antes do SITL é uma evidência do protocolo defendido: o teste posterior evitou transformar uma melhora de métrica em uma alegação de navegação que os dados não sustentavam.
 
 \section{Princípios metodológicos derivados}
 
-As evidências não definem uma receita universal, mas sustentam seis princípios para estudos que usam sinais visuais e inerciais em conjuntos formados por execuções de voo:
+As evidências não definem uma receita universal, mas sustentam sete princípios para estudos que usam sinais visuais e inerciais em conjuntos formados por execuções de voo:
 
 \begin{enumerate}
     \item \textbf{Organizar a amostra pelo intervalo de percepção.} Quando a decisão depende da variação entre atualizações visuais, a unidade de análise deve reunir os sinais produzidos nesse mesmo intervalo.
@@ -163,10 +169,11 @@ As evidências não definem uma receita universal, mas sustentam seis princípio
     \item \textbf{Usar várias sementes e referências simples antes de aumentar a arquitetura.} Uma rede só apresenta ganho útil quando supera modelos constantes e alternativas tabulares de forma estável.
     \item \textbf{Combinar sensibilidade local com ablação.} Gradientes mostram onde o erro responde às entradas, enquanto a retirada de grupos verifica a contribuição para a generalização. Uma técnica isolada pode levar a uma leitura incompleta.
     \item \textbf{Separar a detecção do evento da estimativa de magnitude e sinal.} Essa decomposição ajuda a localizar o estágio que concentra o erro e evita mudanças de arquitetura sem diagnóstico.
+    \item \textbf{Validar a saída na tarefa que a consumirá.} Um estimador de profundidade pode melhorar MAE e ainda criar falsos espaços livres. Antes do voo, mapa e caminho devem ser avaliados em execuções reservadas e contra uma referência independente.
 \end{enumerate}
 
 Esses princípios dão forma ao posicionamento do trabalho: a escolha de um modelo mais complexo deve vir depois da análise da representação e das falhas observadas. No conjunto estudado, essa análise aponta IMU e atitude como sinais consistentes e a regressão dos eventos como prioridade para uma nova arquitetura.
 
 \section{Considerações finais}
 
-Os resultados respondem às perguntas sem apontar um único modelo como solução final. A representação por intervalos contém informação útil e melhora com mais treino em parte dos alvos, mas ainda sofre com sobreajuste, alvos próximos de zero e eventos de maior magnitude. Mais importante para a posição defendida, a análise conjunta mostra que o desempenho isolado não basta: divisão, estabilidade, referências e diagnóstico dos erros mudam a decisão sobre o próximo passo.
+Os resultados respondem às perguntas sem apontar um único modelo como solução final. A representação por intervalos contém informação útil e melhora com mais treino em parte dos alvos, mas ainda sofre com sobreajuste, alvos próximos de zero e eventos de maior magnitude. A etapa espacial reforça a mesma leitura: o estimador monocular chegou a um artefato reproduzível, porém não passou no portão de segurança. Mais importante para a posição defendida, a análise conjunta mostra que o desempenho isolado não basta: divisão, estabilidade, referências, tarefa posterior e diagnóstico dos erros mudam a decisão sobre o próximo passo.
