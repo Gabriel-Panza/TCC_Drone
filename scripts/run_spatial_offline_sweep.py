@@ -46,6 +46,12 @@ def generate_sitl_config(template, output, configuration):
         "spatial_depth_free_space_margin_m": configuration[
             "free_space_margin_m"
         ],
+        "spatial_depth_free_space_margin_ratio": configuration.get(
+            "free_space_margin_ratio", 0.0
+        ),
+        "spatial_depth_free_space_margin_max_m": configuration.get(
+            "free_space_margin_max_m", 0.0
+        ),
         "spatial_depth_occupied_uncertainty_m": configuration[
             "occupied_uncertainty_m"
         ],
@@ -66,6 +72,15 @@ def generate_sitl_config(template, output, configuration):
         ),
         "spatial_obstacle_vertical_band_m": configuration[
             "obstacle_vertical_band_m"
+        ],
+        "spatial_vertical_clearance_m": configuration[
+            "vertical_clearance_m"
+        ],
+        "spatial_reference_obstacle_vertical_band_m": configuration[
+            "reference_obstacle_vertical_band_m"
+        ],
+        "spatial_reference_vertical_clearance_m": configuration[
+            "reference_vertical_clearance_m"
         ],
     }
     for key, value in replacements.items():
@@ -98,14 +113,28 @@ def evaluator_command(
         str(configuration["replay_stride"]),
         "--depth-output-scale",
         str(configuration.get("depth_output_scale", 1.0)),
+        "--conservative-depth-shift-m",
+        str(configuration.get("conservative_depth_shift_m", 0.0)),
         "--free-space-margin-m",
         str(configuration["free_space_margin_m"]),
+        "--free-space-margin-ratio",
+        str(configuration.get("free_space_margin_ratio", 0.0)),
         "--occupied-uncertainty-m",
         str(configuration["occupied_uncertainty_m"]),
         "--obstacle-vertical-band-m",
         str(configuration["obstacle_vertical_band_m"]),
+        "--vertical-clearance-m",
+        str(configuration["vertical_clearance_m"]),
+        "--reference-obstacle-vertical-band-m",
+        str(configuration["reference_obstacle_vertical_band_m"]),
+        "--reference-vertical-clearance-m",
+        str(configuration["reference_vertical_clearance_m"]),
         "--free-observations-required",
         str(configuration["free_observations_required"]),
+        "--free-viewpoint-sectors-required",
+        str(configuration.get("free_viewpoint_sectors_required", 1)),
+        "--free-viewpoint-sector-deg",
+        str(configuration.get("free_viewpoint_sector_deg", 45.0)),
         "--occupied-observations-required",
         str(configuration.get("occupied_observations_required", 1)),
         "--occupied-support-radius-voxels",
@@ -118,6 +147,11 @@ def evaluator_command(
         str(configuration.get("minimum_executable_path_m", 1.5)),
         "--lock-path-altitude-to-goal",
     ]
+    free_space_margin_max_m = configuration.get("free_space_margin_max_m")
+    if free_space_margin_max_m is not None:
+        command.extend(
+            ["--free-space-margin-max-m", str(free_space_margin_max_m)]
+        )
     if max_frames is not None:
         command.extend(["--max-frames", str(max_frames)])
     return command

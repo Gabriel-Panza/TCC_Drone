@@ -4,12 +4,12 @@
     "datasets/spatial_mapping/run_20260819_185210_952450",
     "datasets/spatial_mapping/run_20260819_185838_061566",
     "datasets/spatial_mapping/run_20260820_082152_949956",
-    "datasets/spatial_mapping/run_20260820_224244_854728"
+    "datasets/spatial_mapping_quarantine/incomplete_20260831/run_20260820_224244_854728"
   ],
   "focus_runs": [
-    "datasets/spatial_mapping/run_20260819_230423_688539",
-    "datasets/spatial_mapping/run_20260820_064417_469063",
-    "datasets/spatial_mapping/run_20260825_221643_307790"
+    "datasets/spatial_mapping_quarantine/incomplete_20260831/run_20260819_230423_688539",
+    "datasets/spatial_mapping_quarantine/incomplete_20260831/run_20260820_064417_469063",
+    "datasets/spatial_mapping_quarantine/incomplete_20260831/run_20260825_221643_307790"
   ],
   "heldout_run": "datasets/spatial_mapping/run_20260819_191346_877996",
   "independent_reserved_run": "datasets/spatial_mapping/run_20260820_225114_611267",

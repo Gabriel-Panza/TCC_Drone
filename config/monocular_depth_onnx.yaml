@@ -2,7 +2,7 @@ monocular_metric_depth_node:
   ros__parameters:
     image_topic: /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image
     output_topic: /monocular_depth
-    model_path: models/depth_anything_v2_metric_baylands_vits_v3_686x518_fp32.onnx
+    model_path: models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx
     input_width: 686
     input_height: 518
     input_aspect_tolerance: 0.03

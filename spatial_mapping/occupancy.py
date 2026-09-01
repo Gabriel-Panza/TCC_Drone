@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import product
 
 import numpy as np
+from .traversal import segment_voxels
 
 
 Voxel = tuple[int, int, int]
@@ -24,6 +25,8 @@ class OccupancyGridConfig:
     occupied_support_radius_voxels: int = 0
     pending_clear_free_observations_required: int = 3
     occupied_evidence_window_frames: int = 6
+    free_viewpoint_sectors_required: int = 1
+    free_viewpoint_sector_deg: float = 45.0
 
     def __post_init__(self):
         if self.resolution_m <= 0:
@@ -38,6 +41,10 @@ class OccupancyGridConfig:
             )
         if self.occupied_evidence_window_frames < 1:
             raise ValueError("occupied_evidence_window_frames deve ser positivo")
+        if self.free_viewpoint_sectors_required < 1:
+            raise ValueError("free_viewpoint_sectors_required deve ser positivo")
+        if not 0 < self.free_viewpoint_sector_deg <= 360:
+            raise ValueError("free_viewpoint_sector_deg deve estar no intervalo (0, 360]")
 
 
 class OccupancyGrid3D:
@@ -49,6 +56,7 @@ class OccupancyGrid3D:
         self._integration_frame = 0
         self._occupied_evidence_frames: dict[Voxel, set[int]] = {}
         self._pending_free_observations: dict[Voxel, int] = {}
+        self._free_viewpoint_sectors: dict[Voxel, set[int]] = {}
         self._confirmed_occupied: set[Voxel] = set()
 
     def world_to_voxel(self, point):
@@ -77,6 +85,8 @@ class OccupancyGrid3D:
         endpoint_is_occupied,
         max_range_m=np.inf,
         free_space_margin_m=0.0,
+        free_space_margin_ratio=0.0,
+        free_space_margin_max_m=None,
         occupied_uncertainty_m=0.0,
     ):
         """Integra espaco livre observado e ocupa apenas extremos selecionados.
@@ -98,6 +108,15 @@ class OccupancyGrid3D:
             raise ValueError("endpoint_is_occupied deve possuir formato (N,)")
         if free_space_margin_m < 0:
             raise ValueError("free_space_margin_m nao pode ser negativo")
+        if free_space_margin_ratio < 0:
+            raise ValueError("free_space_margin_ratio nao pode ser negativo")
+        if (
+            free_space_margin_max_m is not None
+            and free_space_margin_max_m < free_space_margin_m
+        ):
+            raise ValueError(
+                "free_space_margin_max_m deve ser maior ou igual a margem base"
+            )
         if occupied_uncertainty_m < 0:
             raise ValueError("occupied_uncertainty_m nao pode ser negativo")
 
@@ -110,8 +129,16 @@ class OccupancyGrid3D:
             if not np.isfinite(distance) or distance == 0 or distance > max_range_m:
                 continue
             ray = self._ray_voxels(origin, point)
-            if free_space_margin_m > 0:
-                free_distance = max(0.0, distance - free_space_margin_m)
+            effective_free_margin_m = (
+                free_space_margin_m + free_space_margin_ratio * distance
+            )
+            if free_space_margin_max_m is not None:
+                effective_free_margin_m = min(
+                    effective_free_margin_m,
+                    free_space_margin_max_m,
+                )
+            if effective_free_margin_m > 0:
+                free_distance = max(0.0, distance - effective_free_margin_m)
                 free_endpoint = origin + (point - origin) * (
                     free_distance / distance
                 )
@@ -134,6 +161,11 @@ class OccupancyGrid3D:
         for voxel in free_observed_this_frame - occupied_observed_this_frame:
             if voxel in self._confirmed_occupied:
                 continue
+            sector = self._free_viewpoint_sector(voxel, origin)
+            sectors = self._free_viewpoint_sectors.setdefault(voxel, set())
+            sectors.add(sector)
+            if len(sectors) < self.config.free_viewpoint_sectors_required:
+                continue
             if voxel in self._occupied_evidence_frames:
                 free_count = self._pending_free_observations.get(voxel, 0) + 1
                 self._pending_free_observations[voxel] = free_count
@@ -146,6 +178,7 @@ class OccupancyGrid3D:
                 self._pending_free_observations.pop(voxel, None)
             self._update(voxel, -self.config.free_decrement)
         for voxel in occupied_observed_this_frame:
+            self._free_viewpoint_sectors.pop(voxel, None)
             if voxel not in self._confirmed_occupied:
                 self._occupied_evidence_frames.setdefault(voxel, set()).add(
                     self._integration_frame
@@ -182,6 +215,7 @@ class OccupancyGrid3D:
         self._confirmed_occupied.discard(voxel)
         self._occupied_evidence_frames.pop(voxel, None)
         self._pending_free_observations.pop(voxel, None)
+        self._free_viewpoint_sectors.pop(voxel, None)
         evidence = min(
             self.config.free_threshold - 1e-6,
             -self.config.free_decrement,
@@ -220,6 +254,14 @@ class OccupancyGrid3D:
             ):
                 continue
             self._log_odds[voxel] = min(self._log_odds.get(voxel, 0.0), evidence)
+
+    def _free_viewpoint_sector(self, voxel, sensor_origin):
+        """Discretiza a direcao horizontal de observacao de um voxel."""
+
+        center = self.voxel_to_world(voxel)
+        direction = np.asarray(sensor_origin, dtype=float) - center
+        angle_deg = (np.degrees(np.arctan2(direction[1], direction[0])) + 360.0) % 360.0
+        return int(angle_deg // self.config.free_viewpoint_sector_deg)
 
     def occupied_evidence_count(self, voxel):
         """Conta frames distintos de evidencia no suporte espacial do voxel."""
@@ -337,6 +379,7 @@ class OccupancyGrid3D:
         )
 
     def _ray_voxels(self, start, end):
+        """Amostragem legada para integrar profundidade; nao usar para seguranca."""
         distance = float(np.linalg.norm(end - start))
         steps = max(1, int(np.ceil(distance / (self.config.resolution_m * 0.5))))
         samples = np.linspace(start, end, steps + 1)
@@ -346,3 +389,7 @@ class OccupancyGrid3D:
             if not voxels or voxel != voxels[-1]:
                 voxels.append(voxel)
         return voxels
+
+    def segment_voxels(self, start, end):
+        """Travessia conservadora completa para validacao de caminhos."""
+        return segment_voxels(start, end, self.config.resolution_m)

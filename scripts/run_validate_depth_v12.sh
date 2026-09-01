@@ -5,7 +5,7 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 model="models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx"
 output="logs/spatial_offline_sweep/manual_v12_validation_01"
-calibration="datasets/spatial_mapping/run_20260820_224244_854728"
+calibration="datasets/spatial_mapping_quarantine/incomplete_20260831/run_20260820_224244_854728"
 heldout="datasets/spatial_mapping/run_20260819_191346_877996"
 independent="datasets/spatial_mapping/run_20260820_225114_611267"
 

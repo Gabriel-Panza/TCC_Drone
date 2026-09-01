@@ -323,7 +323,11 @@ def main(args=None):
 
     try:
         controller_node.get_logger().info('Iniciando Controlador e Gravador de Dados simultaneamente...')
-        while rclpy.ok() and not stop_requested:
+        while (
+            rclpy.ok()
+            and not stop_requested
+            and not getattr(controller_node, 'shutdown_requested', False)
+        ):
             executor.spin_once(timeout_sec=0.2)
         if stop_requested:
             controller_node.get_logger().info(

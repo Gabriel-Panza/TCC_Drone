@@ -26,14 +26,22 @@ project_dir="${PROJECT_DIR:-/home/prograf4080/TCC_Drone}"
 px4_dir="${PX4_DIR:-/home/prograf4080/PX4-Autopilot}"
 ros_overlay="${ROS_OVERLAY:-$project_dir/ws_ros2/install/setup.bash}"
 mission_timeout_s="${MISSION_TIMEOUT_S:-180}"
-startup_timeout_s="${STARTUP_TIMEOUT_S:-60}"
-monocular_model="${MONOCULAR_MODEL_PATH:-$project_dir/models/depth_anything_v2_metric_baylands_vits_v3_686x518_fp32.onnx}"
+startup_timeout_s="${STARTUP_TIMEOUT_S:-45}"
+startup_attempts="${STARTUP_ATTEMPTS:-3}"
+px4_parameter_delay_s="${PX4_PARAMETER_DELAY_S:-8}"
+monocular_model="${MONOCULAR_MODEL_PATH:-$project_dir/models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx}"
 monocular_python="${MONOCULAR_PYTHON:-$project_dir/models/runtime_env/bin/python}"
-monocular_validation_report="${MONOCULAR_VALIDATION_REPORT:-$project_dir/models/monocular_validation.json}"
-monocular_mapping_report="${MONOCULAR_MAPPING_REPORT:-$project_dir/models/monocular_mapping_validation.json}"
+monocular_validation_report="${MONOCULAR_VALIDATION_REPORT:-$project_dir/models/monocular_validation_v12_independent.json}"
+monocular_mapping_report="${MONOCULAR_MAPPING_REPORT:-$project_dir/models/monocular_mapping_validation_v12.json}"
 spatial_waypoints="${SPATIAL_WAYPOINTS_RELATIVE_M:-}"
 guarded_short_test="${GUARDED_SHORT_TEST:-0}"
 guarded_route_test="${GUARDED_ROUTE_TEST:-0}"
+continue_safe_aborts="${BATTERY_CONTINUE_SAFE_ABORTS:-1}"
+
+if [[ "$continue_safe_aborts" != "0" && "$continue_safe_aborts" != "1" ]]; then
+    echo "Preflight falhou: BATTERY_CONTINUE_SAFE_ABORTS deve ser 0 ou 1." >&2
+    exit 3
+fi
 
 if [[ "$guarded_short_test" == "1" && "$guarded_route_test" == "1" ]]; then
     echo "Preflight falhou: use somente um modo guardado por vez." >&2
@@ -119,12 +127,13 @@ stamp="$(date +%Y%m%d_%H%M%S)"
 battery_dir="$project_dir/logs/spatial_battery/${stamp}_${mode}"
 mkdir -p "$battery_dir"
 summary="$battery_dir/summary.tsv"
-printf 'run_index\tmode\texit_code\tmission_complete\tdataset\n' > "$summary"
+printf 'run_index\tmode\texit_code\tmission_complete\toutcome\tabort_reason\tdataset\n' > "$summary"
 
 echo "Preflight OK"
 echo "  mode=$mode runs=$runs timeout=${mission_timeout_s}s"
 echo "  config=$config"
 echo "  output=$battery_dir"
+echo "  continue_safe_aborts=$continue_safe_aborts"
 if [[ -n "$spatial_waypoints" ]]; then
     echo "  waypoints_override=$spatial_waypoints"
 fi
@@ -231,22 +240,54 @@ for ((run_index=1; run_index<=runs; run_index++)); do
     mkdir -p "$run_dir"
     before_dataset="$(latest_dataset)"
 
-    setsid bash -lc         "cd '$px4_dir'; exec env PX4_GZ_WORLD=baylands stdbuf -oL -eL make px4_sitl gz_x500_mono_cam < <(sleep infinity)"         >"$run_dir/px4_gazebo.log" 2>&1 &
-    px4_pid=$!
-
     ready=false
-    for ((second=0; second<startup_timeout_s; second++)); do
-        if grep -q 'Ready for takeoff!' "$run_dir/px4_gazebo.log"; then
-            ready=true
+    : > "$run_dir/px4_gazebo.log"
+    for ((startup_attempt=1; startup_attempt<=startup_attempts; startup_attempt++)); do
+        echo "=== PX4/Gazebo startup attempt $startup_attempt/$startup_attempts ===" \
+            >>"$run_dir/px4_gazebo.log"
+        # O airframe gz_x500 redefine NAV_DLL_ACT=2 quando o armazenamento de
+        # parametros e recriado. Isso faz o SITL exigir uma GCS e impede o
+        # marcador "Ready for takeoff!" usado por este runner ROS 2. Enviamos
+        # os overrides conhecidos pela shell PX4 em toda inicializacao para a
+        # execucao nao depender de residuos persistentes entre baterias.
+        setsid bash -lc \
+            "cd '$px4_dir'; { sleep '$px4_parameter_delay_s'; printf '%s\\n' 'param set EKF2_MAG_CHK_STR 0.25' 'param set NAV_DLL_ACT 0' 'param save' 'echo SPATIAL_PX4_PARAMETERS_APPLIED'; sleep infinity; } | exec env PX4_GZ_WORLD=baylands stdbuf -oL -eL make px4_sitl gz_x500_mono_cam" \
+            >>"$run_dir/px4_gazebo.log" 2>&1 &
+        px4_pid=$!
+
+        for ((second=0; second<startup_timeout_s; second++)); do
+            if grep -q 'Ready for takeoff!' "$run_dir/px4_gazebo.log" \
+                && grep -q 'SPATIAL_PX4_PARAMETERS_APPLIED' "$run_dir/px4_gazebo.log"; then
+                ready=true
+                break
+            fi
+            if ! kill -0 "$px4_pid" 2>/dev/null; then
+                break
+            fi
+            if ((second > 0 && second % 15 == 0)); then
+                if grep -q 'heading estimate not stable' "$run_dir/px4_gazebo.log"; then
+                    echo "Aguardando heading do PX4 estabilizar: ${second}s/${startup_timeout_s}s (tentativa ${startup_attempt}/${startup_attempts})." >&2
+                else
+                    echo "Aguardando prontidao PX4/Gazebo: ${second}s/${startup_timeout_s}s (tentativa ${startup_attempt}/${startup_attempts})." >&2
+                fi
+            fi
+            sleep 1
+        done
+        if [[ "$ready" == true ]]; then
             break
         fi
-        if ! kill -0 "$px4_pid" 2>/dev/null; then
-            break
+        echo "PX4/Gazebo nao ficou pronto na tentativa $startup_attempt." >&2
+        stop_group "$px4_pid"
+        px4_pid=""
+        stop_residual_gazebo
+        "$project_dir/scripts/cleanup_spatial_sim.sh" || true
+        if ((startup_attempt < startup_attempts)); then
+            echo "Reiniciando PX4/Gazebo apos 3s; MicroXRCEAgent preservado." >&2
+            sleep 3
         fi
-        sleep 1
     done
     if [[ "$ready" != true ]]; then
-        echo "PX4/Gazebo não ficou pronto; abortando." >&2
+        echo "PX4/Gazebo nao ficou pronto apos $startup_attempts tentativas; abortando." >&2
         cleanup_run
         exit 4
     fi
@@ -297,31 +338,45 @@ for ((run_index=1; run_index<=runs; run_index++)); do
 
     dataset="$(latest_dataset)"
     mission_complete=false
+    outcome="missing_dataset"
+    abort_reason="-"
     if [[ -n "$dataset" && "$dataset" != "$before_dataset" ]]; then
-        if python3 - "$dataset/events.jsonl" <<'PY'
+        IFS=$'	' read -r outcome abort_reason < <(
+            python3 - "$dataset/events.jsonl" <<'PY'
 import json
 import sys
 from pathlib import Path
-
-events = Path(sys.argv[1])
-complete = any(
-    json.loads(line).get("state") == "mission_complete"
-    for line in events.read_text(encoding="utf-8").splitlines()
-    if line.strip()
-)
-raise SystemExit(0 if complete else 1)
+events = [json.loads(line) for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if line.strip()]
+states = [event for event in events if event.get("event") == "mission_state"]
+if any(event.get("state") == "mission_complete" for event in states):
+    print("completed	-")
+else:
+    aborted = next((event for event in reversed(states) if event.get("state") == "mission_aborted"), None)
+    if aborted is None:
+        print("incomplete_without_abort	-")
+    else:
+        reason = str(aborted.get("reason") or "unspecified_abort")
+        safe_reasons = {
+            "recovery_observation_timeout",
+            "recovery_no_progress_timeout",
+            "recovery_brake_no_safe_path",
+        }
+        outcome = "safe_abort" if reason in safe_reasons else "unsafe_abort"
+        print(f"{outcome}	{reason}")
 PY
-        then
+        )
+        if [[ "$outcome" == "completed" ]]; then
             mission_complete=true
-            python3 estudos_e_analises/analisar_mapeamento_espacial.py "$dataset"                 >"$run_dir/analysis.json"
         fi
+        python3 estudos_e_analises/analisar_mapeamento_espacial.py "$dataset"             >"$run_dir/analysis.json" 2>"$run_dir/analysis.err" || true
     fi
 
-    printf '%s\t%s\t%s\t%s\t%s\n'         "$run_index" "$mode" "$controller_exit" "$mission_complete" "$dataset"         >> "$summary"
+    printf '%s	%s	%s	%s	%s	%s	%s
+'         "$run_index" "$mode" "$controller_exit" "$mission_complete"         "$outcome" "$abort_reason" "$dataset" >> "$summary"
 
     cleanup_run
     if ! "$project_dir/scripts/cleanup_spatial_sim.sh" --check; then
-        echo "Processo residual detectado após a run $run_index; abortando." >&2
+        echo "Processo residual detectado apos a run $run_index; abortando." >&2
         exit 6
     fi
     if [[ "$mission_complete" == true && "$controller_exit" -eq 124 ]]; then
@@ -331,8 +386,12 @@ PY
         exit 7
     fi
     if [[ "$mission_complete" != true ]]; then
-        echo "Run $run_index falhou; bateria interrompida antes da próxima decolagem." >&2
-        exit 7
+        if [[ "$outcome" == "safe_abort" && "$continue_safe_aborts" == "1" ]]; then
+            echo "Run $run_index terminou em aborto seguro ($abort_reason); registrando e continuando." >&2
+        else
+            echo "Run $run_index falhou ($outcome); bateria interrompida antes da proxima decolagem." >&2
+            exit 7
+        fi
     fi
 done
 

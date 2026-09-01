@@ -1,0 +1,50 @@
+{
+  "version": "v19_final",
+  "selection_policy": "Only complete full-route runs. Twenty high-coverage runs for training; one complete run calibration-only; final 10-run reference battery, independent old run and historical heldout remain entirely excluded.",
+  "train_runs": [
+    "datasets/spatial_mapping/run_20260827_205305_643499",
+    "datasets/spatial_mapping/run_20260829_211603_234474",
+    "datasets/spatial_mapping/run_20260829_101521_839013",
+    "datasets/spatial_mapping/run_20260819_185210_952450",
+    "datasets/spatial_mapping/run_20260829_175435_809639",
+    "datasets/spatial_mapping/run_20260819_185838_061566",
+    "datasets/spatial_mapping/run_20260830_113653_492245",
+    "datasets/spatial_mapping/run_20260819_171520_281146",
+    "datasets/spatial_mapping/run_20260830_220205_099909",
+    "datasets/spatial_mapping/run_20260830_093105_716156",
+    "datasets/spatial_mapping/run_20260830_212140_543324",
+    "datasets/spatial_mapping/run_20260830_101302_471752",
+    "datasets/spatial_mapping/run_20260830_092835_178108",
+    "datasets/spatial_mapping/run_20260829_101719_504502",
+    "datasets/spatial_mapping/run_20260829_102540_520850",
+    "datasets/spatial_mapping/run_20260829_222640_298440",
+    "datasets/spatial_mapping/run_20260829_225238_844477",
+    "datasets/spatial_mapping/run_20260829_225457_397615",
+    "datasets/spatial_mapping/run_20260827_144512_684971",
+    "datasets/spatial_mapping/run_20260826_083723_679984"
+  ],
+  "focus_runs": [
+    "datasets/spatial_mapping/run_20260827_205305_643499",
+    "datasets/spatial_mapping/run_20260829_211603_234474",
+    "datasets/spatial_mapping/run_20260819_185838_061566",
+    "datasets/spatial_mapping/run_20260829_222640_298440"
+  ],
+  "calibration_run": "datasets/spatial_mapping/run_20260827_165430_607620",
+  "validation_runs": [
+    "datasets/spatial_mapping/run_20260831_082418_723471",
+    "datasets/spatial_mapping/run_20260831_082629_864845",
+    "datasets/spatial_mapping/run_20260831_082836_332335",
+    "datasets/spatial_mapping/run_20260831_083058_762402",
+    "datasets/spatial_mapping/run_20260831_083304_087161",
+    "datasets/spatial_mapping/run_20260831_083521_770086",
+    "datasets/spatial_mapping/run_20260831_083731_750398",
+    "datasets/spatial_mapping/run_20260831_083939_468039",
+    "datasets/spatial_mapping/run_20260831_084145_348727",
+    "datasets/spatial_mapping/run_20260831_084356_708163"
+  ],
+  "heldout_run": "datasets/spatial_mapping/run_20260819_191346_877996",
+  "independent_reserved_run": "datasets/spatial_mapping/run_20260820_225114_611267",
+  "parent_checkpoint": "models/depth_anything_v2_metric_baylands_vits_v18.pth",
+  "training_objective": "Final controlled attempt: fine-tune only ViT-S encoder blocks 10-11 at very low learning rate, preserving the v18 head and requiring collision-free generalization before any SITL.",
+  "stop_policy": "No v20. Reject monocular flight if no candidate is collision-free on all reserved, independent and heldout runs."
+}

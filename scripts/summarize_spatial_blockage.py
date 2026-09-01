@@ -21,12 +21,21 @@ def main():
     parser.add_argument("sweep_dir", type=Path)
     parser.add_argument("--first-plan", type=int, default=5)
     parser.add_argument("--last-plan", type=int, default=8)
+    parser.add_argument(
+        "--dataset",
+        default="heldout_old",
+        help="nome do dataset primario gravado em reports/<candidate>",
+    )
     args = parser.parse_args()
 
     rows = []
-    reports = sorted((args.sweep_dir / "reports").glob("*/heldout_old.json"))
+    reports = sorted(
+        (args.sweep_dir / "reports").glob(f"*/{args.dataset}.json")
+    )
     if not reports:
-        raise FileNotFoundError("nenhum relatorio heldout_old encontrado")
+        raise FileNotFoundError(
+            f"nenhum relatorio {args.dataset!r} encontrado"
+        )
     for report in reports:
         payload = json.loads(report.read_text(encoding="utf-8"))
         candidate = report.parent.name

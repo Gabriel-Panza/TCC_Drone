@@ -112,6 +112,30 @@ class GeometryTest(unittest.TestCase):
 
 
 class OccupancyAndPlanningTest(unittest.TestCase):
+    def test_free_voxel_requires_distinct_viewpoint_sectors_when_configured(self):
+        grid = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                free_threshold=-0.35,
+                free_viewpoint_sectors_required=2,
+                free_viewpoint_sector_deg=45.0,
+            )
+        )
+        target = (0, 0, 0)
+        grid.integrate_rays(
+            [-1.1, 0.1, 0.1],
+            [[2.1, 0.1, 0.1]],
+            endpoint_is_occupied=[False],
+        )
+        self.assertEqual(grid.state(target), "unknown")
+        grid.integrate_rays(
+            [2.1, 0.1, 0.1],
+            [[-1.1, 0.1, 0.1]],
+            endpoint_is_occupied=[False],
+        )
+        self.assertEqual(grid.state(target), "free")
+        self.assertEqual(len(grid._free_viewpoint_sectors[target]), 2)
+
     def test_known_free_sphere_preserves_confirmed_obstacle(self):
         grid = OccupancyGrid3D(
             OccupancyGridConfig(
@@ -542,6 +566,49 @@ class OccupancyAndPlanningTest(unittest.TestCase):
         self.assertEqual(grid.state((4, 0, 0)), "unknown")
         self.assertEqual(grid.state((5, 0, 0)), "occupied")
 
+    def test_distance_scaled_free_space_margin_is_more_conservative_far_away(self):
+        near = OccupancyGrid3D(
+            OccupancyGridConfig(
+                resolution_m=1.0,
+                occupied_threshold=0.5,
+                free_threshold=-0.3,
+            )
+        )
+        far = OccupancyGrid3D(near.config)
+        kwargs = {
+            "endpoint_is_occupied": [True],
+            "free_space_margin_m": 1.0,
+            "free_space_margin_ratio": 0.4,
+            "free_space_margin_max_m": 8.0,
+        }
+        near.integrate_rays([0.1, 0.1, 0.1], [[5.1, 0.1, 0.1]], **kwargs)
+        far.integrate_rays([0.1, 0.1, 0.1], [[15.1, 0.1, 0.1]], **kwargs)
+
+        self.assertEqual(near.state((2, 0, 0)), "free")
+        self.assertEqual(near.state((3, 0, 0)), "unknown")
+        self.assertEqual(far.state((7, 0, 0)), "free")
+        self.assertEqual(far.state((8, 0, 0)), "free")
+        self.assertEqual(far.state((9, 0, 0)), "unknown")
+
+    def test_free_space_margin_ratio_cannot_be_negative(self):
+        with self.assertRaises(ValueError):
+            OccupancyGrid3D().integrate_rays(
+                [0.0, 0.0, 0.0],
+                [[1.0, 0.0, 0.0]],
+                endpoint_is_occupied=[True],
+                free_space_margin_ratio=-0.1,
+            )
+
+    def test_free_space_margin_max_cannot_be_below_base(self):
+        with self.assertRaises(ValueError):
+            OccupancyGrid3D().integrate_rays(
+                [0.0, 0.0, 0.0],
+                [[5.0, 0.0, 0.0]],
+                endpoint_is_occupied=[True],
+                free_space_margin_m=2.0,
+                free_space_margin_max_m=1.0,
+            )
+
     def test_free_space_margin_cannot_be_negative(self):
         grid = OccupancyGrid3D()
 
@@ -949,6 +1016,28 @@ class DepthModelAndRecorderTest(unittest.TestCase):
             self.assertTrue(
                 any(event.get("state") == "takeoff_complete" for event in events)
             )
+
+class VerticalObstacleEnvelopeTest(unittest.TestCase):
+    def test_body_envelope_excludes_canopy_and_keeps_flight_level_obstacle(self):
+        from spatial_mapping.navigation import vertical_obstacle_mask
+        points = np.array([
+            [4.0, 0.0, -1.0],
+            [4.0, 0.0, -0.2],
+            [4.0, 0.0, 0.3],
+            [4.0, 0.0, 0.7],
+        ])
+        mask = vertical_obstacle_mask(points, reference_ned_z=0.0, band_m=0.4)
+        self.assertEqual(mask.tolist(), [False, True, True, False])
+
+    def test_vertical_envelope_rejects_invalid_reference(self):
+        from spatial_mapping.navigation import vertical_obstacle_mask
+        with self.assertRaises(ValueError):
+            vertical_obstacle_mask(np.zeros((1, 3)), np.nan, 0.4)
+
+    def test_controller_passes_body_altitude_to_both_maps(self):
+        path = __import__('pathlib').Path(__file__).resolve().parents[1]
+        source = (path / 'drone_controller.py').read_text()
+        self.assertGreaterEqual(source.count('obstacle_reference_ned_z=position[2]'), 2)
 
 
 if __name__ == "__main__":

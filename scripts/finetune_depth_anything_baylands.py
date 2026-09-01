@@ -319,6 +319,58 @@ def evaluate(model, loader, device):
     }
 
 
+def configure_encoder_training(
+    model,
+    *,
+    freeze_encoder=False,
+    unfreeze_encoder_blocks=0,
+):
+    """Seleciona encoder inteiro, congelado, ou apenas seus ultimos blocos."""
+
+    if unfreeze_encoder_blocks < 0:
+        raise ValueError("unfreeze_encoder_blocks nao pode ser negativo")
+    if freeze_encoder and unfreeze_encoder_blocks:
+        raise ValueError(
+            "freeze_encoder e unfreeze_encoder_blocks sao mutuamente exclusivos"
+        )
+    named_encoder = [
+        (name, parameter)
+        for name, parameter in model.named_parameters()
+        if name.startswith("pretrained.")
+    ]
+    head_parameters = [
+        parameter
+        for name, parameter in model.named_parameters()
+        if not name.startswith("pretrained.")
+    ]
+    if freeze_encoder or unfreeze_encoder_blocks:
+        for _, parameter in named_encoder:
+            parameter.requires_grad_(False)
+    if unfreeze_encoder_blocks:
+        indices = sorted(
+            {
+                int(name.split(".")[2])
+                for name, _ in named_encoder
+                if name.startswith("pretrained.blocks.")
+            }
+        )
+        if unfreeze_encoder_blocks > len(indices):
+            raise ValueError(
+                "unfreeze_encoder_blocks excede a quantidade de blocos"
+            )
+        selected = set(indices[-unfreeze_encoder_blocks:])
+        for name, parameter in named_encoder:
+            if (
+                name.startswith("pretrained.blocks.")
+                and int(name.split(".")[2]) in selected
+            ):
+                parameter.requires_grad_(True)
+    encoder_parameters = [
+        parameter for _, parameter in named_encoder if parameter.requires_grad
+    ]
+    return encoder_parameters, head_parameters
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=Path, required=True)
@@ -333,6 +385,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--encoder", choices=("vits", "vitb"), default="vits")
     parser.add_argument("--freeze-encoder", action="store_true")
+    parser.add_argument("--unfreeze-encoder-blocks", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--head-lr", type=float, default=2e-5)
     parser.add_argument("--encoder-lr", type=float, default=2e-7)
@@ -354,6 +407,12 @@ def main():
 
     if args.focus_repeat < 1:
         parser.error("--focus-repeat deve ser positivo")
+    if args.unfreeze_encoder_blocks < 0:
+        parser.error("--unfreeze-encoder-blocks nao pode ser negativo")
+    if args.freeze_encoder and args.unfreeze_encoder_blocks:
+        parser.error(
+            "--freeze-encoder e --unfreeze-encoder-blocks sao incompatíveis"
+        )
     if args.focus_frame_repeat < 1:
         parser.error("--focus-frame-repeat deve ser positivo")
     missing_focus_frames = [
@@ -407,21 +466,17 @@ def main():
     device = torch.device("cuda")
     model.to(device)
 
-    encoder_parameters = []
-    head_parameters = []
-    for name, parameter in model.named_parameters():
-        (encoder_parameters if name.startswith("pretrained.") else head_parameters).append(
-            parameter
+    encoder_parameters, head_parameters = configure_encoder_training(
+        model,
+        freeze_encoder=args.freeze_encoder,
+        unfreeze_encoder_blocks=args.unfreeze_encoder_blocks,
+    )
+    optimizer_groups = []
+    if encoder_parameters:
+        optimizer_groups.append(
+            {"params": encoder_parameters, "lr": args.encoder_lr}
         )
-    if args.freeze_encoder:
-        for parameter in encoder_parameters:
-            parameter.requires_grad_(False)
-        optimizer_groups = [{"params": head_parameters, "lr": args.head_lr}]
-    else:
-        optimizer_groups = [
-            {"params": encoder_parameters, "lr": args.encoder_lr},
-            {"params": head_parameters, "lr": args.head_lr},
-        ]
+    optimizer_groups.append({"params": head_parameters, "lr": args.head_lr})
     optimizer = torch.optim.AdamW(optimizer_groups, weight_decay=0.01)
     effective_train_runs = [
         *args.train_run,
@@ -540,6 +595,10 @@ def main():
         "epochs": args.epochs,
         "encoder": args.encoder,
         "freeze_encoder": args.freeze_encoder,
+        "unfreeze_encoder_blocks": args.unfreeze_encoder_blocks,
+        "trainable_encoder_parameters": sum(
+            parameter.numel() for parameter in encoder_parameters
+        ),
         "batch_size": args.batch_size,
         "head_lr": args.head_lr,
         "encoder_lr": args.encoder_lr,

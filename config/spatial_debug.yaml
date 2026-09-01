@@ -2,7 +2,7 @@ drone_offboard_node:
   ros__parameters:
     navigation_mode: spatial_astar
     spatial_execute_path: false
-    spatial_reference_safety_veto: false
+    spatial_reference_safety_veto: true
     spatial_depth_source: ground_truth_debug
     ground_truth_depth_topic: /sim_depth_ground_truth
     save_ground_truth_dataset: false
@@ -16,6 +16,8 @@ drone_offboard_node:
     spatial_depth_stride: 35
     spatial_min_depth_m: 0.5
     spatial_max_depth_m: 30.0
+    spatial_depth_free_space_margin_ratio: 0.0
+    spatial_depth_free_space_margin_max_m: 0.0
     spatial_depth_free_space_margin_m: 0.0
     spatial_depth_occupied_uncertainty_m: 0.0
     spatial_free_observations_required: 1
@@ -23,10 +25,13 @@ drone_offboard_node:
     spatial_occupied_support_radius_voxels: 0
     spatial_pending_clear_free_observations_required: 3
     spatial_occupied_evidence_window_frames: 6
-    spatial_obstacle_vertical_band_m: 0.8
+    spatial_obstacle_vertical_band_m: 0.1
     spatial_clearance_radius_m: 1.25
-    spatial_vertical_clearance_m: 0.4
-    spatial_known_free_radius_m: 0.8
+    spatial_vertical_clearance_m: 0.1
+    # Guardiao fisico independente; nao altera o mapa nominal/visual de 0.1 m.
+    spatial_reference_obstacle_vertical_band_m: 0.2
+    spatial_reference_vertical_clearance_m: 0.2
+    spatial_known_free_radius_m: 0.75
     spatial_local_plan_radius_m: 25.0
     spatial_min_subgoal_progress_m: 0.5
     spatial_vertical_tolerance_m: 0.5
@@ -41,11 +46,22 @@ drone_offboard_node:
     spatial_recovery_retreat_distance_m: 1.5
     spatial_recovery_history_spacing_m: 1.0
     spatial_short_plan_recovery_threshold: 3
+    spatial_recovery_candidate_limit: 32
     spatial_wait_scan_amplitude_deg: 45.0
     spatial_wait_scan_period_s: 6.0
     spatial_wait_scan_max_duration_s: 18.0
-    spatial_waypoint_acceptance_radius_m: 0.8
+    spatial_waypoint_acceptance_radius_m: 0.75
     spatial_strict_entry_acceptance_radius_m: 0.2
+    spatial_execution_validation_interval_s: 0.25
+    spatial_transition_veto_timeout_s: 3.0
+    spatial_transition_veto_limit: 3
+    spatial_goal_settle_min_s: 1.0
+    spatial_goal_settle_max_s: 3.0
+    spatial_goal_settle_speed_m_s: 0.6
+    spatial_recovery_brake_min_s: 1.0
+    spatial_recovery_brake_max_s: 3.0
+    spatial_recovery_brake_speed_m_s: 0.6
+    spatial_recovery_brake_max_vertical_drift_m: 0.4
     spatial_global_goal_acceptance_radius_m: 1.5
     spatial_takeoff_altitude_m: 1.6
     spatial_takeoff_acceptance_radius_m: 0.2

@@ -26,16 +26,21 @@ def load_config(
     manifest,
     replay_stride,
     free_space_margin_m,
+    free_space_margin_ratio=0.0,
+    free_space_margin_max_m=None,
     edge_stride=None,
     edge_relative_threshold=None,
     obstacle_vertical_band_m=None,
     free_observations_required=None,
+    free_viewpoint_sectors_required=None,
+    free_viewpoint_sector_deg=None,
     occupied_observations_required=None,
     occupied_support_radius_voxels=None,
     pending_clear_free_observations_required=None,
     occupied_evidence_window_frames=None,
     occupied_uncertainty_m=None,
     lock_path_altitude_to_goal=False,
+    vertical_clearance_m=None,
 ):
     saved = manifest.get("metadata", {}).get("spatial_config", {})
     allowed = {item.name for item in fields(SpatialNavigationConfig)}
@@ -56,6 +61,8 @@ def load_config(
             else edge_relative_threshold
         ),
         depth_free_space_margin_m=free_space_margin_m,
+        depth_free_space_margin_ratio=free_space_margin_ratio,
+        depth_free_space_margin_max_m=free_space_margin_max_m,
         obstacle_vertical_band_m=(
             config.obstacle_vertical_band_m
             if obstacle_vertical_band_m is None
@@ -65,6 +72,12 @@ def load_config(
             config.free_observations_required
             if free_observations_required is None
             else free_observations_required
+        ),
+        free_viewpoint_sectors_required=(
+            config.free_viewpoint_sectors_required if free_viewpoint_sectors_required is None else free_viewpoint_sectors_required
+        ),
+        free_viewpoint_sector_deg=(
+            config.free_viewpoint_sector_deg if free_viewpoint_sector_deg is None else free_viewpoint_sector_deg
         ),
         occupied_observations_required=(
             config.occupied_observations_required
@@ -92,6 +105,11 @@ def load_config(
             else occupied_uncertainty_m
         ),
         lock_path_altitude_to_goal=lock_path_altitude_to_goal,
+        drone_vertical_clearance_m=(
+            config.drone_vertical_clearance_m
+            if vertical_clearance_m is None
+            else vertical_clearance_m
+        ),
     )
 
 
@@ -207,9 +225,16 @@ def main():
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--depth-output-scale", type=float, default=1.0)
     parser.add_argument("--free-space-margin-m", type=float, default=0.0)
+    parser.add_argument("--free-space-margin-ratio", type=float, default=0.0)
+    parser.add_argument("--free-space-margin-max-m", type=float)
     parser.add_argument("--conservative-depth-shift-m", type=float, default=0.0)
     parser.add_argument("--obstacle-vertical-band-m", type=float)
+    parser.add_argument("--vertical-clearance-m", type=float)
+    parser.add_argument("--reference-obstacle-vertical-band-m", type=float)
+    parser.add_argument("--reference-vertical-clearance-m", type=float)
     parser.add_argument("--free-observations-required", type=int)
+    parser.add_argument("--free-viewpoint-sectors-required", type=int)
+    parser.add_argument("--free-viewpoint-sector-deg", type=float)
     parser.add_argument("--occupied-observations-required", type=int)
     parser.add_argument("--occupied-support-radius-voxels", type=int)
     parser.add_argument("--pending-clear-free-observations-required", type=int)
@@ -235,31 +260,45 @@ def main():
         manifest,
         args.replay_stride,
         args.free_space_margin_m,
+        args.free_space_margin_ratio,
+        args.free_space_margin_max_m,
         args.edge_stride,
         args.edge_relative_threshold,
         args.obstacle_vertical_band_m,
         args.free_observations_required,
+        args.free_viewpoint_sectors_required,
+        args.free_viewpoint_sector_deg,
         args.occupied_observations_required,
         args.occupied_support_radius_voxels,
         args.pending_clear_free_observations_required,
         args.occupied_evidence_window_frames,
         args.occupied_uncertainty_m,
         args.lock_path_altitude_to_goal,
+        args.vertical_clearance_m,
     )
     reference_config = load_config(
         manifest,
         args.replay_stride,
         0.0,
+        0.0,
+        None,
         args.edge_stride,
         args.edge_relative_threshold,
-        args.obstacle_vertical_band_m,
+        (
+            args.reference_obstacle_vertical_band_m
+            if args.reference_obstacle_vertical_band_m is not None
+            else args.obstacle_vertical_band_m
+        ),
         args.free_observations_required,
+        1,
+        args.free_viewpoint_sector_deg,
         1,
         0,
         args.pending_clear_free_observations_required,
         args.occupied_evidence_window_frames,
         0.0,
         args.lock_path_altitude_to_goal,
+        args.reference_vertical_clearance_m,
     )
     estimated = SpatialNavigator(estimated_config)
     reference = SpatialNavigator(reference_config)
@@ -373,7 +412,7 @@ def main():
                 ]
                 path_voxels = []
                 for start, end in zip(points, points[1:]):
-                    for voxel in reference.grid._ray_voxels(start, end):
+                    for voxel in reference.grid.segment_voxels(start, end):
                         if not path_voxels or voxel != path_voxels[-1]:
                             path_voxels.append(voxel)
                 reached_free = False
@@ -401,6 +440,8 @@ def main():
                 {
                     "frames_integrated": frames,
                     "free_space_margin_m": args.free_space_margin_m,
+                    "free_space_margin_ratio": args.free_space_margin_ratio,
+                    "free_space_margin_max_m": args.free_space_margin_max_m,
                     "conservative_depth_shift_m": (
                         args.conservative_depth_shift_m
                     ),
@@ -482,13 +523,24 @@ def main():
         "frames_integrated": frames,
         "depth_output_scale": args.depth_output_scale,
         "free_space_margin_m": args.free_space_margin_m,
+        "free_space_margin_ratio": args.free_space_margin_ratio,
+        "free_space_margin_max_m": args.free_space_margin_max_m,
         "edge_stride": estimated_config.depth_edge_stride,
         "rgb_edge_sampling": args.rgb_edge_sampling,
         "edge_relative_threshold": estimated_config.depth_edge_relative_threshold,
         "obstacle_vertical_band_m": estimated_config.obstacle_vertical_band_m,
+        "vertical_clearance_m": estimated_config.drone_vertical_clearance_m,
+        "reference_obstacle_vertical_band_m": (
+            reference_config.obstacle_vertical_band_m
+        ),
+        "reference_vertical_clearance_m": (
+            reference_config.drone_vertical_clearance_m
+        ),
         "free_observations_required": (
             estimated_config.free_observations_required
         ),
+        "free_viewpoint_sectors_required": estimated_config.free_viewpoint_sectors_required,
+        "free_viewpoint_sector_deg": estimated_config.free_viewpoint_sector_deg,
         "occupied_observations_required": (
             estimated_config.occupied_observations_required
         ),

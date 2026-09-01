@@ -1,0 +1,124 @@
+{
+  "runtime_python": "models/runtime_env/bin/python",
+  "evaluator": "estudos_e_analises/avaliar_mapeamento_monocular_offline.py",
+  "sitl_template": "config/spatial_monocular.yaml",
+  "datasets": {
+    "heldout_old": {
+      "path": "datasets/spatial_mapping/run_20260819_191346_877996",
+      "description": "Validacao antiga integral, fora do treino v12."
+    },
+    "independent_reserved": {
+      "path": "datasets/spatial_mapping/run_20260820_225114_611267",
+      "description": "Run independente reservada, nunca usada no treino v12."
+    }
+  },
+  "models": {
+    "v12": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx",
+      "primary_dataset": "heldout_old",
+      "secondary_datasets": [
+        "independent_reserved"
+      ],
+      "independent_validation_ready": true
+    }
+  },
+  "configurations": [
+    {
+      "models": [
+        "v12"
+      ],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "depth_output_scale": 1.0,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
+      "free_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "minimum_executable_path_m": 1.5,
+      "id": "occ3_window10_base3_ratio0p4_cap18",
+      "occupied_observations_required": 3,
+      "occupied_evidence_window_frames": 10,
+      "free_space_margin_ratio": 0.4,
+      "free_space_margin_max_m": 18.0
+    },
+    {
+      "models": [
+        "v12"
+      ],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "depth_output_scale": 1.0,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
+      "free_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "minimum_executable_path_m": 1.5,
+      "id": "occ3_window10_base3_ratio0p5_cap20",
+      "occupied_observations_required": 3,
+      "occupied_evidence_window_frames": 10,
+      "free_space_margin_ratio": 0.5,
+      "free_space_margin_max_m": 20.0
+    },
+    {
+      "models": [
+        "v12"
+      ],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "depth_output_scale": 1.0,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
+      "free_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "minimum_executable_path_m": 1.5,
+      "id": "occ3_window10_base3_ratio0p6_cap24",
+      "occupied_observations_required": 3,
+      "occupied_evidence_window_frames": 10,
+      "free_space_margin_ratio": 0.6,
+      "free_space_margin_max_m": 24.0
+    },
+    {
+      "models": [
+        "v12"
+      ],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "depth_output_scale": 1.0,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
+      "free_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "minimum_executable_path_m": 1.5,
+      "id": "occ3_window10_base3_ratio0p7_cap24",
+      "occupied_observations_required": 3,
+      "occupied_evidence_window_frames": 10,
+      "free_space_margin_ratio": 0.7,
+      "free_space_margin_max_m": 24.0
+    }
+  ],
+  "short_test_waypoints_relative_m": [
+    6.0,
+    0.0,
+    -1.5
+  ]
+}

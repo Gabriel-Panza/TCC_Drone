@@ -16,43 +16,38 @@
     "v12": {
       "path": "models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx",
       "primary_dataset": "heldout_old",
-      "secondary_datasets": ["independent_reserved"],
+      "secondary_datasets": [
+        "independent_reserved"
+      ],
       "independent_validation_ready": true
     }
   },
   "configurations": [
     {
-      "id": "v12_conservative_occ1",
-      "models": ["v12"],
+      "id": "v12_flight_envelope",
+      "models": [
+        "v12"
+      ],
       "replay_stride": 5,
       "runtime_depth_stride": 20,
       "depth_output_scale": 1.0,
       "free_space_margin_m": 3.0,
       "occupied_uncertainty_m": 1.5,
-      "obstacle_vertical_band_m": 0.8,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
       "free_observations_required": 1,
       "occupied_observations_required": 1,
       "occupied_support_radius_voxels": 0,
       "pending_clear_free_observations_required": 3,
       "occupied_evidence_window_frames": 6,
       "minimum_executable_path_m": 1.5
-    },
-    {
-      "id": "v12_temporal_safe",
-      "models": ["v12"],
-      "replay_stride": 5,
-      "runtime_depth_stride": 20,
-      "depth_output_scale": 1.0,
-      "free_space_margin_m": 3.0,
-      "occupied_uncertainty_m": 1.5,
-      "obstacle_vertical_band_m": 0.8,
-      "free_observations_required": 1,
-      "occupied_observations_required": 2,
-      "occupied_support_radius_voxels": 0,
-      "pending_clear_free_observations_required": 8,
-      "occupied_evidence_window_frames": 10,
-      "minimum_executable_path_m": 1.5
     }
   ],
-  "short_test_waypoints_relative_m": [6.0, 0.0, -1.6]
+  "short_test_waypoints_relative_m": [
+    6.0,
+    0.0,
+    -1.5
+  ]
 }
