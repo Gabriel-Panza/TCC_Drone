@@ -16,18 +16,28 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from depth_analysis_data import list_analysis_run_dirs, load_analysis_run
+from spatial_metrics import (
+    load_spatial_results,
+    monocular_models_figure,
+    reference_runs_figure,
+    reference_trajectories_figure,
+)
+
 
 ANALYSIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = ANALYSIS_DIR.parent
 LOG_DIR = PROJECT_ROOT / "logs"
+ANALYSIS_LOG_DIR = ANALYSIS_DIR / "logs"
+SPATIAL_DATASET_DIR = PROJECT_ROOT / "datasets" / "spatial_mapping"
 NOTEBOOK_PATH = ANALYSIS_DIR / "estudo_das_metricas.ipynb"
-MLP_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_mlp_splits_fixos.csv"
-EVENT_FIXED_RESULTS_PATH = ANALYSIS_DIR / "comparacao_eventos_splits_fixos.csv"
-ANGULAR_COMPARISON_PATH = ANALYSIS_DIR / "comparacao_representacao_angular_splits_fixos.csv"
-LOSS_CURVES_PATH = ANALYSIS_DIR / "curvas_loss_mlp.csv"
-GRADIENT_IMPORTANCE_PATH = ANALYSIS_DIR / "importancia_gradiente_erro_validacao.csv"
-GROUPED_GRADIENT_IMPORTANCE_PATH = ANALYSIS_DIR / "importancia_gradiente_erro_validacao_agrupada.csv"
-LARGEST_GRADIENT_ERRORS_PATH = ANALYSIS_DIR / "maiores_erros_gradiente_validacao.csv"
+MLP_FIXED_RESULTS_PATH = ANALYSIS_LOG_DIR / "comparacao_mlp_splits_fixos.csv"
+EVENT_FIXED_RESULTS_PATH = ANALYSIS_LOG_DIR / "comparacao_eventos_splits_fixos.csv"
+ANGULAR_COMPARISON_PATH = ANALYSIS_LOG_DIR / "comparacao_representacao_angular_splits_fixos.csv"
+LOSS_CURVES_PATH = ANALYSIS_LOG_DIR / "curvas_loss_mlp.csv"
+GRADIENT_IMPORTANCE_PATH = ANALYSIS_LOG_DIR / "importancia_gradiente_erro_validacao.csv"
+GROUPED_GRADIENT_IMPORTANCE_PATH = ANALYSIS_LOG_DIR / "importancia_gradiente_erro_validacao_agrupada.csv"
+LARGEST_GRADIENT_ERRORS_PATH = ANALYSIS_LOG_DIR / "maiores_erros_gradiente_validacao.csv"
 
 
 def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
@@ -288,6 +298,13 @@ def _raw_log_manifest_files() -> list[Path]:
 
 
 def _raw_depth_source_files() -> list[Path]:
+    spatial_manifests = [
+        run_dir / "manifest.json"
+        for run_dir in list_analysis_run_dirs(PROJECT_ROOT)
+        if (run_dir / "manifest.json").exists()
+    ]
+    if spatial_manifests:
+        return spatial_manifests
     manifests = [
         path
         for path in DEPTH_GT_DIR.glob("run_*/manifest.json")
@@ -356,11 +373,7 @@ def list_depth_metadata_files() -> list[Path]:
 
 
 def list_depth_interval_runs() -> list[Path]:
-    return sorted(
-        path.parent
-        for path in DEPTH_GT_DIR.glob("run_*/manifest.json")
-        if "old" not in path.relative_to(DEPTH_GT_DIR).parts
-    )
+    return list_analysis_run_dirs(PROJECT_ROOT)
 
 
 def filter_synchronized_intervals(df: pd.DataFrame, require_depth_dt: bool = True) -> pd.DataFrame:
@@ -389,6 +402,9 @@ def load_depth_interval_run(run_dir: Path) -> pd.DataFrame:
 
     with open(manifest_path, encoding="utf-8") as fp:
         manifest = json.load(fp)
+
+    if manifest.get("schema_version") == "spatial_mapping_v1":
+        return load_analysis_run(run_dir)["intervalos"].copy()
 
     if manifest.get("schema_version") != "depth_interval_memmap_v1":
         return pd.DataFrame()
@@ -2677,6 +2693,33 @@ def dropdown_options(
     return [{"label": label_factory(path), "value": str(path)} for path in paths]
 
 
+def spatial_tab() -> dcc.Tab:
+    """Exibe a bateria A* de referencia e o gate monocular final."""
+    report, reference, monocular = load_spatial_results()
+    summary = report.get("reference", {})
+    cards = [
+        metric_card("Runs completas", f"{summary.get('completed_runs', 0)}/{summary.get('runs', 0)}",
+                    "bateria com profundidade do Gazebo"),
+        metric_card("Sucesso dos planos",
+                    fmt_number(100.0 * summary.get("plan_success_rate", 0.0), "%", 1),
+                    f"{summary.get('plan_successes', 0)} de {summary.get('plan_attempts', 0)}"),
+        metric_card("Caminhos inseguros adotados",
+                    str(summary.get("unsafe_adopted_paths", 0)),
+                    "veto de referencia ativo"),
+        metric_card("Gate monocular", "BLOQUEADO",
+                    report.get("decision", {}).get("reason", "gate espacial nao aprovado")),
+    ]
+    return dashboard_tab("Mapa 3D e A*", "spatial-tab", [
+        html.Div(cards, className="metrics-grid"),
+        html.Div("A referencia valida geometria, ocupacao e A*. O monocular so e "
+                 "liberado quando tambem passa disponibilidade, falso espaco livre "
+                 "e colisoes em conjuntos reservados.", className="notice notice-depth"),
+        dcc.Graph(figure=reference_runs_figure(reference), config=GRAPH_CONFIG),
+        dcc.Graph(figure=reference_trajectories_figure(reference), config=GRAPH_CONFIG),
+        dcc.Graph(figure=monocular_models_figure(monocular), config=GRAPH_CONFIG),
+    ])
+
+
 def selected_dropdown_value(
     options: list[dict[str, str]], *preferred_values: str | None
 ) -> str:
@@ -2708,10 +2751,10 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                 children=[
                     html.Div(
                         children=[
-                            html.H1("Dashboard de metricas do desvio reativo"),
+                            html.H1("Dashboard de metricas de navegacao"),
                             html.P(
                                 "Analise organizada por trajetoria/IMU, evasao, "
-                                "depth ground truth, comparacao das levas e diagnostico do modelo."
+                                "depth ground truth, pipeline espacial A* e diagnostico dos modelos."
                             ),
                         ]
                     ),
@@ -2735,7 +2778,7 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                 className="tabs",
                 children=[
                     overview_tab(), reactive_tab(), depth_tab(depth_options, depth_default),
-                    batch_tab(), model_tab(),
+                    batch_tab(), model_tab(), spatial_tab(),
                 ],
             ),
             dcc.Interval(id="refresh-data", interval=10000, n_intervals=0),
@@ -3180,7 +3223,7 @@ def create_app() -> Dash:
     """Cria e configura a aplicacao Dash pronta para execucao."""
 
     app = Dash(__name__)
-    app.title = "Metricas do desvio reativo"
+    app.title = "Metricas de navegacao"
     app.layout = layout(list_log_files(), list_depth_metadata_files())
     app.index_string = INDEX_TEMPLATE
     register_callbacks(app)
