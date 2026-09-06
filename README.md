@@ -1,6 +1,6 @@
 # TCC_Drone: Avaliação de Sinais Monoculares e Inerciais em VANTs
 
-> A branch `main` preserva a versão experimental anterior. O fluxo de mapeamento 3D e A* está sendo desenvolvido na branch `mapeamento-3d-position-paper` e só deve voltar para `main` depois dos testes no laboratório.
+> A branch `main` reúne a versão atual do estudo, incluindo o pipeline legado reativo e a validação espacial com mapa 3D e A*.
 
 ## Pontos centrais do repositório
 
@@ -83,15 +83,9 @@ Por segurança, `spatial_execute_path` fica desligado nos arquivos de configura�
 
 ## Como Executar a Simulação
 
-Para executar o ecossistema completo, são necessários **3 terminais** rodando simultaneamente em um ambiente Linux (ou WSL).
+Para executar os experimentos espaciais, são necessários **2 terminais** em um ambiente Linux ou WSL. O primeiro mantém a comunicação ROS 2 ativa. O segundo executa a bateria automatizada, que abre PX4 e Gazebo, aplica os parâmetros necessários, inicia o código Python e reinicia a simulação entre as runs.
 
-**Terminal 1: Iniciar o Simulador Gazebo + PX4**
-```bash
-cd ~/PX4-Autopilot
-PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
-```
-
-**Terminal 2: O Agente Micro XRCE-DDS + A Ponte de Visão Computacional (ros_gz_bridge)**
+**Terminal 1: Micro XRCE-DDS Agent e pontes ROS 2/Gazebo**
 ```bash
 source /opt/ros/humble/setup.bash
 
@@ -104,20 +98,53 @@ ros2 run ros_gz_bridge parameter_bridge /sim_depth_ground_truth@sensor_msgs/msg/
 wait
 ```
 
-**Terminal 3: O Nó de Controle ROS 2**
+Mantenha esse terminal aberto durante toda a bateria. O script de limpeza preserva o `MicroXRCEAgent` e reinicia apenas PX4 e Gazebo.
+
+**Terminal 2: bateria espacial automatizada**
+
+Primeiro, valide a configuração sem abrir o simulador:
+
+```bash
+cd ~/TCC_Drone
+source /opt/ros/humble/setup.bash
+source ~/TCC_Drone/ws_ros2/install/setup.bash
+./scripts/run_spatial_battery.sh ground_truth_debug 1 --dry-run
+```
+
+Depois, execute a bateria de referência. O exemplo abaixo realiza dez runs:
+
+```bash
+./scripts/run_spatial_battery.sh ground_truth_debug 10
+```
+
+O script inicia automaticamente PX4 e Gazebo no mundo `baylands`, aplica `EKF2_MAG_CHK_STR=0.25` e `NAV_DLL_ACT=0`, executa `main.py` com `spatial_execute_path=true`, encerra cada run e prepara a seguinte. Os logs da bateria ficam em `logs/spatial_battery/` e cada dataset espacial fica em `datasets/spatial_mapping/`.
+
+O modo monocular usa o mesmo arranjo de dois terminais, mas exige um ONNX qualificado e relatórios compatíveis com o mesmo hash:
+
+```bash
+MONOCULAR_MODEL_PATH=/caminho/absoluto/modelo.onnx \
+  ./scripts/run_spatial_battery.sh monocular_topic 1 --dry-run
+
+MONOCULAR_MODEL_PATH=/caminho/absoluto/modelo.onnx \
+  ./scripts/run_spatial_battery.sh monocular_topic 10
+```
+
+No estado final do estudo, a bateria monocular em SITL permanece bloqueada porque o modelo v19 não passou por todos os gates espaciais. O comando acima documenta o fluxo e só deve ser liberado quando os relatórios indicarem aprovação.
+
+### Pipeline legado reativo
+
+O fluxo anterior continua disponível por `navigation_mode:=legacy_reactive`. Depois de manter o Terminal 1 ativo, inicie PX4 e Gazebo e execute o nó ROS 2 com:
+
 ```bash
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
 PYTHONNOUSERSITE=1 python3 main.py --ros-args \
+  -p navigation_mode:=legacy_reactive \
   -p ground_truth_depth_topic:=/sim_depth_ground_truth \
-  -p save_ground_truth_dataset:=true \
-  -p ground_truth_depth_max_age_s:=0.08 \
-  -p ground_truth_max_interval_s:=0.50 \
-  -p use_dt_normalized_control:=false
+  -p save_ground_truth_dataset:=true
 ```
 
-O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam
-o mesmo frame de depth e intervalos temporais invalidos. Ao final de cada run, confira no
-`manifest.json` os campos `quality_counters`: `rgb_frames_rejected_nonmonotonic` deve ser
-baixo, e cada amostra salva deve ter `dt_s > 0` e `depth_dt_s > 0`.
+Nesse modo, o fluxo óptico e a lógica de risco geram comandos de velocidade. No modo `spatial_astar`, esses comandos não participam da navegação: o A* produz pontos de posição e o PX4 executa o controle de baixo nível. O roteiro detalhado de depuração, mapa parado e execução manual está em [`docs/execucao_pipeline_espacial.md`](docs/execucao_pipeline_espacial.md).
+
+O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam o mesmo frame de profundidade e intervalos temporais inválidos. Ao final de cada run, confira no `manifest.json` os campos `quality_counters`: `rgb_frames_rejected_nonmonotonic` deve ser baixo, e cada amostra salva deve ter `dt_s > 0` e `depth_dt_s > 0`.
