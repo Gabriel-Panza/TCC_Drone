@@ -1,0 +1,28 @@
+{
+  "version": "v14",
+  "source_battery": "logs/spatial_battery/20260831_082359_ground_truth_debug",
+  "selection_policy": "Seven complete runs for training; runs 3, 6 and 10 reserved intact to span the battery chronology. No frame-level mixing.",
+  "train_runs": [
+    "datasets/spatial_mapping/run_20260831_082418_723471",
+    "datasets/spatial_mapping/run_20260831_082629_864845",
+    "datasets/spatial_mapping/run_20260831_083058_762402",
+    "datasets/spatial_mapping/run_20260831_083304_087161",
+    "datasets/spatial_mapping/run_20260831_083731_750398",
+    "datasets/spatial_mapping/run_20260831_083939_468039",
+    "datasets/spatial_mapping/run_20260831_084145_348727"
+  ],
+  "focus_runs": [
+    "datasets/spatial_mapping/run_20260831_083058_762402",
+    "datasets/spatial_mapping/run_20260831_083731_750398",
+    "datasets/spatial_mapping/run_20260831_084145_348727"
+  ],
+  "validation_runs": [
+    "datasets/spatial_mapping/run_20260831_082836_332335",
+    "datasets/spatial_mapping/run_20260831_083521_770086",
+    "datasets/spatial_mapping/run_20260831_084356_708163"
+  ],
+  "heldout_run": "datasets/spatial_mapping/run_20260819_191346_877996",
+  "independent_reserved_run": "datasets/spatial_mapping/run_20260820_225114_611267",
+  "parent_checkpoint": "models/depth_anything_v2_metric_baylands_vits_v12.pth",
+  "training_objective": "Improve tree-route generalization with new synchronized complete runs while preserving bidirectional safety penalties."
+}

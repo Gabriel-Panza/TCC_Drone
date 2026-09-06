@@ -1,0 +1,79 @@
+{
+  "runtime_python": "models/runtime_env/bin/python",
+  "evaluator": "estudos_e_analises/avaliar_mapeamento_monocular_offline.py",
+  "sitl_template": "config/spatial_monocular.yaml",
+  "datasets": {
+    "heldout_old": {
+      "path": "datasets/spatial_mapping/run_20260819_191346_877996",
+      "description": "Run completa antiga mantida fora do treino v8/v10."
+    },
+    "independent_new": {
+      "path": "datasets/spatial_mapping/run_20260820_225114_611267",
+      "description": "Referencia posterior ao v8; usada como treino do v10."
+    }
+  },
+  "models": {
+    "v3_active": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v3_686x518_fp32.onnx",
+      "primary_dataset": "heldout_old",
+      "secondary_datasets": ["independent_new"],
+      "independent_validation_ready": true
+    },
+    "v8": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v8_686x518_fp32.onnx",
+      "primary_dataset": "heldout_old",
+      "secondary_datasets": ["independent_new"],
+      "independent_validation_ready": true
+    },
+    "v10_hard_frames": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v10_686x518_fp32.onnx",
+      "primary_dataset": "heldout_old",
+      "secondary_datasets": [],
+      "independent_validation_ready": false,
+      "blocked_reason": "requer nova referencia independente porque independent_new entrou no treino"
+    }
+  },
+  "configurations": [
+    {
+      "id": "baseline_s9",
+      "models": ["v3_active", "v8", "v10_hard_frames"],
+      "replay_stride": 9,
+      "runtime_depth_stride": 35,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1
+    },
+    {
+      "id": "dense_s7",
+      "models": ["v3_active", "v8", "v10_hard_frames"],
+      "replay_stride": 7,
+      "runtime_depth_stride": 28,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1
+    },
+    {
+      "id": "dense_s5",
+      "models": ["v3_active", "v8", "v10_hard_frames"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1
+    },
+    {
+      "id": "v8_dense_s7_band06",
+      "models": ["v8"],
+      "replay_stride": 7,
+      "runtime_depth_stride": 28,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.6,
+      "free_observations_required": 1
+    }
+  ],
+  "short_test_waypoints_relative_m": [6.0, 0.0, -1.6]
+}

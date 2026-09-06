@@ -1,0 +1,96 @@
+{
+  "runtime_python": "models/runtime_env/bin/python",
+  "evaluator": "estudos_e_analises/avaliar_mapeamento_monocular_offline.py",
+  "sitl_template": "config/spatial_monocular.yaml",
+  "datasets": {
+    "heldout_old": {
+      "path": "datasets/spatial_mapping/run_20260819_191346_877996",
+      "description": "Percurso antigo entre as arvores, separado do treino v8."
+    },
+    "independent_new": {
+      "path": "datasets/spatial_mapping/run_20260820_225114_611267",
+      "description": "Referencia independente, somente apos aprovacao primaria."
+    }
+  },
+  "models": {
+    "v8": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v8_686x518_fp32.onnx",
+      "primary_dataset": "heldout_old",
+      "secondary_datasets": ["independent_new"],
+      "independent_validation_ready": true
+    }
+  },
+  "configurations": [
+    {
+      "id": "ego_control_occ1",
+      "models": ["v8"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1,
+      "occupied_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "occupied_evidence_window_frames": 6
+    },
+    {
+      "id": "ego_occ2_clear3_window6",
+      "models": ["v8"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1,
+      "occupied_observations_required": 2,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "occupied_evidence_window_frames": 6
+    },
+    {
+      "id": "ego_occ2_clear5_window6",
+      "models": ["v8"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1,
+      "occupied_observations_required": 2,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 5,
+      "occupied_evidence_window_frames": 6
+    },
+    {
+      "id": "ego_occ2_clear5_window10",
+      "models": ["v8"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1,
+      "occupied_observations_required": 2,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 5,
+      "occupied_evidence_window_frames": 10
+    },
+    {
+      "id": "ego_occ2_clear8_window10",
+      "models": ["v8"],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.8,
+      "free_observations_required": 1,
+      "occupied_observations_required": 2,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 8,
+      "occupied_evidence_window_frames": 10
+    }
+  ],
+  "short_test_waypoints_relative_m": [6.0, 0.0, -1.6]
+}

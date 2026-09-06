@@ -1,0 +1,63 @@
+{
+  "runtime_python": "models/runtime_env/bin/python",
+  "evaluator": "estudos_e_analises/avaliar_mapeamento_monocular_offline.py",
+  "sitl_template": "config/spatial_monocular.yaml",
+  "datasets": {
+    "reference_reserved_03": {
+      "path": "datasets/spatial_mapping/run_20260831_082836_332335",
+      "description": "Run 3 completa da bateria final, reservada para validacao v14."
+    },
+    "reference_reserved_06": {
+      "path": "datasets/spatial_mapping/run_20260831_083521_770086",
+      "description": "Run 6 completa da bateria final, reservada para validacao v14."
+    },
+    "reference_reserved_10": {
+      "path": "datasets/spatial_mapping/run_20260831_084356_708163",
+      "description": "Run 10 completa da bateria final, reservada para validacao v14."
+    },
+    "independent_old": {
+      "path": "datasets/spatial_mapping/run_20260820_225114_611267",
+      "description": "Run independente antiga, nunca usada no treino v14."
+    }
+  },
+  "models": {
+    "v15": {
+      "path": "models/depth_anything_v2_metric_baylands_vits_v15_686x518_fp32.onnx",
+      "primary_dataset": "reference_reserved_03",
+      "secondary_datasets": [
+        "reference_reserved_06",
+        "reference_reserved_10",
+        "independent_reserved"
+      ],
+      "independent_validation_ready": true
+    }
+  },
+  "configurations": [
+    {
+      "id": "v15_flight_envelope",
+      "models": [
+        "v15"
+      ],
+      "replay_stride": 5,
+      "runtime_depth_stride": 20,
+      "depth_output_scale": 1.0,
+      "free_space_margin_m": 3.0,
+      "occupied_uncertainty_m": 1.5,
+      "obstacle_vertical_band_m": 0.1,
+      "vertical_clearance_m": 0.1,
+      "reference_obstacle_vertical_band_m": 0.2,
+      "reference_vertical_clearance_m": 0.2,
+      "free_observations_required": 1,
+      "occupied_observations_required": 1,
+      "occupied_support_radius_voxels": 0,
+      "pending_clear_free_observations_required": 3,
+      "occupied_evidence_window_frames": 6,
+      "minimum_executable_path_m": 1.5
+    }
+  ],
+  "short_test_waypoints_relative_m": [
+    6.0,
+    0.0,
+    -1.5
+  ]
+}

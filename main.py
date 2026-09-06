@@ -2,20 +2,23 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.signals import SignalHandlerOptions
 from px4_msgs.msg import VehicleOdometry
 import json
 import numpy as np
 import os
+import signal
+import time
 from datetime import datetime
 from drone_controller import DroneOffboardNode
 
 class DataLogger(Node):
     """
-    Registra em memmap as variacoes da odometria e do controlador reativo.
+    Registra em memmap odometria, variacoes e diagnosticos do fluxo ativo.
 
-    O logger continua ouvindo VehicleOdometry, mas as amostras novas passam a ser deltas
-    entre mensagens consecutivas. Assim, a analise deixa de depender de posicao absoluta
-    do mundo e fica alinhada com a ideia de deslocamento entre atualizacoes.
+    Os campos de delta permanecem compativeis com o estudo anterior. O schema espacial
+    acrescenta pose absoluta, quaternion, tamanho do mapa e estado do ultimo plano, dados
+    necessarios para reconstruir observacoes no referencial NED.
 
     Fontes:
     [ROS 2 Nodes] https://docs.ros.org/en/humble/Concepts/Basic/About-Nodes.html
@@ -75,13 +78,23 @@ class DataLogger(Node):
             qos_profile
         )
 
-        self.get_logger().info(f'Data Logger iniciado com sucesso. A guardar deltas em: {self.run_dir}')
+        self.get_logger().info(
+            f'Data Logger iniciado. Pose, deltas e diagnosticos em: {self.run_dir}'
+        )
 
     def dtype_flight_interval(self):
-        """Schema numerico dos deltas de odometria/comando."""
+        """Schema numerico compativel com deltas antigos e pose espacial absoluta."""
 
         return np.dtype([
             ('sample_id', 'i4'),
+            ('timestamp_s', 'f8'),
+            ('x_m', 'f4'),
+            ('y_m', 'f4'),
+            ('z_m', 'f4'),
+            ('q_w', 'f4'),
+            ('q_x', 'f4'),
+            ('q_y', 'f4'),
+            ('q_z', 'f4'),
             ('dt_s', 'f4'),
             ('delta_x_m', 'f4'),
             ('delta_y_m', 'f4'),
@@ -95,16 +108,24 @@ class DataLogger(Node):
             ('delta_evasao_visual_ativa', 'i1'),
             ('pan_comp_delta_rad', 'f4'),
             ('pan_comp_source_code', 'i2'),
+            ('navigation_mode_code', 'i1'),
+            ('spatial_free_voxels', 'i4'),
+            ('spatial_occupied_voxels', 'i4'),
+            ('spatial_plan_success', 'i1'),
+            ('spatial_path_length_m', 'f4'),
+            ('spatial_selected_goal_x_m', 'f4'),
+            ('spatial_selected_goal_y_m', 'f4'),
+            ('spatial_selected_goal_z_m', 'f4'),
         ])
 
     def atualizar_manifesto(self):
         """Atualiza o manifesto do log em memmap."""
 
         manifesto = {
-            'schema_version': 'flight_interval_memmap_v1',
+            'schema_version': 'flight_interval_memmap_v2_spatial',
             'description': (
-                'Cada linha representa a variacao entre duas mensagens consecutivas '
-                'de odometria, sem salvar pose absoluta.'
+                'Cada linha preserva os deltas usados pelo estudo anterior e acrescenta '
+                'pose absoluta e diagnosticos do mapa para a validacao espacial.'
             ),
             'num_samples': int(self.samples_saved),
             'capacity': int(self.capacity),
@@ -136,7 +157,7 @@ class DataLogger(Node):
         }.get(str(source), -1)
 
     def capturar_estado_odometria(self, msg):
-        """Captura valores correntes apenas para calcular variacoes."""
+        """Captura pose, comandos e estado espacial no instante da odometria."""
 
         obstacle_risk = getattr(self.controller_node, 'obstacle_risk', 0.0)
         avoid_lateral_body = getattr(self.controller_node, 'avoid_lateral_body', 0.0)
@@ -144,6 +165,14 @@ class DataLogger(Node):
         evasao_visual_ativa = int(bool(getattr(self.controller_node, 'evasao_visual_ativa', False)))
         pan_comp_delta_rad = getattr(self.controller_node, 'last_pan_delta_rad', 0.0)
         pan_comp_source = getattr(self.controller_node, 'last_pan_delta_source', 'none')
+        navigation_mode = getattr(self.controller_node, 'navigation_mode', 'legacy_reactive')
+        map_stats = getattr(self.controller_node, 'spatial_last_map_stats', {}) or {}
+        estimated_map_stats = map_stats.get('estimated') or {}
+        spatial_plan = getattr(self.controller_node, 'spatial_current_plan', None)
+        selected_goal = getattr(spatial_plan, 'selected_goal_ned_m', None)
+        quaternion = np.asarray(getattr(msg, 'q', [1.0, 0.0, 0.0, 0.0]), dtype=float)
+        if quaternion.shape != (4,):
+            quaternion = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
 
         return {
             'timestamp_s': msg.timestamp / 1_000_000.0,
@@ -159,6 +188,17 @@ class DataLogger(Node):
             'evasao_visual_ativa': evasao_visual_ativa,
             'pan_comp_delta_rad': float(pan_comp_delta_rad),
             'pan_comp_source_code': self.codificar_pan_source(pan_comp_source),
+            'q': quaternion,
+            'navigation_mode_code': int(navigation_mode == 'spatial_astar'),
+            'spatial_free_voxels': int(estimated_map_stats.get('free_voxels', 0)),
+            'spatial_occupied_voxels': int(estimated_map_stats.get('occupied_voxels', 0)),
+            'spatial_plan_success': int(bool(getattr(spatial_plan, 'success', False))),
+            'spatial_path_length_m': float(getattr(spatial_plan, 'path_length_m', np.nan)),
+            'spatial_selected_goal': (
+                np.asarray(selected_goal, dtype=float)
+                if selected_goal is not None
+                else np.full(3, np.nan, dtype=float)
+            ),
         }
 
     def odometry_callback(self, msg):
@@ -191,6 +231,14 @@ class DataLogger(Node):
         idx = self.samples_saved
         linha = np.zeros(1, dtype=self.dtype_flight_interval())
         linha['sample_id'][0] = idx + 1
+        linha['timestamp_s'][0] = estado_atual['timestamp_s']
+        linha['x_m'][0] = estado_atual['x']
+        linha['y_m'][0] = estado_atual['y']
+        linha['z_m'][0] = estado_atual['z']
+        linha['q_w'][0] = estado_atual['q'][0]
+        linha['q_x'][0] = estado_atual['q'][1]
+        linha['q_y'][0] = estado_atual['q'][2]
+        linha['q_z'][0] = estado_atual['q'][3]
         linha['dt_s'][0] = estado_atual['timestamp_s'] - estado_anterior['timestamp_s']
         linha['delta_x_m'][0] = estado_atual['x'] - estado_anterior['x']
         linha['delta_y_m'][0] = estado_atual['y'] - estado_anterior['y']
@@ -206,6 +254,14 @@ class DataLogger(Node):
         )
         linha['pan_comp_delta_rad'][0] = estado_atual['pan_comp_delta_rad']
         linha['pan_comp_source_code'][0] = estado_atual['pan_comp_source_code']
+        linha['navigation_mode_code'][0] = estado_atual['navigation_mode_code']
+        linha['spatial_free_voxels'][0] = estado_atual['spatial_free_voxels']
+        linha['spatial_occupied_voxels'][0] = estado_atual['spatial_occupied_voxels']
+        linha['spatial_plan_success'][0] = estado_atual['spatial_plan_success']
+        linha['spatial_path_length_m'][0] = estado_atual['spatial_path_length_m']
+        linha['spatial_selected_goal_x_m'][0] = estado_atual['spatial_selected_goal'][0]
+        linha['spatial_selected_goal_y_m'][0] = estado_atual['spatial_selected_goal'][1]
+        linha['spatial_selected_goal_z_m'][0] = estado_atual['spatial_selected_goal'][2]
 
         self.flight_intervals[idx] = linha[0]
         self.samples_saved += 1
@@ -248,7 +304,7 @@ def main(args=None):
     [ROS 2 rclpy] https://docs.ros.org/en/humble/p/rclpy/
     """
 
-    rclpy.init(args=args)
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     
     controller_node = DroneOffboardNode()
     logger_node = DataLogger(controller_node)
@@ -256,12 +312,43 @@ def main(args=None):
     executor.add_node(controller_node)
     executor.add_node(logger_node)
     
+    stop_requested = False
+
+    def request_stop(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+
     try:
         controller_node.get_logger().info('Iniciando Controlador e Gravador de Dados simultaneamente...')
-        executor.spin()
-    except KeyboardInterrupt:
-        controller_node.get_logger().info('Processo encerrado pelo usuário (Ctrl+C).')
-        logger_node.get_logger().info('Finalizando a gravação do voo...')
+        while (
+            rclpy.ok()
+            and not stop_requested
+            and not getattr(controller_node, 'shutdown_requested', False)
+        ):
+            executor.spin_once(timeout_sec=0.2)
+        if stop_requested:
+            controller_node.get_logger().info(
+                'Encerramento solicitado; iniciando sequencia segura.'
+            )
+            logger_node.get_logger().info('Finalizando a gravação do voo...')
+            if (
+                controller_node.spatial_execute_path
+                and not controller_node.missao_concluida
+            ):
+                controller_node.get_logger().warning(
+                    'Interrupcao em voo: solicitando pouso ao PX4 antes de desmontar os nos.'
+                )
+                deadline = time.monotonic() + 8.0
+                next_land_command = 0.0
+                while rclpy.ok() and time.monotonic() < deadline:
+                    now = time.monotonic()
+                    if now >= next_land_command:
+                        controller_node.land()
+                        next_land_command = now + 1.0
+                    executor.spin_once(timeout_sec=0.25)
     except ExternalShutdownException:
         controller_node.get_logger().info('Encerramento automatico da missao solicitado.')
         logger_node.get_logger().info('Finalizando a gravacao do voo...')

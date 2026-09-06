@@ -1,0 +1,317 @@
+\documentclass[article,a4paper,12pt,brazil,sumario=tradicional]{abntex2}
+\usepackage{titlesec}
+
+\setcounter{secnumdepth}{4}
+
+\titleformat{\paragraph}
+{\normalfont\normalsize}{\theparagraph}{1em}{}
+
+\usepackage{array}
+\usepackage{subfig}
+\usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+\usepackage[alf,abnt-etal-text=it]{abntex2cite}
+\usepackage[brazil]{babel}
+\usepackage[space]{grffile}
+\graphicspath{ {./images/} }
+\setlength{\parindent}{3em}
+
+\newcolumntype{C}[1]{>{\centering\arraybackslash\hspace{0pt}}p{#1}}
+
+\setlrmarginsandblock{3cm}{3cm}{*}
+\setulmarginsandblock{3cm}{2cm}{*}
+\checkandfixthelayout
+
+\titleformat{\section}{\normalfont\normalsize\bfseries}{\thesection.}{1em}{\MakeUppercase}
+\titleformat{\subsection}{\normalfont\normalsize}{\thesubsection.}{1em}{\MakeUppercase}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection.}{1em}{}
+
+\renewenvironment{quotation}
+  {\small\list{}{\rightmargin=0cm \leftmargin=2cm}%
+   \item\relax}
+  {\endlist}
+  
+\hypersetup{%
+    pdfborder = {0 0 0}
+}
+
+% \title{ {\Large Título em português\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}\\\\
+% \vspace{.2} 
+% \textit{Título em inglês}\\}}
+
+% \date{ }
+\renewcommand{\imprimircapa}{%
+\begin{capa}%
+ \center
+  \ABNTEXchapterfont\large\imprimirinstituicao
+   \vfill
+    \ABNTEXchapterfont\large\imprimirautor
+    \vfill
+    \begin{center}
+    \ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo
+    \vfill
+    \end{center}
+    
+    \large\imprimirlocal
+    
+    \large\imprimirdata
+\end{capa}
+}
+\makeatletter
+\renewcommand{\folhaderostocontent}{
+    \begin{center}
+      {\abntex@ifnotempty{\imprimirinstituicao}{\imprimirinstituicao
+        \vspace*{\fill}}}
+        
+        {\imprimirautor}
+        \vspace*{\fill}\vspace*{\fill}
+        \begin{center}
+            \imprimirtitulo
+        \end{center}
+        \vspace*{\fill}
+        \abntex@ifnotempty{\imprimirpreambulo}{%
+            \hspace{.45\textwidth}
+            \begin{minipage}{.5\textwidth}
+                \SingleSpacing
+                \imprimirpreambulo
+            \end{minipage}%
+            \vspace*{\fill}
+        }%  
+        %{\abntex@ifnotempty{\imprimirinstituicao}{\imprimirinstituicao
+        %\vspace*{\fill}}}
+        
+        \vspace*{\fill}
+        {\large\imprimirlocal}
+        \par
+        {\large\imprimirdata}
+        \vspace*{1cm}
+    \end{center}
+}
+\makeatother
+
+\titulo{Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Estimativa de Proximidade em VANTs}
+\autor{Gabriel Justino Panza}
+\local{Niterói}
+\data{2026}
+\orientador[Orientador: ]{Prof. Dr. Leandro Augusto Frata Fernandes}
+\coorientador[Coorientador: ]{Dr. Eduardo Charles Vasconcellos}
+\instituicao{%
+  UNIVERSIDADE FEDERAL FLUMINENSE
+  \par
+  INSTITUTO DE COMPUTAÇÃO
+  \par
+  DEPARTAMENTO DE CIÊNCIA DA COMPUTAÇÃO}
+\tipotrabalho{Trabalho de Conclusão de Curso}
+% O preambulo deve conter o tipo do trabalho, o objetivo, 
+% o nome da instituição e a área de concentração 
+\preambulo{Trabalho de Conclusão de Curso submetido ao Departamento de Ciência da Computação da Universidade Federal Fluminense como requisito parcial para a obtenção do título de Bacharel em Ciência da Computação.}
+
+\begin{document}
+
+%\imprimircapa
+
+\imprimirfolhaderosto
+
+%\input{elementos-pretextuais/errata}
+\input{elementos-pretextuais/folha-aprovacao}
+\pagebreak
+\input{elementos-pretextuais/ficha-catalografica}
+
+\pagebreak
+\textual
+\begin{center}
+\Large {Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Estimativa de Proximidade em VANTs\\
+%\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
+\textit{Before the Architecture: Experimental Evaluation of Monocular and Inertial Signals for Proximity Estimation in UAVs}}
+\end{center}
+\vspace{.2cm} 
+
+\begin{flushright}
+Gabriel Justino Panza\footnote{Graduando do Curso de Ciência da Computação - UFF.} 
+
+Prof. Dr. Leandro Augusto Frata Fernandes\footnote{Orientador - Instituto de Computação - UFF.}
+
+Dr. Eduardo Charles Vasconcellos\footnote{Pesquisador e coorientador.}
+\end{flushright}
+
+\vspace{\onelineskip}
+
+\begin{center}
+    \textbf{Resumo}
+\end{center}
+
+\vspace{-.3cm}
+
+\noindent
+
+\vspace{.4cm}
+ 
+\noindent
+\textbf{Palavras-chave}:
+ 
+\vspace{\onelineskip}
+
+\begin{center}
+    \textbf{Abstract}
+\end{center}
+
+\vspace{-.3cm}
+\begin{hyphenrules}{english}
+\noindent
+\end{hyphenrules}
+\vspace{.4cm}
+ 
+\noindent \textbf{Keywords}:
+
+\vspace{.4cm}
+
+\noindent \textbf{Aprovado em:} dd/mm/aaaa.~~~\textbf{Versão Final em:} dd/mm/aaaa
+
+\section{Introdução}
+
+
+\section{Desenvolvimento}
+
+\subsection{Fundamentação teórica e trabalhos relacionados}
+
+\subsubsection{Navegação visual em drones}
+
+A navegação autônoma de quadricópteros depende da integração entre percepção, decisão e controle. Em voos rápidos, essas etapas também precisam respeitar o tempo disponível para reagir. Loquercio et al. aproximam percepção e planejamento para realizar voos em ambientes naturais e artificiais \cite{Loquercio2021}. Richter, Vega-Brown e Roy consideram a incerteza sobre regiões desconhecidas durante o planejamento \cite{BayesianLearning2015}. Esses trabalhos estudam o sistema de navegação como um todo, enquanto esta pesquisa se concentra nos sinais visuais usados para representar mudanças de proximidade.
+
+O ambiente experimental usa o Gazebo para simular a física e os sensores \cite{Koenig7803} e o PX4 como piloto automático \cite{Meier8092}. A simulação permite obter a profundidade usada como referência, mas ainda pode apresentar pequenas diferenças no tempo de execução dos processos. Por isso, cada voo completo é tratado como uma execução independente.
+
+\subsubsection{Visão monocular e profundidade}
+
+A câmera monocular tem baixo peso e custo, mas não fornece diretamente a distância dos objetos. Trabalhos recentes apresentam avanços na estimativa monocular de profundidade, mas ainda apontam problemas de generalização e de custo computacional em aplicações robóticas \cite{Vyas2022,Arampatzakis2024,RealTimeMonocular2022}. A incerteza dessas estimativas também precisa ser considerada \cite{Liu2023}. O Depth Anything V2 oferece modelos pré-treinados para profundidade monocular relativa e permite refinamento para profundidade métrica \cite{DepthAnythingV2}. Neste trabalho, ele fornece o ponto de partida da etapa espacial monocular. A profundidade sintética do Gazebo permanece como referência independente e não entra no estimador.
+
+\subsubsection{Fluxo óptico e variação visual}
+
+O fluxo óptico descreve o movimento aparente entre quadros. Lucas--Kanade estima o deslocamento dos pontos \cite{LucasKanade1981}, enquanto Shi--Tomasi seleciona regiões adequadas para o rastreamento \cite{ShiTomasi1994}. Como a rotação do drone, sua translação e a estrutura da cena influenciam o fluxo, uma magnitude alta não significa necessariamente que exista um obstáculo próximo. Resolução, frequência, borramento e erros nas correspondências também afetam o resultado \cite{SimoneGodio2022,Peidong2021,Estimation2109}.
+
+Alguns trabalhos usam fluxo e informação inercial para prevenir colisões \cite{Xiao2021}, treinam o desvio a partir do movimento dos pixels de uma única câmera \cite{PixelMotion2025} ou combinam fluxo translacional com uma máscara de incerteza \cite{Deng2026}. Nesta pesquisa, o modelo não aprende diretamente o comando de desvio. O objetivo é verificar quais medidas de fluxo, IMU, movimento e diferença de imagem ajudam a explicar a variação de proximidade.
+
+\subsubsection{Representação tridimensional e planejamento}
+
+Uma estimativa de profundidade por pixel pode ser reprojetada no espaço tridimensional a partir dos parâmetros intrínsecos da câmera. A pose permite reunir observações de diferentes instantes em um referencial comum. Mapas de ocupação representam o espaço como livre, ocupado ou ainda não observado \cite{Elfes1989}. Estruturas baseadas em octrees são uma alternativa para armazenar essa informação em três dimensões \cite{Hornung2013}; neste trabalho, uma grade esparsa de resolução fixa facilita a comparação direta dos voxels.
+
+Sobre esse mapa, o algoritmo A* procura um caminho de menor custo combinando o custo percorrido com uma heurística até o destino \cite{Hart1968}. O planejador considera apenas voxels observados como livres. Quando o objetivo ainda está fora da região conhecida, um subobjetivo é escolhido na fronteira entre espaço observado e desconhecido, seguindo a ideia de exploração por fronteiras \cite{Yamauchi1997}. A travessia dos segmentos na grade usa uma enumeração conservadora dos voxels cruzados, relacionada ao algoritmo de Amanatides e Woo \cite{AmanatidesWoo1987}. O A* não é tratado como contribuição em planejamento nem como controlador. Seu papel é testar uma consequência concreta da percepção: verificar se a representação espacial distingue espaço livre e obstáculos com qualidade suficiente para gerar pontos de passagem seguros.
+
+\subsubsection{Aprendizado aplicado à percepção e desvio de obstáculos}
+
+Uma MLP permite testar primeiro os atributos resumidos, sem processar as imagens completas. No entanto, modelos baseados em árvores muitas vezes obtêm resultados melhores em dados tabulares de tamanho moderado \cite{OyallonandGaelVaroquaux5220}. Por isso, a MLP é usada como modelo inicial, e não como a melhor arquitetura já definida. O \textit{dropout} e a parada antecipada (\textit{early stopping}) ajudam a reduzir o sobreajuste \cite{Srivastava2014,Prechelt1998}. A divisão por execução completa evita que intervalos muito parecidos da mesma trajetória apareçam no treino e no teste \cite{Kapoor2023}.
+
+Para entender melhor os erros da rede, são usados gradientes que mostram a sensibilidade do erro em relação às entradas. Integrated Gradients é uma das referências para esse tipo de análise \cite{Sundararajan2017}, e trabalhos posteriores discutem suas propriedades e o problema da saturação \cite{Walker5289,Axiomatic2025}. Como as entradas deste modelo são tabulares, a análise é feita sobre os atributos, e não por mapas de imagem como no Grad-CAM.
+
+\subsubsection{Posição defendida}
+
+O desvio monocular baseado em fluxo já foi estudado em outros trabalhos. Em geral, a literatura avança pela criação de estimadores, políticas de voo e mecanismos de desvio. Este artigo defende uma etapa anterior: avaliar a representação, a divisão dos dados, a estabilidade e a origem dos erros antes de aumentar a arquitetura. Para testar essa posição, fluxo esparso, IMU, movimento, comandos e profundidade de referência são sincronizados no mesmo intervalo. As observações são representadas por variações, o treino cresce sem trocar validação e teste e os erros são examinados por eventos, gradientes e ablação.
+
+\subsection{Proposta metodológica e implementação}
+
+\subsubsection{Ambiente, coleta e sincronização}
+
+Os experimentos são executados em \textit{Software in the Loop} (SITL) com PX4, Gazebo e \textit{Robot Operating System}~2 (ROS~2). O quadricóptero simulado possui uma câmera nos canais vermelho, verde e azul (RGB) frontal, usada na estabilização da imagem, no cálculo do fluxo óptico e no desvio. Uma câmera de profundidade alinhada fornece somente os valores de referência. Esses valores não são usados pelo controlador nem entram no modelo.
+
+O ambiente simulado utilizado nos experimentos foi desenvolvido com o apoio do pesquisador Eduardo Charles Vasconcellos, especialmente na configuração do cenário, do VANT e dos componentes relacionados ao voo autônomo.
+
+Os experimentos foram executados em um computador com processador Intel Core i7-14700K, 64~GB de memória de acesso aleatório (RAM) e uma unidade de processamento gráfico (GPU) NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo. O ambiente utilizou Ubuntu 22.04.5 com suporte de longo prazo (LTS) no \textit{Windows Subsystem for Linux}~2 (WSL~2), PX4 baseado no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. O modelo simulado foi o \texttt{x500\_mono\_cam}, no cenário \texttt{baylands}.
+
+O controlador opera a 25~Hz e limita a velocidade a 12~m/s. A missão percorre quatro pontos relativos no sistema norte-leste-baixo (NED): $(-25,25,-1{,}65)$, $(-50,70,-1{,}65)$, $(-25,25,-1{,}65)$ e $(0,0,-1{,}65)$ metros. Um ponto intermediário é aceito dentro de um raio de 4~m. Ao retornar a menos de 3~m do ponto final, o veículo inicia o encerramento da missão, pousa e é desarmado.
+
+A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas ao longo da coleta. A Figura~\ref{fig:artigo-imu} apresenta as variações das velocidades angulares nas mesmas execuções, usadas para caracterizar a atitude e o movimento do veículo.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_trajetorias.png}
+    \caption{Trajetórias acumuladas de quatro execuções representativas.}
+    \label{fig:artigo-trajetorias}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_imu.png}
+    \caption{Variações das velocidades angulares em quatro execuções representativas.}
+    \label{fig:artigo-imu}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida, tempos não positivos, intervalos RGB ou de profundidade acima de 0,5~s e diferenças temporais entre RGB e profundidade acima de 0,08~s. A versão analisada contém 40 execuções e 1.234 intervalos válidos.
+
+A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas 40 execuções. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.png}
+    \caption{Distribuição do intervalo temporal entre atualizações visuais nas 40 execuções.}
+    \label{fig:artigo-intervalos}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/metodologia_sincronizacao.png}
+    \caption{Sequência sincronizada do fluxo visual e da variação de proximidade usada como referência.}
+    \label{fig:artigo-sincronizacao}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\subsubsection{Representação dos intervalos}
+
+A imagem é estabilizada com os dados de atitude e IMU e convertida para uma saída de $640\times480$ pixels. Até 180 pontos Shi--Tomasi são acompanhados pelo Lucas--Kanade piramidal, com janela $21\times21$ e três níveis adicionais. Para cada intervalo, são registrados quantidade e retenção de pontos, magnitude e componente radial do fluxo, risco por ponto, deltas de posição e atitude, dados da IMU, comandos reativos e estatísticas da diferença entre imagens.
+
+Os alvos são as variações dos percentis P10, P50 e P90 da profundidade e da porcentagem de pixels abaixo de 2, 5 e 10~m. Também é feito um teste em que os ângulos são substituídos por seus valores de seno e cosseno. As demais configurações são mantidas iguais nessa comparação.
+
+\subsubsection{Modelo e protocolo de avaliação}
+
+A MLP possui duas camadas ocultas, com 64 e 16 unidades, ativação por unidade linear retificada (ReLU), \textit{dropout} de 0,30 e uma saída linear para cada alvo. As entradas e os alvos são padronizados somente com os dados de treino. O treinamento usa Adam, taxa $10^{-3}$, regularização $L_2=10^{-4}$, lotes de 64 amostras, no máximo 300 épocas e semente 42. A parada antecipada acompanha o erro quadrático médio (MSE) da validação. Quando não ocorre uma melhora mínima de $10^{-4}$ durante 50 épocas, o treinamento para e recupera os pesos da melhor época.
+
+A separação é feita por execução. Duas execuções de validação e três de teste permanecem fixas, enquanto o treino cresce nos marcos de 9, 17, 25, 33 e 40 execuções. O modelo é comparado com a previsão da média do treino por erro absoluto médio (MAE) e raiz do erro quadrático médio (RMSE). Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
+
+\subsubsection{Estabilidade, modelos de árvores e ablação}
+
+A estabilidade da MLP é avaliada com as sementes 7, 21, 42, 84 e 123, sem alterar os conjuntos ou os hiperparâmetros. Random Forest e Extra Trees, ambos com 500 árvores, no mínimo duas amostras por folha, 70\% das entradas candidatas e semente 42, formam referências tabulares adicionais. A ablação remove um grupo de entradas por vez e repete cada configuração com as sementes 21, 42 e 84. A comparação usa a diferença percentual de MAE em relação ao modelo completo da mesma semente.
+
+\subsubsection{Explicabilidade}
+
+O gradiente do erro quadrático é calculado em relação às entradas padronizadas. O módulo desses valores é reunido na validação por atributo e por grupo de entradas. Nos maiores erros, são mostradas as três entradas mais sensíveis. Quando todos os gradientes são zero, nenhum ranking é apresentado. Essa análise indica sensibilidade perto de cada amostra, mas não permite afirmar que uma entrada seja a causa do erro.
+
+O \href{https://github.com/Gabriel-Panza/TCC_Drone}{repositório do projeto no GitHub} possui dois pontos centrais: o arquivo \texttt{main.py}, que executa o voo reativo e a coleta, e o notebook \path{estudos_e_analises/estudo_das_metricas.ipynb}, que reúne as verificações, os treinamentos e a geração dos resultados. A branch \texttt{main} contém a versão final usada neste trabalho. Os dados brutos das 40 execuções não foram publicados devido ao volume dos arquivos; o notebook versionado mantém o código, as configurações e as saídas da análise final.
+
+\subsubsection{Validação espacial complementar}
+
+A etapa espacial preserva a posição central do artigo e acrescenta um teste de utilidade posterior às métricas por pixel. A profundidade densa é reprojetada com o modelo pinhole da câmera, transformada do referencial óptico para o corpo do VANT e depois para o sistema NED. Cada raio acrescenta evidência de espaço livre antes da superfície e de ocupação no ponto final. Evidências temporais, uma faixa vertical ao redor da altitude de voo e margens distintas para espaço livre e ocupado reduzem a influência do solo, das copas e de observações isoladas.
+
+Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O A* percorre somente voxels conhecidos como livres e usa vizinhança tridimensional. Segmentos que cruzam voxels ocupados ou desconhecidos são rejeitados. Quando o destino ainda não foi observado, o sistema escolhe um subobjetivo em uma fronteira livre que produza avanço. O caminho passa por simplificação com linha de visada, divisão em pontos de passagem e uma nova verificação de segurança antes da publicação.
+
+O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade ideal do Gazebo em dez execuções de referência. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com um mapa de referência independente, com atenção especial aos falsos espaços livres e a colisões do caminho. O voo monocular só poderia começar após aprovação em todos os conjuntos reservados.
+
+Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de posição, enquanto o PX4 continua responsável pela estabilização e pelo acompanhamento físico desses pontos. Portanto, ``sem controle reativo'' não significa voo sem controle, mas uma separação entre percepção e planejamento, avaliados neste trabalho, e o controle de baixo nível já fornecido pelo piloto automático.
+
+\subsection{Evidências experimentais}
+
+
+\section{Conclusão}
+
+
+\newpage
+\bibliography{references}
+
+\newpage
+\chapter*{APÊNDICE A - Lista de ilustrações}
+
+\newpage
+\chapter*{APÊNDICE B - Lista de tabelas}
+
+\begin{appendices}
+\newpage
+\chapter*{APÊNDICE C - Configuração e disponibilidade}
+\addcontentsline{toc}{chapter}{APÊNDICE C - Configuração e disponibilidade}
+\end{appendices}
+
+\newpage
+\chapter*{Agradecimentos}
+
+\end{document}

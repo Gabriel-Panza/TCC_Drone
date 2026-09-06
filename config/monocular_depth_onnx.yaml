@@ -1,0 +1,17 @@
+monocular_metric_depth_node:
+  ros__parameters:
+    image_topic: /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image
+    output_topic: /monocular_depth
+    model_path: models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx
+    input_width: 686
+    input_height: 518
+    input_aspect_tolerance: 0.03
+    normalization_mean: [0.485, 0.456, 0.406]
+    normalization_std: [0.229, 0.224, 0.225]
+    output_representation: metric_depth
+    output_scale: 1.0
+    output_shift: 0.0
+    min_depth_m: 0.1
+    max_depth_m: 80.0
+    inference_backend: onnxruntime
+    use_cuda: false

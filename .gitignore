@@ -186,5 +186,25 @@ ws_ros2/
 datasets/
 logs/
 .sim_env/
+models/*.onnx
+models/*.pth
+models/.venv/
+models/export_env/
+models/runtime_env/
+models/train_env/
 
-Parte_Escrita/
+# Fontes e figuras de Parte_Escrita fazem parte do projeto.
+# Apenas artefatos gerados pela compilação LaTeX permanecem ignorados.
+Parte_Escrita/**/*.aux
+Parte_Escrita/**/*.bbl
+Parte_Escrita/**/*.blg
+Parte_Escrita/**/*.brf
+Parte_Escrita/**/*.idx
+Parte_Escrita/**/*.lof
+Parte_Escrita/**/*.lot
+Parte_Escrita/**/*.out
+Parte_Escrita/**/*.pdf
+Parte_Escrita/**/*.synctex.gz
+Parte_Escrita/**/*.toc
+/models
+Parte_Escrita/BIbtex_for_article_corrigido.bib
