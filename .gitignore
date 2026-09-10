@@ -207,3 +207,5 @@ Parte_Escrita/**/*.pdf
 Parte_Escrita/**/*.synctex.gz
 Parte_Escrita/**/*.toc
 /models
+estudos_e_analises/logs/dashboard_depth_intervals.pkl
+estudos_e_analises/logs/dashboard_depth_intervals.meta.json

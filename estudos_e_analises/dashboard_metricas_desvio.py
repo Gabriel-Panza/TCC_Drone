@@ -38,6 +38,9 @@ LOSS_CURVES_PATH = ANALYSIS_LOG_DIR / "curvas_loss_mlp.csv"
 GRADIENT_IMPORTANCE_PATH = ANALYSIS_LOG_DIR / "importancia_gradiente_erro_validacao.csv"
 GROUPED_GRADIENT_IMPORTANCE_PATH = ANALYSIS_LOG_DIR / "importancia_gradiente_erro_validacao_agrupada.csv"
 LARGEST_GRADIENT_ERRORS_PATH = ANALYSIS_LOG_DIR / "maiores_erros_gradiente_validacao.csv"
+DASHBOARD_INTERVAL_CACHE_PATH = ANALYSIS_LOG_DIR / "dashboard_depth_intervals.pkl"
+DASHBOARD_INTERVAL_CACHE_META_PATH = ANALYSIS_LOG_DIR / "dashboard_depth_intervals.meta.json"
+DASHBOARD_INTERVAL_CACHE_VERSION = 1
 
 
 def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
@@ -119,7 +122,10 @@ BATCH_SPECS = (
     (17, "Primeiras 17 runs"),
     (25, "Primeiras 25 runs"),
     (33, "Primeiras 33 runs"),
-    (40, "Todas (40 runs)"),
+    (50, "Primeiras 50 runs"),
+    (67, "Primeiras 67 runs"),
+    (85, "Primeiras 85 runs"),
+    (102, "Todas elegiveis (102 runs)"),
 )
 BATCH_LABELS = dict(BATCH_SPECS)
 # Mantem as referencias embutidas antigas importaveis quando os CSVs nao existem.
@@ -259,7 +265,16 @@ BATCH_COLORS = {
     label: color
     for (_size, label), color in zip(
         BATCH_SPECS,
-        (COLORS["drone"], "#0891b2", COLORS["accent"], "#a16207", COLORS["latest"]),
+        (
+            COLORS["drone"],
+            "#0891b2",
+            COLORS["accent"],
+            "#65a30d",
+            "#a16207",
+            "#ea580c",
+            COLORS["risk"],
+            COLORS["latest"],
+        ),
     )
 }
 BLOCK_COLORS = dict(zip(BLOCK_LABELS, BATCH_COLORS.values()))
@@ -393,6 +408,7 @@ def filter_synchronized_intervals(df: pd.DataFrame, require_depth_dt: bool = Tru
     return df.loc[mask].reset_index(drop=True)
 
 
+@lru_cache(maxsize=256)
 def load_depth_interval_run(run_dir: Path) -> pd.DataFrame:
     """Carrega os intervalos de uma run depth no formato memmap atual."""
 
@@ -404,7 +420,8 @@ def load_depth_interval_run(run_dir: Path) -> pd.DataFrame:
         manifest = json.load(fp)
 
     if manifest.get("schema_version") == "spatial_mapping_v1":
-        return load_analysis_run(run_dir)["intervalos"].copy()
+        intervals = load_analysis_run(run_dir)["intervalos"].copy()
+        return enrich_depth_interval_dashboard(intervals)
 
     if manifest.get("schema_version") != "depth_interval_memmap_v1":
         return pd.DataFrame()
@@ -571,19 +588,65 @@ def load_notebook_interval_snapshot() -> pd.DataFrame:
     return filter_synchronized_intervals(snapshot, require_depth_dt=False)
 
 
+def _depth_interval_cache_signature(run_dirs: list[Path]) -> dict:
+    """Identifica rapidamente o conjunto de runs usado pelo cache."""
+
+    runs = []
+    for run_dir in run_dirs:
+        manifest = run_dir / "manifest.json"
+        events = run_dir / "events.jsonl"
+        runs.append(
+            [
+                run_dir.name,
+                manifest.stat().st_mtime_ns if manifest.exists() else 0,
+                events.stat().st_mtime_ns if events.exists() else 0,
+                len(list((run_dir / "frames").glob("frame_*.npz"))),
+            ]
+        )
+    return {"version": DASHBOARD_INTERVAL_CACHE_VERSION, "runs": runs}
+
+
+def _load_cached_depth_intervals(signature: dict) -> pd.DataFrame | None:
+    if not DASHBOARD_INTERVAL_CACHE_PATH.exists() or not DASHBOARD_INTERVAL_CACHE_META_PATH.exists():
+        return None
+    try:
+        metadata = json.loads(DASHBOARD_INTERVAL_CACHE_META_PATH.read_text(encoding="utf-8"))
+        if metadata != signature:
+            return None
+        return pd.read_pickle(DASHBOARD_INTERVAL_CACHE_PATH)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _save_cached_depth_intervals(df: pd.DataFrame, signature: dict) -> None:
+    try:
+        ANALYSIS_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        df.to_pickle(DASHBOARD_INTERVAL_CACHE_PATH)
+        DASHBOARD_INTERVAL_CACHE_META_PATH.write_text(
+            json.dumps(signature, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def load_all_depth_intervals() -> pd.DataFrame:
-    """Combina memmaps locais com runs ausentes recuperadas do notebook."""
+    """Combina runs locais; optical flow e persistido ate os datasets mudarem."""
 
-    frames = []
-    for run_dir in list_depth_interval_runs():
-        try:
-            df = load_depth_interval_run(run_dir)
-        except Exception:
-            continue
-        if not df.empty:
-            frames.append(df)
-
-    local_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    run_dirs = list_depth_interval_runs()
+    signature = _depth_interval_cache_signature(run_dirs)
+    local_df = _load_cached_depth_intervals(signature)
+    if local_df is None:
+        frames = []
+        for run_dir in run_dirs:
+            try:
+                df = load_depth_interval_run(run_dir)
+            except Exception:
+                continue
+            if not df.empty:
+                frames.append(df)
+        local_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        _save_cached_depth_intervals(local_df, signature)
     notebook_df = load_notebook_interval_snapshot()
     if notebook_df.empty:
         return local_df
@@ -610,11 +673,9 @@ def batch_label(size: int) -> str:
 
 
 def ordered_run_ids(df: pd.DataFrame) -> list[str]:
-    """Ordena primeiro as 25 runs de referencia e depois qualquer run adicional."""
+    """Ordena cronologicamente todas as runs atuais, como faz o notebook."""
 
-    available = set(df["run_id"].astype(str))
-    reference = [run_id for run_id in REFERENCE_RUN_ORDER if run_id in available]
-    return reference + sorted(available - set(reference))
+    return sorted(set(df["run_id"].astype(str)))
 
 
 def run_label(path: Path) -> str:
@@ -1162,21 +1223,24 @@ def apply_layout(fig: go.Figure, title: str, height: int = 420) -> go.Figure:
         paper_bgcolor=COLORS["panel"],
         plot_bgcolor=COLORS["panel"],
         height=height,
-        margin=dict(l=48, r=28, t=72, b=46),
+        margin=dict(l=64, r=40, t=80, b=110),
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=0.99,
+            y=-0.22,
             xanchor="center",
             x=0.5,
-            font=dict(size=10),
+            font=dict(size=12),
             bgcolor="rgba(255, 255, 255, 0.82)",
             bordercolor="rgba(213, 221, 227, 0.72)",
             borderwidth=1,
         ),
-        font=dict(family="Segoe UI, Arial, sans-serif", color=COLORS["ink"]),
+        font=dict(family="Segoe UI, Arial, sans-serif", color=COLORS["ink"], size=13),
         hovermode="closest",
     )
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    fig.update_traces(cliponaxis=False, selector=dict(type="bar"))
     return fig
 
 
@@ -1198,11 +1262,18 @@ def table_figure(
                     align="left",
                     font=dict(size=13),
                 ),
-                cells=dict(values=columns, fill_color="#ffffff", align="left", height=28),
+                cells=dict(
+                    values=columns,
+                    fill_color=[["#ffffff" if i % 2 == 0 else "#f1f5f9"
+                                 for i in range(max(map(len, columns), default=0))]],
+                    align="left", height=32, font=dict(size=13),
+                ),
             )
         ]
     )
-    return apply_layout(fig, title, height)
+    fig = apply_layout(fig, title, max(height, 420))
+    fig.update_layout(margin=dict(l=16, r=16, t=72, b=20))
+    return fig
 
 
 def rows_to_columns(rows: list[list], column_count: int) -> list[list]:
@@ -1929,7 +2000,11 @@ def batch_analysis_notes(
     split = analysis_note(
         "Separar ganho real de variacao causada pela divisao treino/teste",
         [
-            "A validacao usa duas runs fixas e o teste usa tres runs fixas desde o primeiro marco. Apenas o conjunto de treino cresce em 9, 17, 25, 33 e 40 runs.",
+            (
+                "A validacao usa duas runs fixas e o teste usa tres runs fixas desde o "
+                "primeiro marco. Apenas o conjunto de treino cresce em "
+                "9, 17, 25, 33, 50, 67, 85 e 102 runs."
+            ),
             (
                 "Os CSVs controlados foram carregados pelo dashboard. Assim, a variacao atual de MAE e balanced accuracy nao inclui mudanca na composicao do teste."
                 if has_fixed_comparison_results()
@@ -1947,21 +2022,7 @@ def batch_analysis_notes(
         ],
         "warning",
     )
-    professor = analysis_note(
-        "Resposta sugerida ao professor",
-        [
-            (
-                f"Professor, atualizei a comparacao controlada para {', '.join(str(size) for size, _ in BATCH_SPECS)} runs. "
-                f"O conjunto atual tem {int(current_row['intervalos'])} intervalos validos e mantem validacao e teste fixos."
-            ),
-            (
-                "Tambem passei a acompanhar as curvas de loss e a explicabilidade por gradiente na validacao. "
-                "A comparacao angular mostrou menor dependencia das entradas angulares, mas sem ganho consistente de MAE no teste fixo."
-            ),
-        ],
-        "professor",
-    )
-    return growth, stability, split, errors, professor
+    return growth, stability, split, errors
 
 
 def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
@@ -1969,7 +2030,7 @@ def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
 
     if intervals_df.empty:
         text = (
-            "Nao encontrei os memmaps de depth/flow em datasets/depth_ground_truth no ambiente atual. "
+            "Nao encontrei runs completas em datasets/spatial_mapping no ambiente atual. "
             "Esta aba esta usando os valores salvos no notebook para a comparacao estatistica e de MLP."
         )
         return html.Div(text, className="notice")
@@ -1990,7 +2051,8 @@ def batch_notice(intervals_df: pd.DataFrame) -> html.Div:
         "As curvas de MLP e classificacao com splits fixos foram carregadas dos CSVs gerados pelo notebook."
         if has_fixed_comparison_results()
         else (
-            "O notebook esta configurado para treinar 9, 17, 25, 33 e 40 runs com validacao e teste fixos; "
+            "O notebook esta configurado para treinar 9, 17, 25, 33, 50, 67, 85 e o total elegivel "
+            "com validacao e teste fixos; "
             "rerode-o com todas as pastas para atualizar a curva controlada."
         )
     )
@@ -2511,8 +2573,11 @@ def comparison_table(paths: list[Path]) -> go.Figure:
     )
 
 
-def graph(component_id: str) -> dcc.Graph:
-    return dcc.Graph(id=component_id, config=GRAPH_CONFIG)
+def graph(component_id: str) -> dcc.Loading:
+    return dcc.Loading(
+        type="circle",
+        children=dcc.Graph(id=component_id, config=GRAPH_CONFIG),
+    )
 
 
 def graph_grid(*component_ids: str) -> html.Div:
@@ -2605,12 +2670,12 @@ def batch_tab() -> dcc.Tab:
             analysis_section(
                 "Desempenho conforme o conjunto cresce",
                 "batch-growth-analysis",
-                [graph_grid("batch-metric-facets", "batch-stats-table")],
+                [graph("batch-metric-facets"), graph("batch-stats-table")],
             ),
             analysis_section(
                 "Continuidade ou estabilizacao",
                 "batch-stability-analysis",
-                [graph_grid("batch-event-rates", "batch-distributions")],
+                [graph("batch-event-rates"), graph("batch-distributions")],
             ),
             analysis_section(
                 "Ganho real x variacao do split",
@@ -2620,12 +2685,7 @@ def batch_tab() -> dcc.Tab:
             analysis_section(
                 "Alvos e eventos que concentram erros",
                 "batch-error-analysis",
-                [graph_grid("batch-mlp-table", "batch-event-table")],
-            ),
-            analysis_section(
-                "Resposta para o professor",
-                "batch-professor-message",
-                [],
+                [graph("batch-mlp-table"), graph("batch-event-table")],
             ),
         ],
     )
@@ -2954,11 +3014,6 @@ INDEX_TEMPLATE = """
                     background: #fff6ed;
                     color: #6b3416;
                 }
-                .analysis-note-professor {
-                    border-left-color: #0f766e;
-                    background: #edf7f5;
-                    color: #244a45;
-                }
                 .graph-grid {
                     display: grid;
                     gap: 14px;
@@ -2997,6 +3052,39 @@ INDEX_TEMPLATE = """
                 }
                 @media (max-width: 520px) {
                     .metrics-grid { grid-template-columns: 1fr; }
+                }
+                /* Presentation only: keep component IDs and data callbacks intact. */
+                .tab-panel { padding: 18px 22px 24px; }
+                .tab { font-size: 14px; line-height: 1.4; }
+                .metrics-grid {
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                }
+                .metric-card { background: #f8fafc; padding: 16px; }
+                .metric-label { color: #475569; font-size: 13px; }
+                .metric-value {
+                    font-variant-numeric: tabular-nums;
+                    overflow-wrap: anywhere;
+                    line-height: 1.2;
+                }
+                .metric-detail { color: #475569; font-size: 13px; line-height: 1.5; }
+                .notice, .analysis-note p { font-size: 14px; line-height: 1.65; }
+                .analysis-note h3 { font-size: 15px; }
+                .analysis-section { margin-top: 24px; padding-top: 24px; }
+                .analysis-section:first-of-type { margin-top: 12px; }
+                .analysis-section h2 { font-size: 21px; margin-bottom: 16px; }
+                .dash-graph { margin-bottom: 16px; }
+                .graph-grid > * { min-width: 0; }
+                .inline-options { flex-wrap: wrap; }
+                input:focus-visible, button:focus-visible, .tab:focus-visible {
+                    outline: 3px solid #2563eb;
+                    outline-offset: 2px;
+                }
+                @media (max-width: 1180px) {
+                    .graph-grid-two { grid-template-columns: 1fr; }
+                }
+                @media (max-width: 820px) {
+                    .tab-panel { padding: 14px 8px; }
+                    .tab { padding: 10px 8px !important; }
                 }
             </style>
         </head>
@@ -3125,7 +3213,6 @@ def register_callbacks(app: Dash) -> None:
         Output("batch-stability-analysis", "children"),
         Output("batch-split-analysis", "children"),
         Output("batch-error-analysis", "children"),
-        Output("batch-professor-message", "children"),
         Input("refresh-data", "n_intervals"),
     )
     def update_batch_comparison(_n_intervals: int):
@@ -3182,7 +3269,6 @@ def register_callbacks(app: Dash) -> None:
             "Como interpretar",
             [
                 f"O early stopping escolheu a epoca {best_epoch} pela menor loss de validacao e o treino terminou na epoca {stopped_epoch}.",
-                "A curva de teste e apenas diagnostica: ela nao participa da escolha da epoca nem dos pesos restaurados.",
             ],
             "warning",
         )
@@ -3203,7 +3289,6 @@ def register_callbacks(app: Dash) -> None:
             "Limite da explicacao local",
             [
                 "As importancias sao calculadas somente na validacao fixa; o teste permanece reservado para avaliacao final.",
-                f"Em {zero_gradients} dos maiores erros, o gradiente local e zero. Nesses casos o dashboard informa que nao existe ranking valido, em vez de exibir nomes arbitrarios com 0%.",
             ],
             "warning" if zero_gradients else "ok",
         )
