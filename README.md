@@ -4,19 +4,29 @@
 
 ## Pontos centrais do repositório
 
-O projeto possui dois fluxos principais e uma validação espacial em desenvolvimento:
+O projeto possui dois fluxos principais e uma validação espacial consolidada:
 
 1. **Execução do pipeline de voo e coleta:** [`main.py`](main.py). Esse arquivo inicia os nós ROS 2 e coordena a coleta. O modo selecionado pode preservar a navegação reativa anterior ou usar mapa 3D e A*.
 2. **Execução das métricas e dos experimentos:** [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb). O notebook reúne o carregamento dos dados, as verificações de qualidade, o treinamento dos modelos, as comparações, a explicabilidade e a geração dos resultados apresentados no TCC.
 3. **Validação espacial complementar:** [`spatial_mapping/`](spatial_mapping). O módulo reúne a reprojeção da profundidade, a grade 3D de ocupação e o planejamento A*. Seu papel é verificar se a informação de proximidade produz conhecimento espacial útil, sem desenvolver um novo controlador de voo.
 
-Os diretórios `logs/` e `datasets/` usados nas 40 execuções finais não estão disponíveis no GitHub devido ao volume dos arquivos. Eles permanecem ignorados pelo Git e são necessários para refazer integralmente as análises a partir dos dados brutos. O notebook versionado mantém o código, as configurações e as saídas da análise final.
+Os diretórios `logs/` e `datasets/` que armazenam os dados brutos não estão disponíveis no GitHub devido ao volume dos arquivos. A análise tabular usa 40 execuções e 1.234 intervalos; separadamente, o acervo espacial local reúne 103 execuções completas produzidas em diferentes fases. Esses arquivos permanecem ignorados pelo Git e são necessários para refazer integralmente as análises a partir dos dados brutos. O notebook versionado mantém o código, as configurações e as saídas da análise final.
 
 Este projeto é parte de um Trabalho de Conclusão de Curso (TCC) que defende a análise controlada dos dados antes da escolha de arquiteturas mais complexas para navegação monocular. O estudo investiga quais sinais representam variações de proximidade, quão estável é essa relação e onde os erros ficam concentrados.
 
 O voo reativo fornece o ambiente de coleta, mas o trabalho não propõe nem compara controladores. A validação espacial acrescenta um mapa tridimensional e usa o A* como teste da utilidade da percepção. O resultado dessa etapa é um caminho formado por pontos de passagem; o PX4 continua responsável por executar esses pontos.
 
 A simulação de alta fidelidade é alcançada através da integração do controlador de voo **PX4 (SITL)** com o motor físico **Gazebo Harmonic**, enquanto toda a inteligência e controle de alto nível rodam sobre o **ROS 2 (Humble)**, comunicando-se via middleware **Micro XRCE-DDS Agent**.
+
+## Visão geral visual
+
+A primeira etapa transforma duas atualizações consecutivas da câmera em um intervalo sincronizado. Fluxo óptico, movimento, IMU, atitude e comandos formam as entradas; a câmera de profundidade fornece apenas os alvos usados na avaliação.
+
+![Sequência sincronizada do fluxo visual e da variação de proximidade](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/metodologia_sincronizacao.png)
+
+Na etapa espacial, a profundidade é reprojetada em voxels livres e ocupados. O A* percorre somente o espaço conhecido como livre, e um guardião verifica cada caminho antes e durante a execução pelo PX4. A figura abaixo mostra uma projeção NED de uma execução da bateria final com profundidade de referência.
+
+![Mapa de referência e caminhos A* adotados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_mapa_astar.png)
 
 ## Ideia do Projeto e Funcionalidades
 
@@ -66,6 +76,8 @@ O módulo, ainda desacoplado do ROS 2, contém:
 * acumulação de espaço livre e ocupado em voxels;
 * expansão dos obstáculos por uma margem de segurança;
 * planejamento A* em três dimensões.
+
+O encadeamento dessa etapa é: imagem RGB ou profundidade do Gazebo → profundidade métrica → reprojeção 3D → grade de ocupação → inflação dos obstáculos → A* → verificação do caminho → pontos de posição → controle de baixo nível pelo PX4. No modo monocular, um mapa paralelo produzido com a profundidade do Gazebo permanece restrito à avaliação e ao veto experimental de segurança.
 
 O protocolo e as métricas planejadas estão em [`docs/validacao_espacial_3d.md`](docs/validacao_espacial_3d.md).
 O roteiro de execução em etapas está em [`docs/execucao_pipeline_espacial.md`](docs/execucao_pipeline_espacial.md).

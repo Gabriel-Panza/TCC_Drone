@@ -91,7 +91,7 @@
 }
 \makeatother
 
-\titulo{Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial Seguro em VANTs}
+\titulo{Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial com Guardião de Segurança em Simulação}
 \autor{Gabriel Justino Panza}
 \local{Niterói}
 \data{2026}
@@ -122,7 +122,7 @@
 \pagebreak
 \textual
 \begin{center}
-\Large {Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial Seguro em VANTs\\
+\Large {Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial com Guardião de Segurança em Simulação\\
 %\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
 \textit{Before the Architecture: Experimental Evaluation of Monocular Perception and Safe Spatial Planning for UAVs}}
 \end{center}
@@ -297,9 +297,9 @@ A etapa espacial preserva a posição central do artigo e acrescenta um teste de
 
 Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O A* percorre somente voxels conhecidos como livres e usa vizinhança tridimensional. Segmentos que cruzam voxels ocupados ou desconhecidos são rejeitados. Quando o destino ainda não foi observado, o sistema escolhe um subobjetivo em uma fronteira livre que produza avanço. O caminho passa por simplificação com linha de visada, divisão em pontos de passagem e uma nova verificação de segurança antes da publicação.
 
-O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
+O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão por pixel exigia MAE global de no máximo 2,0~m, AbsRel de no máximo 0,30, MAE até 5~m de no máximo 1,0~m, viés positivo até 5~m de no máximo 0,5~m, percentil 95 do erro positivo até 5~m de no máximo 1,25~m, MAE entre 5 e 10~m de no máximo 1,5~m e latência no percentil 95 de no máximo 400~ms. O portão espacial exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
 
-A v19 usou 20 execuções no treino, uma execução de calibração e a terceira execução da bateria final como validação. Essa mesma execução foi o conjunto primário do portão e, por isso, não é chamada de teste independente. A sexta e a décima execuções da bateria, além de duas execuções antigas, ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
+A v19 usou 20 execuções no treino e uma execução separada de calibração. As quatro execuções de foco são um subconjunto das 20, repetido durante o treinamento. A terceira execução da bateria final foi usada como validação e como conjunto primário do portão; por isso, não é chamada de teste independente. A sexta e a décima execuções da bateria, além de duas execuções antigas, ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
 
 Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de posição, enquanto o PX4 continua responsável pela estabilização e pelo acompanhamento físico desses pontos. Portanto, ``sem controle reativo'' não significa voo sem controle, mas uma separação entre percepção e planejamento, avaliados neste trabalho, e o controle de baixo nível já fornecido pelo piloto automático.
 
@@ -330,16 +330,16 @@ A menor perda de validação ocorreu na época 17. O treinamento encerrou na ép
 \caption{MAE no teste: estabilidade da MLP e referências.}
 \label{tab:artigo-modelos}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \hline
-\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Média treino} \\
+\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Extra Trees} & \textbf{Média treino} \\
 \hline
-$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & \textbf{0,0867} \\
-$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1886 \\
-$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & \textbf{0,8246} \\
-$\Delta$ pixels $<2$ m & \textbf{$1,0566 \pm 0,0268$} & 1,0735 & 1,0869 \\
-$\Delta$ pixels $<5$ m & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,8488 \\
-$\Delta$ pixels $<10$ m & \textbf{$0,8423 \pm 0,0318$} & 0,8602 & 0,9096 \\
+$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & 0,0910 & \textbf{0,0867} \\
+$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1838 & 0,1886 \\
+$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & 0,9391 & \textbf{0,8246} \\
+$\Delta$ pixels $<2$ m & \textbf{$1,0566 \pm 0,0268$} & 1,0735 & 1,1229 & 1,0869 \\
+$\Delta$ pixels $<5$ m & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,7981 & 1,8488 \\
+$\Delta$ pixels $<10$ m & \textbf{$0,8423 \pm 0,0318$} & 0,8602 & 0,8712 & 0,9096 \\
 \hline
 \end{tabular}}
 \legend{Fonte: elaborado pelo autor.}
@@ -374,7 +374,7 @@ Diferença de imagem & -0,50\% \\
 \legend{Fonte: elaborado pelo autor.}
 \end{table}
 
-Na bateria espacial, as dez execuções completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados, sem caminho inseguro. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
+Na bateria espacial, as dez execuções completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados. As nove tentativas sem solução foram tratadas por interrupção do avanço e novo planejamento, sem encerrar as missões. Foram registrados 50 vetos de caminho ativo e 50 frenagens concluídas, sem caminho adotado inseguro. Essa evidência vale para a rota fixa, o cenário simulado e os obstáculos estáticos avaliados; objetos em movimento não foram testados. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
 
 \begin{figure}[htb]
 \centering
@@ -403,7 +403,9 @@ Colisões & 0 & 2 & 1 & 0 & 1 & 0 & 1 & 0 \\
 \legend{Fonte: relatório final consolidado.}
 \end{table}
 
-Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A configuração v19 de melhor posição integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão: falhou três dos quatro critérios numéricos. A identificação completa do artefato ONNX avaliado está registrada no Apêndice C.
+As versões v12 e v13 usaram o conjunto espacial histórico disponível naquele estágio. Da v14 à v19, a terceira execução da bateria final, produzida posteriormente, foi mantida como conjunto primário. Logo, a transição entre v13 e v14 não constitui uma comparação controlada no mesmo conjunto.
+
+Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A v15 excedeu apenas o MAE entre 5 e 10~m: 1,648~m para o limite de 1,5~m. O estimador monocular final avaliado, v19, integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão. A execução completa recebeu 1.227 quadros; o processamento a cada dez quadros e 45 indisponibilidades de profundidade sincronizada resultaram nos 77 quadros úteis, sem rejeição por idade. Em 24 quadros da avaliação offline, a inferência levou 286,7~ms em média e 292,0~ms no percentil 95; isso atende ao limite de 400~ms, mas não comprova tempo real em outras plataformas. A identificação completa do artefato ONNX avaliado está registrada no Apêndice C.
 
 \section{Conclusão}
 
@@ -433,7 +435,7 @@ As limitações incluem um único cenário simulado, uma rota principal, eventos
 O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 execuções e 1.234 intervalos, divididos em 35 execuções de treino, duas de validação e três de teste no marco final.
 
 \noindent
-O modelo monocular final é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.
+O estimador monocular final avaliado é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. As quatro execuções de foco são um subconjunto das 20 execuções de treino; a execução de calibração é separada. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.
 \end{appendices}
 
 \newpage

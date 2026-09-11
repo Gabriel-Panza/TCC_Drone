@@ -22,6 +22,6 @@ A MLP possui camadas ocultas de 64 e 16 unidades, ReLU, \textit{dropout} de 0,30
 
 \section{Proveniência do estimador monocular final}
 
-O arquivo avaliado é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}. Seu SHA-256 é \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. O treino usou 20 execuções, quatro execuções de foco e uma execução de validação com 77 quadros. A configuração e a seleção estão em \path{config/depth_v19_final_training.json}; o portão está em \path{config/spatial_v19_final_validation_sweep.json}.
+O arquivo do estimador monocular final avaliado é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}. Seu SHA-256 é \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. O treino usou 20 execuções; as quatro execuções de foco são um subconjunto delas. A execução de calibração é separada desses grupos. A configuração e a seleção estão em \path{config/depth_v19_final_training.json}; o portão está em \path{config/spatial_v19_final_validation_sweep.json}.
 
 \end{apendicesenv}
