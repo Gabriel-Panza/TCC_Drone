@@ -91,7 +91,7 @@
 }
 \makeatother
 
-\titulo{Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Estimativa de Proximidade em VANTs}
+\titulo{Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial Seguro em VANTs}
 \autor{Gabriel Justino Panza}
 \local{Niterói}
 \data{2026}
@@ -145,12 +145,12 @@ Dr. Eduardo Charles Vasconcellos\footnote{Pesquisador e coorientador.}
 \vspace{-.3cm}
 
 \noindent
-Este trabalho defende que o aumento da complexidade de modelos para navegação monocular deve ser precedido por uma avaliação controlada dos dados que os alimentam. A posição é examinada por uma metodologia que sincroniza visão monocular, fluxo óptico, movimento, unidade de medição inercial (IMU) e comandos reativos por intervalo visual. Os experimentos foram realizados em simulação com PX4 e Gazebo, usando profundidade apenas como referência. O conjunto final contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP) multissaída, modelos de árvores e referências simples serviram como instrumentos de análise. A avaliação incluiu crescimento do treino com validação e teste fixos, curvas de perda, cinco sementes, eventos, gradientes e ablação. O erro diminuiu em cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi contínua e nenhum modelo venceu em todos os alvos. A retirada de IMU e atitude aumentou o erro médio em 6,8\%, enquanto a análise de eventos apontou a regressão da magnitude e do sinal como principal limite. Os resultados sustentam princípios para organizar os intervalos, dividir os conjuntos, interpretar novas coletas, comparar modelos e localizar os erros antes de escolher uma arquitetura mais complexa. Eles também motivam uma validação espacial complementar, na qual a informação de proximidade forma um mapa tridimensional submetido ao planejamento com A*. A contribuição principal continua sendo o posicionamento metodológico apoiado por evidências experimentais.
+Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A primeira etapa usa 40 execuções completas e 1.234 intervalos sincronizados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Uma perceptron multicamada foi comparada com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A rede não venceu em todos os alvos; retirar IMU e atitude elevou o MAE em 6,8\% na média. Na segunda etapa, profundidade foi convertida em ocupação tridimensional e usada por um planejador A*. Com profundidade do Gazebo, dez de dez runs completaram a rota sem adotar caminhos inseguros. Sete das oito versões monoculares avaliadas passaram pelo critério por pixel, mas nenhuma passou pelo portão espacial completo. O voo monocular não foi autorizado. Os resultados mostram que métricas por pixel são insuficientes para liberar um estimador destinado ao planejamento.
 
 \vspace{.4cm}
  
 \noindent
-\textbf{Palavras-chave}: Veículos aéreos não tripulados (VANTs); visão monocular; fluxo óptico; detecção de obstáculos; mapeamento tridimensional.
+\textbf{Palavras-chave}: navegação autônoma; visão monocular; profundidade; mapeamento tridimensional; VANT.
  
 \vspace{\onelineskip}
 
@@ -161,11 +161,11 @@ Este trabalho defende que o aumento da complexidade de modelos para navegação 
 \vspace{-.3cm}
 \begin{hyphenrules}{english}
 \noindent
-This work argues that increasing model complexity for monocular navigation should be preceded by a controlled evaluation of the data used to train those models. The position is examined through a methodology that synchronizes monocular vision, optical flow, motion, inertial measurement unit (IMU) data, and reactive commands by visual interval. Experiments were conducted in simulation with PX4 and Gazebo, using depth only as reference. The final dataset contains 40 executions and 1,234 valid intervals. A multi-output multilayer perceptron (MLP), tree-based models, and simple baselines served as analysis instruments. The evaluation included training-set growth with fixed validation and test sets, loss curves, five random seeds, events, gradients, and ablation. Error decreased for five of the six targets between the first and final milestones, but improvement was not continuous and no model was best for every target. Removing IMU and attitude inputs increased average error by 6.8\%, while event analysis identified magnitude and sign regression as the main limitation. The results support principles for organizing intervals, splitting sets, interpreting new collections, comparing models, and locating errors before selecting a more complex architecture. They also motivate a complementary spatial validation in which proximity information forms a three-dimensional map evaluated through A* path planning. The main contribution remains this methodological position supported by experimental evidence.
+This work presents a method for evaluating monocular perception before using it for autonomous navigation of an unmanned aerial vehicle. The first stage uses 40 complete runs and 1,234 synchronized intervals to study proximity changes from optical flow, motion, inertial measurement, commands, and image-difference descriptors. A multilayer perceptron was compared with constant and tree-based baselines using run-level splits, fixed sets, five seeds, event analysis, gradients, and ablation. The network was not best for every target; removing inertial and attitude inputs increased mean MAE by 6.8\%. In the second stage, depth was converted into a three-dimensional occupancy map and used by an A* planner. With Gazebo depth, all ten runs completed the route without adopting unsafe paths. Seven of eight monocular versions passed the pixel criterion, but none passed the complete spatial gate. Monocular flight was not authorized. The results show that pixel metrics are insufficient to release a depth estimator intended for planning.
 \end{hyphenrules}
 \vspace{.4cm}
  
-\noindent \textbf{Keywords}: Unmanned aerial vehicles (UAVs); monocular vision; optical flow; obstacle detection; reactive navigation.
+\noindent \textbf{Keywords}: autonomous navigation; monocular vision; depth estimation; three-dimensional mapping; UAV.
 
 \vspace{.4cm}
 
@@ -173,19 +173,15 @@ This work argues that increasing model complexity for monocular navigation shoul
 
 \section{Introdução}
 
-Veículos aéreos não tripulados (VANTs) são usados em tarefas como inspeção, monitoramento, busca e navegação em locais de difícil acesso. Para operar de forma autônoma em ambientes com árvores, galhos, postes e construções próximas, o drone precisa detectar riscos e corrigir a trajetória antes de uma colisão. Quanto maior a velocidade, menor é o tempo disponível para perceber o obstáculo e executar o desvio.
+Uma câmera monocular é uma opção leve e barata para a percepção de veículos aéreos, mas não mede diretamente a distância dos objetos. Fluxo óptico, movimento e estimadores de profundidade recuperam parte dessa informação, porém seus erros podem afetar o planejamento de formas diferentes. Um modelo pode apresentar erro médio aceitável e ainda deslocar uma superfície na região por onde o drone pretende passar.
 
-Alguns sistemas dividem a navegação em percepção, mapeamento, planejamento e controle. Essa organização facilita o desenvolvimento, mas pode aumentar a demora entre a captura da imagem e a ação do veículo \cite{Loquercio2021}. Em ambientes desconhecidos, a incerteza sobre regiões ainda não observadas também dificulta a escolha de trajetórias seguras \cite{BayesianLearning2015}.
+Esse problema também é experimental. Intervalos vizinhos de uma trajetória são muito parecidos e podem produzir vazamento quando treino e teste são separados por amostra. O desempenho de uma rede pode depender da semente, do desbalanceamento dos eventos ou de entradas que registram efeitos secundários. Além disso, métricas de profundidade por pixel não informam diretamente se o espaço marcado como livre é seguro.
 
-Este trabalho parte de uma posição: antes de aumentar a complexidade de uma arquitetura para navegação monocular, é necessário avaliar de forma controlada quais sinais representam proximidade, quão estável é essa relação e onde os erros ficam concentrados. A câmera monocular apresenta baixo peso e custo, mas não fornece diretamente a distância dos objetos. Essa informação precisa ser obtida a partir da imagem e do movimento entre quadros \cite{Vyas2022,RealTimeMonocular2022}.
+Este artigo defende que a complexidade do modelo deve crescer somente depois de uma avaliação controlada da representação, da divisão dos dados, da estabilidade e da consequência espacial dos erros. A primeira parte verifica se sinais visuais e inerciais explicam mudanças de proximidade. A segunda transforma profundidade em ocupação tridimensional e usa planejamento A* como teste posterior de utilidade.
 
-O objetivo não é classificar cada objeto da cena nem desenvolver um novo controlador, mas avaliar se os sinais disponíveis representam proximidade de forma confiável. Para isso, são usados fluxo óptico esparso, dados da unidade de medição inercial (IMU), deslocamento, comandos reativos e estatísticas da diferença entre imagens. Uma câmera de profundidade do simulador fornece a referência usada para criar os alvos e avaliar as estimativas, sem ser fornecida como entrada aos modelos estudados.
+As perguntas são: como o desempenho muda com mais execuções; se os resultados permanecem estáveis diante de sementes e referências; quais grupos de entradas contribuem para a previsão; o que a separação entre evento e regressão revela; e se uma estimativa monocular aprovada por métricas de profundidade também produz caminhos seguros. O objetivo não é propor um novo controlador, estimador ou planejador, mas construir um protocolo reprodutível para responder a essas perguntas em simulação.
 
-Os dados são representados por variações entre intervalos visuais. A versão analisada contém 40 execuções e 1.234 intervalos válidos. Um perceptron multicamada (MLP) estima as mudanças dos percentis de profundidade e da porcentagem de pixels próximos. A comparação usa as mesmas execuções de validação e teste em todos os tamanhos de conjunto, enquanto somente o treino cresce.
-
-A pergunta principal é: até que ponto as métricas desses intervalos, combinadas com IMU e movimento, permitem estimar variações de proximidade e produzir informação espacial útil? Cinco perguntas complementares orientam o estudo: o aumento do treino melhora a generalização; os resultados permanecem estáveis entre sementes e modelos de referência; quais grupos de entradas contribuem e onde os maiores erros ficam concentrados; nos eventos de proximidade, o limite aparece na classificação ou na estimativa de magnitude e sinal; e uma representação tridimensional construída a partir dessas informações permite ao A* gerar um caminho livre dos obstáculos observados?
-
-A contribuição está no processo experimental usado para responder a essas perguntas e nos princípios derivados dos resultados. O voo reativo fornece o contexto da coleta, mas o trabalho concentra a análise na organização, na sincronização e na avaliação dos dados, e não na comparação de controladores de desvio. O mapa tridimensional e o A* entram como teste posterior da utilidade espacial da percepção. Assim, o artigo assume um posicionamento metodológico e usa os experimentos para sustentar, limitar ou revisar esse posicionamento.
+O restante do artigo apresenta os fundamentos e trabalhos relacionados, descreve a metodologia e a implementação, discute as evidências experimentais e encerra com as conclusões e limitações.
 
 \section{Desenvolvimento}
 
@@ -199,7 +195,7 @@ O ambiente experimental usa o Gazebo para simular a física e os sensores \cite{
 
 \subsubsection{Visão monocular e profundidade}
 
-A câmera monocular tem baixo peso e custo, mas não fornece diretamente a distância dos objetos. Trabalhos recentes apresentam avanços na estimativa monocular de profundidade, mas ainda apontam problemas de generalização e de custo computacional em aplicações robóticas \cite{Vyas2022,Arampatzakis2024,RealTimeMonocular2022}. A incerteza dessas estimativas também precisa ser considerada \cite{Liu2023}. Neste trabalho, a profundidade sintética serve apenas para calcular a variação real de proximidade. Ela não é usada como entrada da navegação.
+A câmera monocular tem baixo peso e custo, mas não fornece diretamente a distância dos objetos. Trabalhos recentes apresentam avanços na estimativa monocular de profundidade, mas ainda apontam problemas de generalização e de custo computacional em aplicações robóticas \cite{Vyas2022,Arampatzakis2024,RealTimeMonocular2022}. A incerteza dessas estimativas também precisa ser considerada \cite{Liu2023}. O Depth Anything V2 oferece modelos pré-treinados para profundidade monocular relativa e permite refinamento para profundidade métrica \cite{DepthAnythingV2}. Neste trabalho, ele fornece o ponto de partida da etapa espacial monocular. A profundidade sintética do Gazebo permanece como referência independente e não entra no estimador.
 
 \subsubsection{Fluxo óptico e variação visual}
 
@@ -209,9 +205,9 @@ Alguns trabalhos usam fluxo e informação inercial para prevenir colisões \cit
 
 \subsubsection{Representação tridimensional e planejamento}
 
-Uma estimativa de profundidade por pixel pode ser reprojetada no espaço tridimensional a partir dos parâmetros intrínsecos da câmera. A pose permite reunir observações de diferentes instantes em um referencial comum. Mapas de ocupação representam o espaço como livre, ocupado ou ainda não observado, e estruturas baseadas em octrees permitem armazenar essa informação em três dimensões \cite{Hornung2013}.
+Uma estimativa de profundidade por pixel pode ser reprojetada no espaço tridimensional a partir dos parâmetros intrínsecos da câmera. A pose permite reunir observações de diferentes instantes em um referencial comum. Mapas de ocupação representam o espaço como livre, ocupado ou ainda não observado \cite{Elfes1989}. Estruturas baseadas em octrees são uma alternativa para armazenar essa informação em três dimensões \cite{Hornung2013}; neste trabalho, uma grade esparsa de resolução fixa facilita a comparação direta dos voxels.
 
-Sobre esse mapa, o algoritmo A* procura um caminho de menor custo combinando o custo percorrido com uma heurística até o destino \cite{Hart1968}. Neste trabalho, ele não é tratado como contribuição em planejamento nem como controlador. Seu papel é testar uma consequência concreta da percepção: verificar se a representação espacial produzida distingue espaço livre e obstáculos com qualidade suficiente para gerar pontos de passagem seguros.
+Sobre esse mapa, o algoritmo A* procura um caminho de menor custo combinando o custo percorrido com uma heurística até o destino \cite{Hart1968}. O planejador considera apenas voxels observados como livres. Quando o objetivo ainda está fora da região conhecida, um subobjetivo é escolhido na fronteira entre espaço observado e desconhecido, seguindo a ideia de exploração por fronteiras \cite{Yamauchi1997}. A travessia dos segmentos na grade usa uma enumeração conservadora dos voxels cruzados, relacionada ao algoritmo de Amanatides e Woo \cite{AmanatidesWoo1987}. O A* não é tratado como contribuição em planejamento nem como controlador. Seu papel é testar uma consequência concreta da percepção: verificar se a representação espacial distingue espaço livre e obstáculos com qualidade suficiente para gerar pontos de passagem seguros.
 
 \subsubsection{Aprendizado aplicado à percepção e desvio de obstáculos}
 
@@ -233,7 +229,7 @@ O ambiente simulado utilizado nos experimentos foi desenvolvido com o apoio do p
 
 Os experimentos foram executados em um computador com processador Intel Core i7-14700K, 64~GB de memória de acesso aleatório (RAM) e uma unidade de processamento gráfico (GPU) NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo. O ambiente utilizou Ubuntu 22.04.5 com suporte de longo prazo (LTS) no \textit{Windows Subsystem for Linux}~2 (WSL~2), PX4 baseado no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. O modelo simulado foi o \texttt{x500\_mono\_cam}, no cenário \texttt{baylands}.
 
-O controlador opera a 25~Hz e limita a velocidade a 12~m/s. A missão percorre quatro pontos relativos no sistema norte-leste-baixo (NED): $(-25,25,-1{,}65)$, $(-50,70,-1{,}65)$, $(-25,25,-1{,}65)$ e $(0,0,-1{,}65)$ metros. Um ponto intermediário é aceito dentro de um raio de 4~m. Ao retornar a menos de 3~m do ponto final, o veículo inicia o encerramento da missão, pousa e é desarmado.
+No fluxo espacial, a missão percorre três objetivos relativos no sistema norte-leste-baixo (NED): $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$ metros. O A* fornece pontos de posição ao modo \textit{Offboard}, e o PX4 mantém a estabilização. A configuração final usa raio horizontal de segurança de 1,25~m, banda e inflação verticais de 0,10~m e tolerância vertical de 0,50~m.
 
 A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas ao longo da coleta. A Figura~\ref{fig:artigo-imu} apresenta as variações das velocidades angulares nas mesmas execuções, usadas para caracterizar a atitude e o movimento do veículo.
 
@@ -253,14 +249,14 @@ A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas a
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida, tempos não positivos, intervalos RGB ou de profundidade acima de 0,5~s e diferenças temporais entre RGB e profundidade acima de 0,08~s. A versão analisada contém 40 execuções e 1.234 intervalos válidos.
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 runs formam o treino, duas a validação fixa e três o teste fixo. O arquivo espacial possui 103 runs completas produzidas em etapas diferentes e não é tratado como uma coorte tabular homogênea.
 
-A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas 40 execuções. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
+A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas execuções completas. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.png}
-    \caption{Distribuição do intervalo temporal entre atualizações visuais nas 40 execuções.}
+    \caption{Distribuição do intervalo temporal entre atualizações visuais nas execuções completas.}
     \label{fig:artigo-intervalos}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -283,7 +279,7 @@ Os alvos são as variações dos percentis P10, P50 e P90 da profundidade e da p
 
 A MLP possui duas camadas ocultas, com 64 e 16 unidades, ativação por unidade linear retificada (ReLU), \textit{dropout} de 0,30 e uma saída linear para cada alvo. As entradas e os alvos são padronizados somente com os dados de treino. O treinamento usa Adam, taxa $10^{-3}$, regularização $L_2=10^{-4}$, lotes de 64 amostras, no máximo 300 épocas e semente 42. A parada antecipada acompanha o erro quadrático médio (MSE) da validação. Quando não ocorre uma melhora mínima de $10^{-4}$ durante 50 épocas, o treinamento para e recupera os pesos da melhor época.
 
-A separação é feita por execução. Duas execuções de validação e três de teste permanecem fixas, enquanto o treino cresce nos marcos de 9, 17, 25, 33 e 40 execuções. O modelo é comparado com a previsão da média do treino por erro absoluto médio (MAE) e raiz do erro quadrático médio (RMSE). Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
+A separação é feita por execução, com validação e teste fixos, enquanto o total cresce nos marcos de 9, 17, 25, 33 e 40 execuções. O modelo é comparado com a previsão da média do treino por erro absoluto médio (MAE) e raiz do erro quadrático médio (RMSE). Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
 
 \subsubsection{Estabilidade, modelos de árvores e ablação}
 
@@ -293,102 +289,129 @@ A estabilidade da MLP é avaliada com as sementes 7, 21, 42, 84 e 123, sem alter
 
 O gradiente do erro quadrático é calculado em relação às entradas padronizadas. O módulo desses valores é reunido na validação por atributo e por grupo de entradas. Nos maiores erros, são mostradas as três entradas mais sensíveis. Quando todos os gradientes são zero, nenhum ranking é apresentado. Essa análise indica sensibilidade perto de cada amostra, mas não permite afirmar que uma entrada seja a causa do erro.
 
-O \href{https://github.com/Gabriel-Panza/TCC_Drone}{repositório do projeto no GitHub} possui dois pontos centrais: o arquivo \texttt{main.py}, que executa o voo reativo e a coleta, e o notebook \path{estudos_e_analises/estudo_das_metricas.ipynb}, que reúne as verificações, os treinamentos e a geração dos resultados. A branch \texttt{main} contém a versão final usada neste trabalho. Os dados brutos das 40 execuções não foram publicados devido ao volume dos arquivos; o notebook versionado mantém o código, as configurações e as saídas da análise final.
+O \href{https://github.com/Gabriel-Panza/TCC_Drone}{repositório do projeto no GitHub} possui dois pontos centrais: o arquivo \texttt{main.py}, que executa o voo e a coleta, e o notebook \path{estudos_e_analises/estudo_das_metricas.ipynb}, que reúne as verificações, os treinamentos e a geração dos resultados. A branch \texttt{main} contém a versão final usada neste trabalho. Os dados brutos não foram publicados devido ao volume dos arquivos; o notebook versionado mantém o código, as configurações e as saídas da análise final.
 
 \subsubsection{Validação espacial complementar}
 
-A etapa complementar preserva a posição central do artigo e acrescenta um teste de utilidade. Uma estimativa densa de profundidade será comparada com a profundidade sintética e reprojetada em três dimensões. As observações serão transformadas para um referencial comum com a pose da câmera e acumuladas em uma grade de ocupação. Antes do planejamento, os obstáculos receberão uma margem que considera as dimensões do drone e a incerteza da percepção.
+A etapa espacial preserva a posição central do artigo e acrescenta um teste de utilidade posterior às métricas por pixel. A profundidade densa é reprojetada com o modelo pinhole da câmera, transformada do referencial óptico para o corpo do VANT e depois para o sistema NED. Cada raio acrescenta evidência de espaço livre antes da superfície e de ocupação no ponto final. Evidências temporais, uma faixa vertical ao redor da altitude de voo e margens distintas para espaço livre e ocupado reduzem a influência do solo, das copas e de observações isoladas.
 
-O mesmo A* será executado no mapa estimado e em um mapa ideal construído com a profundidade de referência. A comparação considerará falsos espaços livres, precisão e sensibilidade das células ocupadas, distância mínima dos obstáculos, comprimento do caminho e tempo de planejamento. O resultado será uma sequência de pontos de passagem. O controle que executa esses pontos permanece no PX4 e fica fora da comparação.
+Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O A* percorre somente voxels conhecidos como livres e usa vizinhança tridimensional. Segmentos que cruzam voxels ocupados ou desconhecidos são rejeitados. Quando o destino ainda não foi observado, o sistema escolhe um subobjetivo em uma fronteira livre que produza avanço. O caminho passa por simplificação com linha de visada, divisão em pontos de passagem e uma nova verificação de segurança antes da publicação.
+
+O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
+
+A v19 usou 20 runs no treino, uma run de calibração e a run 3 da bateria final como validação. Essa mesma run foi o conjunto primário do portão e, por isso, não é chamada de teste independente. As runs 6 e 10 da bateria e duas runs antigas ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
+
+Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de posição, enquanto o PX4 continua responsável pela estabilização e pelo acompanhamento físico desses pontos. Portanto, ``sem controle reativo'' não significa voo sem controle, mas uma separação entre percepção e planejamento, avaliados neste trabalho, e o controle de baixo nível já fornecido pelo piloto automático.
 
 \subsection{Evidências experimentais}
 
-A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo conforme o conjunto cresce. Entre 9 e 40 execuções, o erro caiu em cinco dos seis alvos. As reduções mais claras ocorreram em P50, de 0,1998 para 0,1717~m, pixels abaixo de 5~m, de 1,8853 para 1,7181 pontos percentuais, e pixels abaixo de 10~m, de 0,9381 para 0,8401 pontos percentuais. O alvo de pixels abaixo de 2~m ficou praticamente estável. A evolução oscilou entre os marcos, portanto a diversidade das execuções acrescentadas também influenciou o resultado.
+A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo. Entre 9 e 40 runs, o erro caiu em cinco dos seis alvos, mas os marcos intermediários oscilaram.
 
 \begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
-    \caption{MAE da MLP e da média do treino nos cinco marcos, usando o mesmo teste fixo.}
-    \label{fig:artigo-curva-aprendizado}
-    \legend{Fonte: elaborado pelo autor.}
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
+\caption{MAE da MLP e da média do treino nos cinco marcos.}
+\label{fig:artigo-curva-aprendizado}
+\legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-A curva de perda da Figura~\ref{fig:artigo-loss} confirma o sobreajuste. A menor MSE de validação ocorreu na época 17. Depois disso, a perda do treino continuou caindo, enquanto validação e teste oscilaram e cresceram gradualmente. A parada antecipada encerrou o treinamento na época 67 e recuperou os pesos da época 17. A curva do teste foi usada somente no diagnóstico posterior e não orientou a escolha da época.
+A menor perda de validação ocorreu na época 17. O treinamento encerrou na época 67 e restaurou esses pesos. A Figura~\ref{fig:artigo-loss} evidencia o sobreajuste posterior.
 
 \begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
-    \caption{Curvas de perda da MLP no marco final.}
-    \label{fig:artigo-loss}
-    \legend{Fonte: elaborado pelo autor.}
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
+\caption{Curvas de perda da MLP no marco final.}
+\label{fig:artigo-loss}
+\legend{Fonte: elaborado pelo autor.}
 \end{figure}
-
-A representação angular por seno e cosseno também não trouxe ganho consistente. Ela melhorou dois dos seis alvos na validação e ficou pior nos seis alvos do teste. Esse resultado mostra que a continuidade matemática da representação não garante uma melhora com o conjunto atual.
-
-O MAE da MLP apresentou coeficiente de variação entre 2,4\% e 3,8\% nas cinco sementes. A Tabela~\ref{tab:artigo-robustez} reúne os resultados no teste fixo e os compara com a Random Forest e com a média do treino. A época escolhida pela parada antecipada variou de 22 a 182, mas o nível final de erro mudou pouco. Assim, as conclusões gerais não dependem de uma única inicialização.
 
 \begin{table}[htb]
-    \centering
-    \caption{MAE no teste fixo: estabilidade da MLP e modelos de referência.}
-    \label{tab:artigo-robustez}
-    \renewcommand{\arraystretch}{1.05}
-    \resizebox{\textwidth}{!}{%
-    \begin{tabular}{lccc}
-        \hline
-        \textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Média do treino} \\
-        \hline
-        $\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & \textbf{0,0867} \\
-        $\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1886 \\
-        $\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & \textbf{0,8246} \\
-        $\Delta$ pixels $<2$ m (p.p.) & \textbf{1,0566} $\pm$ 0,0268 & 1,0735 & 1,0869 \\
-        $\Delta$ pixels $<5$ m (p.p.) & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,8488 \\
-        $\Delta$ pixels $<10$ m (p.p.) & \textbf{0,8423} $\pm$ 0,0318 & 0,8602 & 0,9096 \\
-        \hline
-    \end{tabular}%
-    }
-    \legend{Fonte: elaborado pelo autor.}
+\centering
+\caption{MAE no teste: estabilidade da MLP e referências.}
+\label{tab:artigo-modelos}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\hline
+\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Média treino} \\
+\hline
+$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & \textbf{0,0867} \\
+$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1886 \\
+$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & \textbf{0,8246} \\
+$\Delta$ pixels $<2$ m & \textbf{$1,0566 \pm 0,0268$} & 1,0735 & 1,0869 \\
+$\Delta$ pixels $<5$ m & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,8488 \\
+$\Delta$ pixels $<10$ m & \textbf{$0,8423 \pm 0,0318$} & 0,8602 & 0,9096 \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor.}
 \end{table}
 
-\medskip
+Nenhum modelo venceu em todos os alvos. O coeficiente de variação da MLP ficou entre 2,4\% e 3,8\%. O classificador de eventos obteve acurácia balanceada de 0,615 e F1 de 0,828. Fornecer o evento real ao regressor reduziu o MAE de 1,770 para 1,744 ponto percentual, indicando que a regressão concentra a maior parte do erro.
 
-Nenhum modelo foi melhor em todos os alvos. A Random Forest superou a MLP média em P50 e pixels abaixo de 5~m, mas a vantagem no segundo caso foi de apenas 1,0\%, abaixo da variação entre sementes da rede. A MLP foi melhor para pixels abaixo de 2 e 10~m, enquanto a Extra Trees não venceu em nenhum alvo. Em P10 e P90, a média do treino continuou como a referência mais forte. Esse último resultado confirma que os alvos concentrados perto de zero ainda favorecem uma previsão constante.
-
-No modelo de eventos, o classificador final apresentou acurácia balanceada de 0,615, precisão de 0,789, sensibilidade de 0,870 e F1 de 0,828. O melhor marco foi o de 25 execuções, com acurácia balanceada de 0,689, o que mostra que o aumento do conjunto também não gerou melhora contínua nessa tarefa. O pipeline completo teve MAE de 1,770 pontos percentuais para pixels abaixo de 5~m. Quando a indicação real de evento foi fornecida apenas como diagnóstico, o MAE caiu para 1,744. A pequena diferença indica que o regressor de magnitude concentra a maior parte do erro.
-
-A Figura~\ref{fig:artigo-explicabilidade} compara a sensibilidade por gradientes com a ablação. IMU e atitude concentraram 43,4\% da sensibilidade média. A retirada desse grupo elevou o MAE médio em 6,8\% e piorou cinco dos seis alvos. Para pixels abaixo de 2, 5 e 10~m, os aumentos foram de 12,9\%, 7,3\% e 7,9\%, respectivamente. Fluxo óptico e risco reuniram 24,6\% da sensibilidade, mas sua retirada teve efeito médio próximo de zero, sinal de que sensibilidade local não equivale diretamente a ganho de generalização.
+A Figura~\ref{fig:artigo-ablacao} e a Tabela~\ref{tab:artigo-ablacao} resumem a análise das entradas. IMU e atitude concentraram 43,4\% da sensibilidade e foram o único grupo cuja retirada piorou de forma consistente a média dos seis alvos.
 
 \begin{figure}[htb]
-    \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
-    \caption{Importância média por gradientes e efeito médio da retirada dos grupos de entradas.}
-    \label{fig:artigo-explicabilidade}
-    \legend{Fonte: elaborado pelo autor.}
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
+\caption{Sensibilidade por gradientes e efeito médio das ablações.}
+\label{fig:artigo-ablacao}
+\legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-Entre os 12 maiores erros de validação para pixels abaixo de 5~m, seis apresentaram gradiente local zero. Nesses casos, a saída da rede estava localmente plana e não havia ranking válido de entradas. Esse comportamento, somado ao resultado do modelo de eventos, reforça a dificuldade da MLP em acompanhar mudanças de maior magnitude. A ablação também indica que uma fusão direta de todas as entradas pode não aproveitar os grupos da mesma forma.
+\begin{table}[htb]
+\centering
+\caption{Variação média do MAE após retirar cada grupo.}
+\label{tab:artigo-ablacao}
+\begin{tabular}{lr}
+\hline
+IMU e atitude & 6,81\% \\
+Comandos reativos & 1,71\% \\
+Sincronização & 1,33\% \\
+Fluxo óptico e risco & 0,00\% \\
+Movimento & -0,04\% \\
+Diferença de imagem & -0,50\% \\
+\hline
+\end{tabular}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
 
-\subsubsection{Princípios derivados das evidências}
+Na bateria espacial, as dez runs completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados, sem caminho inseguro. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
 
-Os experimentos não definem uma receita universal, mas sustentam seis princípios para estudos com dados de voo semelhantes:
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_mapa_astar.png}
+\caption{Mapa de referência e caminhos A* adotados na primeira run final.}
+\label{fig:artigo-mapa}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-\begin{enumerate}
-    \item organizar cada amostra pelo intervalo de percepção que produz a decisão;
-    \item separar treino, validação e teste por execução completa;
-    \item interpretar novas coletas pela diversidade dos eventos, e não apenas pela quantidade;
-    \item usar várias sementes e referências simples antes de justificar uma arquitetura mais complexa;
-    \item combinar gradientes e ablação, pois sensibilidade local não equivale necessariamente a ganho de generalização;
-    \item separar detecção de eventos da regressão de magnitude e sinal para localizar a origem do erro.
-\end{enumerate}
+A taxa de falso espaço livre de 0,316 da referência compara um mapa parcial, limitado aos raios observados, com uma ocupação mais ampla; não representa erro de 31,6\% do sensor do Gazebo. A segurança foi julgada pela verificação dos caminhos efetivamente adotados.
 
-No conjunto estudado, esses princípios evitam duas conclusões precipitadas: que mais dados sempre melhoram o modelo e que o classificador é o principal responsável pelo erro. Eles também direcionam o próximo passo para o processamento dos grupos de entrada e para a regressão das mudanças maiores.
+\begin{table}[htb]
+\centering
+\caption{Resumo das versões monoculares no conjunto primário de cada portão.}
+\label{tab:artigo-monocular}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\hline
+Versão & v12 & v13 & v14 & v15 & v16 & v17 & v18 & v19 \\
+MAE (m) & 1,283 & 1,242 & 1,270 & 1,726 & 1,383 & 1,498 & 1,292 & 1,286 \\
+Sucesso (\%) & 27,8 & 38,9 & 47,1 & 41,2 & 52,9 & 35,3 & 52,9 & 41,2 \\
+Falso livre & 0,367 & 0,390 & 0,431 & 0,304 & 0,291 & 0,184 & 0,263 & 0,184 \\
+Colisões & 0 & 2 & 1 & 0 & 1 & 0 & 1 & 0 \\
+\hline
+\end{tabular}}
+\legend{Fonte: relatório final consolidado.}
+\end{table}
+
+Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A configuração v19 de melhor posição integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão: falhou três dos quatro critérios numéricos. O ONNX avaliado tem SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}.
 
 \section{Conclusão}
 
-O trabalho defendeu que uma análise controlada dos dados deve vir antes do aumento da complexidade do modelo. O pipeline permitiu relacionar, em intervalos sincronizados, fluxo óptico, movimento, IMU, comandos reativos e variações de profundidade. A separação por execução completa, os conjuntos fixos de validação e teste e os treinamentos com várias sementes deram maior controle à avaliação. O crescimento do treino melhorou cinco dos seis alvos entre o primeiro e o último marco, mas a evolução não foi monotônica e P10 e P90 continuaram abaixo da média do treino.
+Os experimentos confirmaram que os intervalos sincronizados contêm informação útil sobre mudanças de proximidade e que a conclusão é estável entre sementes. A MLP não venceu em todos os alvos, e IMU e atitude formaram o grupo mais consistente na ablação.
 
-Os modelos de árvores não apresentaram uma vantagem geral sobre a MLP, e a variação entre sementes ficou abaixo de 4\%. A análise de eventos mostrou que a estimativa de magnitude e sinal ainda limita o resultado. Já a combinação entre gradientes e ablação identificou IMU e atitude como o grupo mais consistente, com aumento médio de 6,8\% no erro após sua retirada. Essas respostas mostram que os atributos estudados carregam informação útil, mas a arquitetura atual ainda apresenta sobreajuste e dificuldade em mudanças extremas.
+A contribuição principal é o protocolo que liga esses resultados à navegação. A separação por execução reduz vazamento temporal; as referências evitam avaliar a MLP isoladamente; e o portão espacial impede que uma métrica por pixel seja usada como autorização de voo. Com profundidade de referência, mapa e A* completaram a bateria sem adotar caminhos inseguros. Com profundidade monocular, o portão reprovou todas as versões avaliadas. Portanto, o pipeline espacial de referência foi validado no cenário estudado, mas o voo monocular ainda não possui evidência suficiente para ser liberado.
 
-Assim, a principal contribuição é um posicionamento metodológico apoiado por evidências experimentais, e não um novo controlador de desvio. Os seis princípios derivados organizam decisões que costumam ficar dispersas entre coleta, treinamento e interpretação. As principais limitações são o uso de um único cenário simulado, o tamanho reduzido dos conjuntos fixos de validação e teste, a concentração dos alvos perto de zero e o uso de estatísticas que não preservam toda a estrutura espacial da imagem. A validação espacial proposta responde diretamente a essa última limitação: a profundidade por pixel será organizada em um mapa tridimensional e submetida ao A* para verificar se os sinais sustentam uma decisão espacial. Essa extensão não altera o foco para o controle; ela examina a utilidade da representação antes da escolha de uma arquitetura mais complexa.
+As limitações incluem um único cenário simulado, uma rota principal, eventos desbalanceados e uma faixa de voo quase constante. Trabalhos futuros devem ampliar a diversidade dos pares RGB--profundidade, reservar conjuntos espaciais independentes desde o início e modelar a incerteza da profundidade por região da imagem. Somente depois de aprovar novamente o portão offline devem ser realizados voos monoculares curtos e supervisionados.
 
 \newpage
 \bibliography{references}
@@ -407,15 +430,24 @@ Assim, a principal contribuição é um posicionamento metodológico apoiado por
 \addcontentsline{toc}{chapter}{APÊNDICE C - Configuração e disponibilidade}
 
 \noindent
-O ambiente final usou PX4 no commit \texttt{e2708705}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A MLP possui camadas ocultas de 64 e 16 unidades, ReLU, \textit{dropout} de 0,30, Adam com taxa $10^{-3}$, regularização $L_2=10^{-4}$ e lotes de 64 amostras. A parada antecipada acompanha a MSE de validação, com melhora mínima de $10^{-4}$ e espera de 50 épocas.
+O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 runs e 1.234 intervalos, divididos em 35 runs de treino, duas de validação e três de teste no marco final.
 
 \noindent
-O código está disponível em \url{https://github.com/Gabriel-Panza/TCC_Drone}, na branch \texttt{main}. O arquivo \texttt{main.py} executa o pipeline de voo e coleta. O notebook \path{estudos_e_analises/estudo_das_metricas.ipynb} executa o processamento e a avaliação. Os dados brutos não estão no repositório devido ao tamanho dos registros, imagens e mapas de profundidade.
+O modelo monocular final é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.
 \end{appendices}
 
 \newpage
 \chapter*{Agradecimentos}
 \noindent
-Agradeço à minha família, por todo o apoio ao longo da graduação e por sempre acreditar em mim. Agradeço também aos professores que fizeram parte da minha formação e contribuíram para construir o pesquisador que sou hoje. Em especial, agradeço ao professor Leandro Augusto Frata Fernandes, meu orientador, pelo acompanhamento próximo e pelas discussões sobre visão computacional e análise dos dados. Agradeço ao pesquisador Eduardo Charles Vasconcellos, meu coorientador, pelo apoio na criação do ambiente simulado e pelas discussões sobre drones e voo autônomo. Por fim, agradeço aos meus amigos, que nunca largaram a minha mão e caminharam ao meu lado durante estes cinco anos de UFF.
+Agradeço à minha família pelo apoio ao longo da graduação e aos professores que participaram da minha formação. Em especial, agradeço ao professor Leandro Augusto Frata Fernandes pela orientação e ao pesquisador Eduardo Charles Vasconcellos pelo apoio na criação do ambiente simulado e nas discussões sobre voo autônomo. Agradeço também aos amigos que estiveram ao meu lado durante esses anos de UFF.
+
+\newpage
+\chapter*{Declarações}
+\noindent
+Esta pesquisa foi realizada somente em ambiente simulado, sem participantes humanos, dados pessoais ou experimentos com animais.
+
+\medskip
+\noindent
+A ferramenta OpenAI Codex, com modelo GPT-5, foi usada como apoio na revisão linguística, organização do texto em LaTeX, depuração, refatoração e documentação do código. O autor revisou as sugestões, conferiu os resultados nos artefatos experimentais e manteve a responsabilidade pelas decisões metodológicas e pelo conteúdo final.
 
 \end{document}

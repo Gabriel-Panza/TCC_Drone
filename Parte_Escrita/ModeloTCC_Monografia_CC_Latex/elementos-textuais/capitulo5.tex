@@ -2,72 +2,171 @@
 
 \section{Introdução}
 
-Este capítulo apresenta os resultados dos dois eixos experimentais. O primeiro verifica o que pode ser aprendido a partir dos intervalos sincronizados de voo. O segundo avalia se a profundidade, quando transformada em ocupação tridimensional, sustenta caminhos seguros. Os resultados foram mantidos separados porque uma previsão numérica razoável não implica, por si só, uma decisão segura de navegação.
+Este capítulo apresenta separadamente os resultados tabulares e espaciais. O primeiro eixo usa a base legada de 40 runs e 1.234 intervalos. O segundo usa subconjuntos documentados do arquivo de 103 runs espaciais. Essa separação é importante porque as runs espaciais foram produzidas durante diferentes fases de desenvolvimento e não substituem a coorte tabular.
 
 \section{Material e métodos}
 
 \subsection{Divisão dos dados e métricas}
 
-Após a remoção de execuções abortadas e incompletas, permaneceram 103 runs e 8.305 intervalos válidos. A análise de crescimento utilizou até 102 runs elegíveis, nos marcos 9, 17, 25, 33, 50, 67, 85 e 102. Validação e teste foram fixados por execução completa. MAE, RMSE e correlação foram calculados nas unidades originais de cada alvo. Para eventos de proximidade também foram usados acurácia balanceada, precisão, revocação, F1 e precisão média.
+No eixo tabular, 35 runs formam o treino final, duas compõem a validação fixa e três o teste fixo. Os marcos 9, 17, 25, 33 e 40 indicam o total de runs disponível, mantendo sempre as mesmas cinco runs reservadas. MAE, RMSE e correlação foram calculados nas unidades originais. Para eventos de proximidade também foram usados acurácia balanceada, precisão, revocação e F1.
 
-\subsection{Eventos e análise das entradas}
+No eixo espacial, a bateria final de referência contém as dez runs consecutivas registradas entre \texttt{run\_20260831\_082418\_723471} e \texttt{run\_20260831\_084356\_708163}. O arquivo completo possui 103 runs, mas elas não formam um único split: versões diferentes reutilizaram subconjuntos para desenvolvimento, treino e diagnóstico.
 
-Além da MLP multissaída, foram avaliados uma previsão constante pela média do treino, Random Forest, Extra Trees e um modelo em duas etapas para eventos de proximidade. A estabilidade da MLP foi repetida com cinco sementes. A contribuição das entradas foi estudada por gradientes do erro na validação e por ablação, retirando um grupo de cada vez e treinando novamente.
+\subsection{Composição da validação monocular}
 
-Na validação espacial, a bateria com profundidade de referência foi executada em SITL. Os estimadores monoculares v12 a v19 passaram primeiro por métricas de profundidade e depois por repetição espacial offline. O portão exigia disponibilidade de planos, limite de falso espaço livre e ausência de colisões contra o mapa de referência. O SITL monocular só seria autorizado após a aprovação completa.
+A versão v19 usou 20 runs completas no treino e uma run apenas para calibração. O treino efetivo registrou 3.322 quadros, com repetição dirigida de quatro runs de foco. A run 3 da bateria final, \texttt{run\_20260831\_082836\_332335}, forneceu os 77 quadros de validação durante o treinamento e também foi o conjunto primário do portão. Portanto, ela não é um teste independente.
+
+Quatro conjuntos estavam reservados para o estágio secundário: as runs 6 e 10 da bateria final, \texttt{run\_20260820\_225114\_611267} e \texttt{run\_20260819\_191346\_877996}. Eles não foram executados no portão final porque nenhum candidato aprovou o conjunto primário. As duas runs antigas e as runs 6 e 10 não participaram do ajuste dos pesos da v19.
+
+O portão espacial exigia simultaneamente: pelo menos 100 quadros integrados; caminho executável mínimo de 1,5~m; taxa de sucesso de planejamento igual ou superior a 80\%; taxa de falso espaço livre igual ou inferior a 10\%; ao menos um plano executável; e todos os planos executáveis livres de colisão no mapa produzido com profundidade do Gazebo.
 
 \section{Evidências experimentais}
 
-\subsection{Crescimento do conjunto de treino}
+\subsection{Crescimento do conjunto e perdas}
 
-O aumento do conjunto de treino melhorou a comparação com a média constante, mas o ganho não foi uniforme entre todos os alvos. No marco de 102 runs, a MLP com representação angular por seno e cosseno obteve, no teste, MAE de 0,364~m para $\Delta P10$, 0,810~m para $\Delta P50$ e 3,068~m para $\Delta P90$. Para as proporções de pixels próximos, os MAEs foram 3,457, 5,280 e 3,066 pontos percentuais nos limiares de 2, 5 e 10~m. As correlações ficaram entre 0,718 e 0,843. O maior erro no $\Delta P90$ mostra que mudanças na parte distante da distribuição continuam mais difíceis de representar.
+A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 40 runs, o erro caiu em cinco dos seis alvos, mas os valores oscilaram nos marcos intermediários. A diversidade das novas runs, e não apenas sua quantidade, afetou o resultado.
 
-\subsection{Perdas e representação angular}
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
+    \caption{MAE da MLP e da média do treino nos cinco marcos, com teste fixo.}
+    \label{fig:mono-curva-aprendizado}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-A melhor época não foi a última época executada, o que confirma a utilidade da parada antecipada. Na execução consolidada, as curvas foram registradas até a época 170 e os pesos escolhidos vieram do menor erro de validação. A representação por seno e cosseno evitou a descontinuidade artificial de ângulos próximos a $-\pi$ e $\pi$. Seu efeito foi avaliado mantendo divisão, arquitetura e semente, sem misturá-lo ao efeito do aumento dos dados.
+A menor perda de validação ocorreu na época 17. O treinamento parou na época 67 e restaurou os pesos da época 17. A Figura~\ref{fig:mono-loss} mostra que a perda de treino continuou caindo enquanto validação e teste deixaram de acompanhar essa melhora.
 
-\subsection{Sementes e modelos de referência}
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
+    \caption{Curvas de perda da MLP no marco final da base tabular.}
+    \label{fig:mono-loss}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-Nas cinco sementes, o desvio padrão do MAE de teste variou de 0,002~m em $\Delta P10$ a 0,068 ponto percentual na proporção abaixo de 5~m. Para $\Delta P90$, o MAE médio foi 2,986~m, com desvio de 0,053~m. Essa variação é pequena diante da diferença entre os alvos e indica que a conclusão principal não depende de uma inicialização favorável. Os modelos de árvores e a média do treino foram mantidos como referências, impedindo que o resultado da MLP fosse interpretado sem comparação.
+\subsection{MLP, referências e estabilidade}
 
-\subsection{Eventos de proximidade}
+A Tabela~\ref{tab:mono-modelos} reúne o MAE do teste. A MLP é apresentada pela média de cinco sementes. Nenhum modelo venceu em todos os alvos; para P10 e P90, a média do treino foi a melhor referência.
 
-No marco de 102 runs, o classificador de eventos atingiu F1 de 0,959 na validação e 0,953 no teste. A acurácia balanceada foi 0,774 e 0,765, respectivamente. A diferença entre F1 e acurácia balanceada ocorre porque eventos são frequentes no conjunto: no teste, 91,1\% das amostras pertencem à classe positiva. Por isso, F1 alto sozinho não demonstra que os casos sem evento foram bem separados.
+\begin{table}[htb]
+\centering
+\caption{MAE no teste fixo e estabilidade da MLP.}
+\label{tab:mono-modelos}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\hline
+\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Média do treino} \\
+\hline
+$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & \textbf{0,0867} \\
+$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1886 \\
+$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & \textbf{0,8246} \\
+$\Delta$ pixels $<2$ m (p.p.) & \textbf{1,0566} $\pm 0,0268$ & 1,0735 & 1,0869 \\
+$\Delta$ pixels $<5$ m (p.p.) & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,8488 \\
+$\Delta$ pixels $<10$ m (p.p.) & \textbf{0,8423} $\pm 0,0318$ & 0,8602 & 0,9096 \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
 
-\subsection{Gradientes e ablação}
+O coeficiente de variação do MAE da MLP ficou entre 2,4\% e 3,8\%. A época escolhida variou de 22 a 182, mas o nível final de erro mudou pouco. A inicialização não altera as conclusões gerais.
 
-Os gradientes mostraram que a sensibilidade muda conforme o alvo e a amostra. Entre os maiores erros apareceram descritores da diferença de imagem, deslocamento vertical, retenção do fluxo e integrais do giroscópio. A ablação forneceu uma evidência mais estável: retirar os descritores de diferença de imagem elevou o MAE médio em 13,7\% para a variação de pixels abaixo de 10~m e em 21,1\% para $\Delta P90$. IMU e atitude também contribuíram, enquanto comandos reativos e sincronização tiveram efeito menor e, em alguns casos, próximo da variação entre sementes. Isso não torna os grupos sem efeito inúteis, mas mostra onde a informação mais consistente se concentrou.
+\subsection{Eventos, gradientes e ablação}
 
-\section{Implicações para o posicionamento}
+O classificador final de eventos obteve acurácia balanceada de 0,615, precisão de 0,789, revocação de 0,870 e F1 de 0,828. O pipeline completo teve MAE de 1,770 ponto percentual para pixels abaixo de 5~m. Quando a indicação real de evento foi fornecida somente para diagnóstico, o MAE caiu para 1,744. A diferença pequena indica que a regressão do sinal e da magnitude concentra a maior parte do erro.
 
-\subsection{Efeito da quantidade de dados}
+A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. IMU e atitude reuniram 43,4\% da sensibilidade média e sua retirada elevou o MAE médio em 6,8\%. A Tabela~\ref{tab:mono-ablacao} mostra o efeito médio de cada grupo nos seis alvos. Valores negativos significam que a retirada reduziu o erro médio, dentro da variabilidade observada entre sementes.
 
-Os marcos adicionais reduziram a dependência de conclusões obtidas com poucas trajetórias. O resultado, porém, não sustentou a ideia de que apenas coletar mais dados resolveria todos os alvos. Os erros ligados ao percentil distante continuaram maiores, sugerindo limitação da representação resumida e não somente falta de amostras.
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
+    \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas.}
+    \label{fig:mono-ablacao}
+    \legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-\subsection{Estabilidade e modelos de referência}
+\begin{table}[htb]
+\centering
+\caption{Variação média do MAE após a retirada de cada grupo.}
+\label{tab:mono-ablacao}
+\begin{tabular}{lr}
+\hline
+\textbf{Grupo retirado} & \textbf{$\Delta$ MAE médio (\%)} \\
+\hline
+IMU e atitude & 6,81 \\
+Comandos reativos & 1,71 \\
+Sincronização & 1,33 \\
+Fluxo óptico e risco & 0,00 \\
+Movimento & -0,04 \\
+Diferença de imagem & -0,50 \\
+\hline
+\end{tabular}
+\legend{Fonte: elaborado pelo autor a partir de três sementes por ablação.}
+\end{table}
 
-A baixa dispersão entre sementes mostra que o treinamento da MLP é reprodutível dentro do protocolo adotado. As referências tabulares continuam necessárias: elas distinguem ganho real de uma rede neural de um resultado que poderia ser obtido por uma previsão constante ou por árvores.
+\subsection{Bateria espacial com profundidade do Gazebo}
 
-\subsection{Entradas e concentração dos erros}
+As dez runs completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. A duração média foi 77,37~s, com desvio de 4,49~s, e o planejamento levou em média 99,18~ms.
 
-Gradiente e ablação responderam perguntas diferentes. O gradiente indicou quais entradas estavam ligadas ao erro local; a ablação mediu a perda de desempenho quando um grupo inteiro deixou de estar disponível. A concordância parcial entre as duas análises reforçou a importância da mudança visual e da dinâmica do veículo, sem permitir uma interpretação causal.
+\begin{table}[htb]
+\centering
+\caption{Resumo da bateria espacial final com profundidade do Gazebo.}
+\label{tab:mono-bateria}
+\begin{tabular}{lr}
+\hline
+Runs completas & 10/10 \\
+Objetivos globais alcançados & 30 \\
+Planos bem-sucedidos & 147/156 (94,23\%) \\
+Caminhos adotados & 132 \\
+Caminhos adotados inseguros & 0 \\
+Duração média & 77,37 $\pm$ 4,49~s \\
+Tempo médio de planejamento & 99,18~ms \\
+\hline
+\end{tabular}
+\legend{Fonte: relatório final consolidado.}
+\end{table}
 
-\subsection{Classificação ou regressão dos eventos}
+A precisão média de ocupação foi 1,0, a revocação 0,584 e a taxa de falso espaço livre 0,316. Esse último valor não significa que o sensor do Gazebo errou em 31,6\%. A métrica compara o mapa parcial acumulado pelo drone, limitado aos raios observados e às regras de atualização, com uma referência de ocupação mais ampla. Ela mede divergência entre mapas sob cobertura diferente. Por isso, a evidência de segurança usada na bateria foi a verificação dos caminhos adotados, e não a interpretação isolada dessa taxa.
 
-O problema de eventos não deve ser resumido pela taxa de acerto da classe positiva. Como a classe é desbalanceada, a acurácia balanceada mostrou uma dificuldade que o F1 ocultava. Para uso em segurança, os falsos negativos e os casos sem evento precisam ser examinados separadamente antes de empregar o classificador como gatilho de controle.
+A Figura~\ref{fig:mono-mapa-astar} apresenta uma projeção no plano NED da primeira run da bateria. Os pontos ocupados foram filtrados pela faixa de voo; as linhas mostram os caminhos efetivamente adotados.
 
-\subsection{Validação espacial}
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/resultados_mapa_astar.png}
+    \caption{Mapa de referência e caminhos A* adotados na primeira run da bateria final.}
+    \label{fig:mono-mapa-astar}
+    \legend{Fonte: elaborado pelo autor a partir dos registros da bateria.}
+\end{figure}
 
-Com profundidade de referência, as dez runs da bateria finalizaram os três objetivos, totalizando 30 objetivos globais alcançados. Houve 156 tentativas de planejamento, 147 planos bem-sucedidos e 132 caminhos adotados. Nenhum caminho adotado foi classificado como inseguro pelo mapa de referência. A duração média foi 77,37~s, com desvio padrão de 4,49~s, e o tempo médio de planejamento foi 99,18~ms.
+\subsection{Portão monocular}
 
-O mapa de referência apresentou precisão média de ocupação igual a 1,0 e revocação média de 0,584. O valor indica um mapa conservador: os voxels marcados como ocupados estavam corretos, mas parte dos obstáculos de referência não foi incorporada. A taxa média de falso espaço livre foi 0,316. Esse valor não produziu caminhos adotados inseguros na bateria, porém impede tratar o mapa como reconstrução completa do cenário.
+A Tabela~\ref{tab:mono-versoes} resume as versões v12--v19. O sucesso de planejamento, a taxa de falso espaço livre e as colisões correspondem ao conjunto espacial primário usado em cada versão e, portanto, servem para decisão de portão, não para uma comparação em um teste único idêntico.
 
-Os modelos monoculares tiveram resultado diferente. Sete das oito versões avaliadas passaram pelo critério de profundidade por pixel; a v15 não passou. Entre os modelos qualificados, o MAE ficou entre 1,242 e 1,498~m e o erro relativo absoluto entre 0,141 e 0,159. Ainda assim, nenhum modelo passou pelo portão espacial. A v19, por exemplo, obteve MAE de 1,286~m e não gerou colisões no conjunto primário, mas alcançou somente 41,2\% de sucesso de planejamento e taxa de falso espaço livre de 0,184. Como também não atingiu o número mínimo de quadros do portão, os conjuntos secundários não foram executados e o SITL monocular permaneceu bloqueado.
+\begin{table}[htb]
+\centering
+\caption{Profundidade e resultado espacial das versões monoculares.}
+\label{tab:mono-versoes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrl}
+\hline
+\textbf{Versão} & \textbf{MAE (m)} & \textbf{AbsRel} & \textbf{Sucesso planos} & \textbf{Falso livre} & \textbf{Colisões} \\
+\hline
+v12 & 1,283 & 0,151 & 27,8\% & 0,367 & 0 \\
+v13 & 1,242 & 0,156 & 38,9\% & 0,390 & 2 \\
+v14 & 1,270 & 0,156 & 47,1\% & 0,431 & 1 \\
+v15 & 1,726 & 0,199 & 41,2\% & 0,304 & 0 \\
+v16 & 1,383 & 0,152 & 52,9\% & 0,291 & 1 \\
+v17 & 1,498 & 0,159 & 35,3\% & 0,184 & 0 \\
+v18 & 1,292 & 0,141 & 52,9\% & 0,263 & 1 \\
+v19 & 1,286 & 0,141 & 41,2\% & 0,184 & 0 \\
+\hline
+\end{tabular}}
+\legend{Fonte: relatório final consolidado.}
+\end{table}
 
-\section{Princípios metodológicos derivados}
+Sete versões passaram pelo critério por pixel; a v15 foi reprovada. Nenhuma aprovou o portão espacial completo. A melhor configuração sem colisão da v19 integrou 77 quadros, abaixo do mínimo de 100, obteve 41,2\% de sucesso de planejamento, abaixo de 80\%, e falso espaço livre de 0,184, acima de 0,10. Por isso, os quatro conjuntos secundários não foram executados e o SITL monocular permaneceu bloqueado.
 
-Os experimentos levaram a quatro decisões metodológicas. A divisão precisa ocorrer por execução, e não por intervalo. A avaliação de um estimador destinado à navegação precisa incluir o uso espacial de sua saída. Resultados de segurança devem registrar caminhos adotados, vetos e abortos, em vez de contar apenas missões concluídas. Por fim, um resultado negativo de portão deve ser preservado: ele identifica de forma objetiva a etapa que ainda não está pronta para voo.
+O artefato avaliado foi \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, com SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. A configuração de melhor posição no portão foi \texttt{v19\_scale1p0\_shift1p2}: escala 1,0, deslocamento conservador de 1,2~m, margem livre de 3,0~m, incerteza ocupada de 1,5~m e banda e inflação verticais de 0,10~m.
 
 \section{Considerações finais}
 
-O eixo tabular mostrou que os sinais sincronizados contêm informação sobre mudanças de proximidade, com maior contribuição dos descritores visuais e de movimento. O eixo espacial mostrou que a geometria, o mapa e o A* funcionam com profundidade de referência, mas que a profundidade monocular disponível ainda não sustenta o mesmo nível de segurança. Essa diferença é o principal resultado da validação.
+O eixo tabular mostrou ganhos modestos, estabilidade entre sementes e limites claros da representação resumida. O eixo espacial mostrou que a geometria e o planejamento funcionam com profundidade do Gazebo, mas que a profundidade monocular disponível ainda não sustenta o mesmo nível de segurança. A reprovação do portão preserva esse resultado sem transformar um diagnóstico offline em autorização de voo.

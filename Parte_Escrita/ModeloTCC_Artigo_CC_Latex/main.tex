@@ -91,7 +91,7 @@
 }
 \makeatother
 
-\titulo{Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Estimativa de Proximidade em VANTs}
+\titulo{Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial Seguro em VANTs}
 \autor{Gabriel Justino Panza}
 \local{Niterói}
 \data{2026}
@@ -145,7 +145,7 @@ Dr. Eduardo Charles Vasconcellos\footnote{Pesquisador e coorientador.}
 \vspace{-.3cm}
 
 \noindent
-Este trabalho apresenta uma metodologia para avaliar informação visual e inercial de um veículo aéreo não tripulado antes de seu uso em navegação autônoma. Foram analisadas 103 execuções completas e 8.305 amostras sincronizadas. Uma perceptron multicamadas estimou mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. A avaliação usou divisão por execução, validação e teste fixos, referências simples, cinco sementes, eventos, gradientes e ablação. Com 102 execuções elegíveis, as correlações de teste ficaram entre 0,718 e 0,843, e os descritores de diferença de imagem tiveram a perda mais consistente quando removidos. Em seguida, profundidade densa foi convertida em ocupação tridimensional e usada por um planejador A*. Com profundidade do Gazebo, dez de dez runs completaram a rota sem adotar caminhos inseguros. Sete das oito versões monoculares avaliadas passaram pelo critério por pixel, mas nenhuma passou pelo portão espacial completo. O voo monocular não foi autorizado. Os resultados mostram que métricas por pixel são insuficientes para liberar um estimador destinado ao planejamento.
+Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A primeira etapa usa 40 execuções completas e 1.234 intervalos sincronizados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Uma perceptron multicamada foi comparada com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A rede não venceu em todos os alvos; retirar IMU e atitude elevou o MAE em 6,8\% na média. Na segunda etapa, profundidade foi convertida em ocupação tridimensional e usada por um planejador A*. Com profundidade do Gazebo, dez de dez runs completaram a rota sem adotar caminhos inseguros. Sete das oito versões monoculares avaliadas passaram pelo critério por pixel, mas nenhuma passou pelo portão espacial completo. O voo monocular não foi autorizado. Os resultados mostram que métricas por pixel são insuficientes para liberar um estimador destinado ao planejamento.
 
 \vspace{.4cm}
  
@@ -161,7 +161,7 @@ Este trabalho apresenta uma metodologia para avaliar informação visual e inerc
 \vspace{-.3cm}
 \begin{hyphenrules}{english}
 \noindent
-This work presents a method for evaluating visual and inertial information from an unmanned aerial vehicle before using it for autonomous navigation. The dataset contains 103 complete runs and 8,305 synchronized samples. A multilayer perceptron estimated proximity changes from optical flow, motion, inertial measurement, commands, and image-difference descriptors. Evaluation used run-level splits, fixed validation and test sets, simple baselines, five seeds, event analysis, gradients, and ablation. With 102 eligible runs, test correlations ranged from 0.718 to 0.843, and removing image-difference descriptors produced the most consistent loss. Dense depth was then converted into a three-dimensional occupancy map and used by an A* planner. With Gazebo reference depth, all ten runs completed the route without adopting unsafe paths. Seven of eight monocular versions passed the pixel-level criterion, but none passed the complete spatial gate. Monocular flight was not authorized. The results show that pixel metrics are insufficient to release a depth estimator intended for planning.
+This work presents a method for evaluating monocular perception before using it for autonomous navigation of an unmanned aerial vehicle. The first stage uses 40 complete runs and 1,234 synchronized intervals to study proximity changes from optical flow, motion, inertial measurement, commands, and image-difference descriptors. A multilayer perceptron was compared with constant and tree-based baselines using run-level splits, fixed sets, five seeds, event analysis, gradients, and ablation. The network was not best for every target; removing inertial and attitude inputs increased mean MAE by 6.8\%. In the second stage, depth was converted into a three-dimensional occupancy map and used by an A* planner. With Gazebo depth, all ten runs completed the route without adopting unsafe paths. Seven of eight monocular versions passed the pixel criterion, but none passed the complete spatial gate. Monocular flight was not authorized. The results show that pixel metrics are insufficient to release a depth estimator intended for planning.
 \end{hyphenrules}
 \vspace{.4cm}
  
@@ -249,7 +249,7 @@ A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas a
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. Após a remoção de runs abortadas e incompletas, a base contém 103 execuções completas e 8.305 intervalos válidos; 102 execuções atendem aos critérios dos marcos de treinamento.
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 runs formam o treino, duas a validação fixa e três o teste fixo. O arquivo espacial possui 103 runs completas produzidas em etapas diferentes e não é tratado como uma coorte tabular homogênea.
 
 A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas execuções completas. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
 
@@ -279,7 +279,7 @@ Os alvos são as variações dos percentis P10, P50 e P90 da profundidade e da p
 
 A MLP possui duas camadas ocultas, com 64 e 16 unidades, ativação por unidade linear retificada (ReLU), \textit{dropout} de 0,30 e uma saída linear para cada alvo. As entradas e os alvos são padronizados somente com os dados de treino. O treinamento usa Adam, taxa $10^{-3}$, regularização $L_2=10^{-4}$, lotes de 64 amostras, no máximo 300 épocas e semente 42. A parada antecipada acompanha o erro quadrático médio (MSE) da validação. Quando não ocorre uma melhora mínima de $10^{-4}$ durante 50 épocas, o treinamento para e recupera os pesos da melhor época.
 
-A separação é feita por execução, com validação e teste fixos, enquanto o treino cresce nos marcos de 9, 17, 25, 33, 50, 67, 85 e 102 execuções. O modelo é comparado com a previsão da média do treino por erro absoluto médio (MAE) e raiz do erro quadrático médio (RMSE). Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
+A separação é feita por execução, com validação e teste fixos, enquanto o total cresce nos marcos de 9, 17, 25, 33 e 40 execuções. O modelo é comparado com a previsão da média do treino por erro absoluto médio (MAE) e raiz do erro quadrático médio (RMSE). Também é testado um modelo em duas etapas para eventos com $|\Delta p_{<5m}|\geq0{,}5$ p.p. O classificador é avaliado por acurácia balanceada, precisão, sensibilidade (\textit{recall}) e F1.
 
 \subsubsection{Estabilidade, modelos de árvores e ablação}
 
@@ -297,27 +297,117 @@ A etapa espacial preserva a posição central do artigo e acrescenta um teste de
 
 Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O A* percorre somente voxels conhecidos como livres e usa vizinhança tridimensional. Segmentos que cruzam voxels ocupados ou desconhecidos são rejeitados. Quando o destino ainda não foi observado, o sistema escolhe um subobjetivo em uma fronteira livre que produza avanço. O caminho passa por simplificação com linha de visada, divisão em pontos de passagem e uma nova verificação de segurança antes da publicação.
 
-O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade ideal do Gazebo em dez execuções de referência. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com um mapa de referência independente, com atenção especial aos falsos espaços livres e a colisões do caminho. O voo monocular só poderia começar após aprovação em todos os conjuntos reservados.
+O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
+
+A v19 usou 20 runs no treino, uma run de calibração e a run 3 da bateria final como validação. Essa mesma run foi o conjunto primário do portão e, por isso, não é chamada de teste independente. As runs 6 e 10 da bateria e duas runs antigas ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
 
 Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de posição, enquanto o PX4 continua responsável pela estabilização e pelo acompanhamento físico desses pontos. Portanto, ``sem controle reativo'' não significa voo sem controle, mas uma separação entre percepção e planejamento, avaliados neste trabalho, e o controle de baixo nível já fornecido pelo piloto automático.
 
 \subsection{Evidências experimentais}
 
-No marco de 102 execuções, a MLP com representação angular por seno e cosseno obteve, no teste, MAE de 0,364~m para $\Delta P10$, 0,810~m para $\Delta P50$ e 3,068~m para $\Delta P90$. Para as variações da porcentagem de pixels abaixo de 2, 5 e 10~m, os MAEs foram 3,457, 5,280 e 3,066 pontos percentuais. As correlações ficaram entre 0,718 e 0,843. O percentil distante permaneceu como o alvo mais difícil, mesmo após o aumento do conjunto.
+A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo. Entre 9 e 40 runs, o erro caiu em cinco dos seis alvos, mas os marcos intermediários oscilaram.
 
-Os cinco treinamentos com sementes diferentes apresentaram baixa dispersão. No teste, o desvio padrão do MAE foi 0,002~m para $\Delta P10$, 0,005~m para $\Delta P50$ e 0,053~m para $\Delta P90$. Para os alvos em pontos percentuais, o maior desvio foi 0,069. Assim, a diferença de desempenho entre alvos foi maior que a variação causada pela inicialização.
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
+\caption{MAE da MLP e da média do treino nos cinco marcos.}
+\label{fig:artigo-curva-aprendizado}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-Na detecção de eventos de proximidade, o marco final atingiu F1 de 0,959 na validação e 0,953 no teste. A acurácia balanceada, porém, foi 0,774 e 0,765. Como 91,1\% das amostras de teste eram eventos, essa diferença mostra por que o F1 não deve ser interpretado isoladamente.
+A menor perda de validação ocorreu na época 17. O treinamento encerrou na época 67 e restaurou esses pesos. A Figura~\ref{fig:artigo-loss} evidencia o sobreajuste posterior.
 
-A ablação indicou que os descritores de diferença de imagem forneceram a contribuição mais consistente. Sua retirada aumentou o MAE médio em 13,7\% para a variação de pixels abaixo de 10~m e em 21,1\% para $\Delta P90$. Nos maiores erros, os gradientes também destacaram diferença de imagem, deslocamento vertical, retenção do fluxo e integrais do giroscópio. Como o gradiente é local, ele foi usado para descrever sensibilidade, não causalidade.
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
+\caption{Curvas de perda da MLP no marco final.}
+\label{fig:artigo-loss}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
 
-Na validação espacial com profundidade do Gazebo, dez de dez runs completaram a rota, totalizando 30 objetivos globais. Das 156 tentativas de planejamento, 147 foram bem-sucedidas e 132 caminhos foram adotados. Nenhum caminho adotado foi classificado como inseguro. A duração média foi 77,37~s, com desvio de 4,49~s, e o planejamento levou em média 99,18~ms.
+\begin{table}[htb]
+\centering
+\caption{MAE no teste: estabilidade da MLP e referências.}
+\label{tab:artigo-modelos}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\hline
+\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Média treino} \\
+\hline
+$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & \textbf{0,0867} \\
+$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1886 \\
+$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & \textbf{0,8246} \\
+$\Delta$ pixels $<2$ m & \textbf{$1,0566 \pm 0,0268$} & 1,0735 & 1,0869 \\
+$\Delta$ pixels $<5$ m & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,8488 \\
+$\Delta$ pixels $<10$ m & \textbf{$0,8423 \pm 0,0318$} & 0,8602 & 0,9096 \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
 
-O resultado monocular foi diferente. Sete das oito versões v12--v19 passaram pelo critério de profundidade por pixel, com MAE entre 1,242 e 1,498~m, mas nenhuma passou pelo portão espacial completo. A v19 obteve MAE de 1,286~m e zero colisões no conjunto primário, porém somente 41,2\% de sucesso de planejamento e taxa de falso espaço livre de 0,184. Como o primeiro estágio também não atingiu o mínimo de quadros, os conjuntos secundários não foram executados e o SITL monocular não foi autorizado. Esse caso mostra que um erro médio aceitável pode esconder erros localizados com impacto direto no mapa.
+Nenhum modelo venceu em todos os alvos. O coeficiente de variação da MLP ficou entre 2,4\% e 3,8\%. O classificador de eventos obteve acurácia balanceada de 0,615 e F1 de 0,828. Fornecer o evento real ao regressor reduziu o MAE de 1,770 para 1,744 ponto percentual, indicando que a regressão concentra a maior parte do erro.
+
+A Figura~\ref{fig:artigo-ablacao} e a Tabela~\ref{tab:artigo-ablacao} resumem a análise das entradas. IMU e atitude concentraram 43,4\% da sensibilidade e foram o único grupo cuja retirada piorou de forma consistente a média dos seis alvos.
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
+\caption{Sensibilidade por gradientes e efeito médio das ablações.}
+\label{fig:artigo-ablacao}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\begin{table}[htb]
+\centering
+\caption{Variação média do MAE após retirar cada grupo.}
+\label{tab:artigo-ablacao}
+\begin{tabular}{lr}
+\hline
+IMU e atitude & 6,81\% \\
+Comandos reativos & 1,71\% \\
+Sincronização & 1,33\% \\
+Fluxo óptico e risco & 0,00\% \\
+Movimento & -0,04\% \\
+Diferença de imagem & -0,50\% \\
+\hline
+\end{tabular}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
+
+Na bateria espacial, as dez runs completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados, sem caminho inseguro. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{figuras/resultados_mapa_astar.png}
+\caption{Mapa de referência e caminhos A* adotados na primeira run final.}
+\label{fig:artigo-mapa}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+A taxa de falso espaço livre de 0,316 da referência compara um mapa parcial, limitado aos raios observados, com uma ocupação mais ampla; não representa erro de 31,6\% do sensor do Gazebo. A segurança foi julgada pela verificação dos caminhos efetivamente adotados.
+
+\begin{table}[htb]
+\centering
+\caption{Resumo das versões monoculares no conjunto primário de cada portão.}
+\label{tab:artigo-monocular}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\hline
+Versão & v12 & v13 & v14 & v15 & v16 & v17 & v18 & v19 \\
+MAE (m) & 1,283 & 1,242 & 1,270 & 1,726 & 1,383 & 1,498 & 1,292 & 1,286 \\
+Sucesso (\%) & 27,8 & 38,9 & 47,1 & 41,2 & 52,9 & 35,3 & 52,9 & 41,2 \\
+Falso livre & 0,367 & 0,390 & 0,431 & 0,304 & 0,291 & 0,184 & 0,263 & 0,184 \\
+Colisões & 0 & 2 & 1 & 0 & 1 & 0 & 1 & 0 \\
+\hline
+\end{tabular}}
+\legend{Fonte: relatório final consolidado.}
+\end{table}
+
+Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A configuração v19 de melhor posição integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão: falhou três dos quatro critérios numéricos. O ONNX avaliado tem SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}.
 
 \section{Conclusão}
 
-Os experimentos confirmaram que os intervalos sincronizados contêm informação útil sobre mudanças de proximidade e que a conclusão é estável entre sementes. Diferença de imagem, movimento e sinais inerciais tiveram participação relevante, enquanto a parte distante da distribuição de profundidade continuou mais difícil de prever.
+Os experimentos confirmaram que os intervalos sincronizados contêm informação útil sobre mudanças de proximidade e que a conclusão é estável entre sementes. A MLP não venceu em todos os alvos, e IMU e atitude formaram o grupo mais consistente na ablação.
 
 A contribuição principal é o protocolo que liga esses resultados à navegação. A separação por execução reduz vazamento temporal; as referências evitam avaliar a MLP isoladamente; e o portão espacial impede que uma métrica por pixel seja usada como autorização de voo. Com profundidade de referência, mapa e A* completaram a bateria sem adotar caminhos inseguros. Com profundidade monocular, o portão reprovou todas as versões avaliadas. Portanto, o pipeline espacial de referência foi validado no cenário estudado, mas o voo monocular ainda não possui evidência suficiente para ser liberado.
 
@@ -327,18 +417,37 @@ As limitações incluem um único cenário simulado, uma rota principal, eventos
 \bibliography{references}
 
 \newpage
-\chapter*{APÊNDICE A - Lista de ilustrações}
+\renewcommand{\listfigurename}{APÊNDICE A - Lista de ilustrações}
+\listoffigures
 
 \newpage
-\chapter*{APÊNDICE B - Lista de tabelas}
+\renewcommand{\listtablename}{APÊNDICE B - Lista de tabelas}
+\listoftables
 
 \begin{appendices}
 \newpage
 \chapter*{APÊNDICE C - Configuração e disponibilidade}
 \addcontentsline{toc}{chapter}{APÊNDICE C - Configuração e disponibilidade}
+
+\noindent
+O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 runs e 1.234 intervalos, divididos em 35 runs de treino, duas de validação e três de teste no marco final.
+
+\noindent
+O modelo monocular final é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.
 \end{appendices}
 
 \newpage
 \chapter*{Agradecimentos}
+\noindent
+Agradeço à minha família pelo apoio ao longo da graduação e aos professores que participaram da minha formação. Em especial, agradeço ao professor Leandro Augusto Frata Fernandes pela orientação e ao pesquisador Eduardo Charles Vasconcellos pelo apoio na criação do ambiente simulado e nas discussões sobre voo autônomo. Agradeço também aos amigos que estiveram ao meu lado durante esses anos de UFF.
+
+\newpage
+\chapter*{Declarações}
+\noindent
+Esta pesquisa foi realizada somente em ambiente simulado, sem participantes humanos, dados pessoais ou experimentos com animais.
+
+\medskip
+\noindent
+A ferramenta OpenAI Codex, com modelo GPT-5, foi usada como apoio na revisão linguística, organização do texto em LaTeX, depuração, refatoração e documentação do código. O autor revisou as sugestões, conferiu os resultados nos artefatos experimentais e manteve a responsabilidade pelas decisões metodológicas e pelo conteúdo final.
 
 \end{document}

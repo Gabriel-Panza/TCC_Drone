@@ -18,7 +18,7 @@ O controlador recebe posição local e dados inerciais do PX4, publica comandos 
 
 O percurso espacial de referência usa três objetivos relativos no sistema norte-leste-baixo (NED), em metros: $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$. O A* fornece pontos de posição ao modo \textit{Offboard}, enquanto o PX4 mantém a estabilização do veículo. A configuração final usa raio horizontal de segurança de 1,25~m, banda e inflação verticais de 0,10~m no mapa de planejamento e tolerância vertical de 0,50~m. Essas margens foram escolhidas antes da bateria final: valores verticais maiores faziam as copas das árvores bloquear o plano de voo mesmo quando havia separação em altura.
 
-A base consolidada contém 103 execuções completas e 8.305 intervalos sincronizados. Destas, 102 atendem aos critérios usados nos marcos da MLP. Execuções abortadas ou sem manifesto final não entram na análise. Os diretórios de \texttt{logs} e \texttt{datasets} são associados pelo identificador e pelos horários registrados em seus manifestos.
+A base tabular consolidada contém 40 execuções completas e 1.234 intervalos sincronizados. Trinta e cinco execuções compõem o treino no marco final, duas formam a validação fixa e três formam o teste fixo. O rótulo de 40 execuções representa o total disponível nesse marco. Separadamente, o diretório espacial contém 103 execuções completas, produzidas em etapas e configurações diferentes; ele funciona como arquivo de desenvolvimento e não como uma segunda coorte tabular homogênea.
 
 A Figura~\ref{fig:metodologia-trajetorias} apresenta quatro trajetórias distribuídas ao longo da coleta. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
 
@@ -76,7 +76,7 @@ A Figura~\ref{fig:metodologia-sincronizacao} coloca na mesma sequência o percen
 
 \section{Notebook de análise}
 
-O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33, 50, 67, 85 e 102 execuções, sempre preservando os casos anteriores e os mesmos conjuntos de validação e teste.
+O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33 e 40 execuções, sempre preservando os casos anteriores e as mesmas duas runs de validação e três de teste.
 
 As entradas incluem duração e atraso de sincronização; deltas de posição e atitude; integrais e variações de giroscópio e acelerômetro; comandos de risco, frenagem e desvio; estatísticas do fluxo; retenção de pontos; e descritores da diferença de imagem. O notebook também testa a representação dos ângulos por seno e cosseno.
 
