@@ -14,11 +14,11 @@ O sistema executa Ubuntu 22.04.5 com suporte de longo prazo (LTS) no \textit{Win
 
 \section{Pipeline de voo e coleta}
 
-O controlador recebe posição local e dados inerciais do PX4, publica comandos no modo \textit{Offboard} e processa imagens de uma câmera RGB monocular frontal. Uma câmera de profundidade alinhada fornece os valores de referência. A profundidade não participa da lógica reativa.
+O controlador recebe posição local e dados inerciais do PX4, publica comandos no modo \textit{Offboard} e processa imagens de uma câmera RGB monocular frontal. No fluxo legado, a imagem fornece o fluxo óptico usado pela lógica reativa. No fluxo espacial, ela alimenta o estimador monocular, e o A* substitui a decisão reativa de desvio. Uma câmera de profundidade alinhada fornece os alvos tabulares e a referência da avaliação monocular. Na bateria espacial de referência, essa profundidade também alimenta mapa e A* para validar a geometria e o planejamento. Ela não entra na MLP nem no estimador monocular.
 
 O percurso espacial de referência usa três objetivos relativos no sistema norte-leste-baixo (NED), em metros: $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$. O A* fornece pontos de posição ao modo \textit{Offboard}, enquanto o PX4 mantém a estabilização do veículo. A configuração final usa raio horizontal de segurança de 1,25~m, banda e inflação verticais de 0,10~m no mapa de planejamento e tolerância vertical de 0,50~m. Essas margens foram escolhidas antes da bateria final: valores verticais maiores faziam as copas das árvores bloquear o plano de voo mesmo quando havia separação em altura.
 
-A base tabular consolidada contém 40 execuções completas e 1.234 intervalos sincronizados. Trinta e cinco execuções compõem o treino no marco final, duas formam a validação fixa e três formam o teste fixo. O rótulo de 40 execuções representa o total disponível nesse marco. Separadamente, o diretório espacial contém 103 execuções completas, produzidas em etapas e configurações diferentes; ele funciona como arquivo de desenvolvimento e não como uma segunda coorte tabular homogênea.
+A base tabular consolidada contém 40 execuções completas e 1.234 intervalos sincronizados. Trinta e cinco execuções compõem o treino no marco final, duas formam a validação fixa e três formam o teste fixo. O rótulo de 40 execuções representa o total disponível nesse marco. Separadamente, o diretório espacial contém 103 diretórios de execuções completas, produzidos em diferentes etapas de desenvolvimento, treinamento, diagnóstico e validação. Ele funciona como arquivo experimental e não como uma segunda coorte homogênea ou como 103 repetições equivalentes.
 
 A Figura~\ref{fig:metodologia-trajetorias} apresenta quatro trajetórias distribuídas ao longo da coleta. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
 
@@ -76,7 +76,7 @@ A Figura~\ref{fig:metodologia-sincronizacao} coloca na mesma sequência o percen
 
 \section{Notebook de análise}
 
-O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33 e 40 execuções, sempre preservando os casos anteriores e as mesmas duas runs de validação e três de teste.
+O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33 e 40 execuções, sempre preservando os casos anteriores e as mesmas duas execuções de validação e três de teste.
 
 As entradas incluem duração e atraso de sincronização; deltas de posição e atitude; integrais e variações de giroscópio e acelerômetro; comandos de risco, frenagem e desvio; estatísticas do fluxo; retenção de pontos; e descritores da diferença de imagem. O notebook também testa a representação dos ângulos por seno e cosseno.
 
@@ -100,7 +100,7 @@ Essa separação mantém explícita a origem da profundidade. No modo \texttt{gr
 
 O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A sequência de versões v12 a v19 testou mudanças controladas no ajuste fino e nas margens usadas para converter a profundidade em ocupação. A versão v19 descongelou apenas os dois últimos blocos do codificador, com taxa de aprendizado baixa, preservando as demais partes do modelo anterior.
 
-A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. A configuração final previa uma etapa primária e quatro conjuntos secundários. A etapa primária reprovou todos os candidatos antes da execução dos conjuntos secundários. Essa run não entrou nos gradientes, mas foi usada como validação durante o treinamento da v19 e, portanto, não deve ser descrita como teste independente. Como nenhuma configuração v19 aprovou o portão completo, o voo SITL monocular não foi iniciado.
+A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. A configuração final previa uma etapa primária e quatro conjuntos secundários. A etapa primária reprovou todos os candidatos antes da execução dos conjuntos secundários. Essa execução não entrou nos gradientes, mas foi usada como validação durante o treinamento da v19 e, portanto, não deve ser descrita como teste independente. Como nenhuma configuração v19 aprovou o portão completo, o voo SITL monocular não foi iniciado.
 
 \section{Dois fluxos de execução}
 

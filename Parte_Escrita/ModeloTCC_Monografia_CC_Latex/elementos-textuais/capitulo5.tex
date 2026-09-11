@@ -2,21 +2,21 @@
 
 \section{Introdução}
 
-Este capítulo apresenta separadamente os resultados tabulares e espaciais. O primeiro eixo usa a base legada de 40 runs e 1.234 intervalos. O segundo usa subconjuntos documentados do arquivo de 103 runs espaciais. Essa separação é importante porque as runs espaciais foram produzidas durante diferentes fases de desenvolvimento e não substituem a coorte tabular.
+Este capítulo apresenta separadamente os resultados tabulares e espaciais. O primeiro eixo usa a base legada de 40 execuções e 1.234 intervalos. O segundo usa subconjuntos documentados dos 103 diretórios de execuções espaciais completas. Essa separação é importante porque as execuções espaciais foram produzidas durante diferentes fases de desenvolvimento e não substituem a coorte tabular.
 
 \section{Material e métodos}
 
 \subsection{Divisão dos dados e métricas}
 
-No eixo tabular, 35 runs formam o treino final, duas compõem a validação fixa e três o teste fixo. Os marcos 9, 17, 25, 33 e 40 indicam o total de runs disponível, mantendo sempre as mesmas cinco runs reservadas. MAE, RMSE e correlação foram calculados nas unidades originais. Para eventos de proximidade também foram usados acurácia balanceada, precisão, revocação e F1.
+No eixo tabular, 35 execuções formam o treino final, duas compõem a validação fixa e três o teste fixo. Os marcos 9, 17, 25, 33 e 40 indicam o total de execuções disponível, mantendo sempre as mesmas cinco execuções reservadas. MAE, RMSE e correlação foram calculados nas unidades originais. Para eventos de proximidade também foram usados acurácia balanceada, precisão, revocação e F1.
 
-No eixo espacial, a bateria final de referência contém as dez runs consecutivas registradas entre \texttt{run\_20260831\_082418\_723471} e \texttt{run\_20260831\_084356\_708163}. O arquivo completo possui 103 runs, mas elas não formam um único split: versões diferentes reutilizaram subconjuntos para desenvolvimento, treino e diagnóstico.
+No eixo espacial, a bateria final de referência contém as dez execuções consecutivas registradas entre \texttt{run\_20260831\_082418\_723471} e \texttt{run\_20260831\_084356\_708163}. O arquivo completo possui 103 diretórios de execuções completas, mas eles não formam um único conjunto: versões diferentes reutilizaram subconjuntos para desenvolvimento, treino e diagnóstico.
 
 \subsection{Composição da validação monocular}
 
-A versão v19 usou 20 runs completas no treino e uma run apenas para calibração. O treino efetivo registrou 3.322 quadros, com repetição dirigida de quatro runs de foco. A run 3 da bateria final, \texttt{run\_20260831\_082836\_332335}, forneceu os 77 quadros de validação durante o treinamento e também foi o conjunto primário do portão. Portanto, ela não é um teste independente.
+A versão v19 usou 20 execuções completas no treino e uma execução apenas para calibração. O treino efetivo registrou 3.322 quadros, com repetição dirigida de quatro execuções de foco. A terceira execução da bateria final, \texttt{run\_20260831\_082836\_332335}, forneceu os 77 quadros de validação durante o treinamento e também foi o conjunto primário do portão. Portanto, ela não é um teste independente.
 
-Quatro conjuntos estavam reservados para o estágio secundário: as runs 6 e 10 da bateria final, \texttt{run\_20260820\_225114\_611267} e \texttt{run\_20260819\_191346\_877996}. Eles não foram executados no portão final porque nenhum candidato aprovou o conjunto primário. As duas runs antigas e as runs 6 e 10 não participaram do ajuste dos pesos da v19.
+Quatro conjuntos estavam reservados para o estágio secundário: a sexta e a décima execuções da bateria final, \texttt{run\_20260820\_225114\_611267} e \texttt{run\_20260819\_191346\_877996}. Eles não foram executados no portão final porque nenhum candidato aprovou o conjunto primário. As duas execuções antigas, assim como a sexta e a décima execuções da bateria, não participaram do ajuste dos pesos da v19.
 
 O portão espacial exigia simultaneamente: pelo menos 100 quadros integrados; caminho executável mínimo de 1,5~m; taxa de sucesso de planejamento igual ou superior a 80\%; taxa de falso espaço livre igual ou inferior a 10\%; ao menos um plano executável; e todos os planos executáveis livres de colisão no mapa produzido com profundidade do Gazebo.
 
@@ -24,7 +24,7 @@ O portão espacial exigia simultaneamente: pelo menos 100 quadros integrados; ca
 
 \subsection{Crescimento do conjunto e perdas}
 
-A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 40 runs, o erro caiu em cinco dos seis alvos, mas os valores oscilaram nos marcos intermediários. A diversidade das novas runs, e não apenas sua quantidade, afetou o resultado.
+A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 40 execuções, o erro caiu em cinco dos seis alvos, mas os valores oscilaram nos marcos intermediários. A diversidade das novas execuções, e não apenas sua quantidade, afetou o resultado.
 
 \begin{figure}[htb]
     \centering
@@ -34,7 +34,7 @@ A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-A menor perda de validação ocorreu na época 17. O treinamento parou na época 67 e restaurou os pesos da época 17. A Figura~\ref{fig:mono-loss} mostra que a perda de treino continuou caindo enquanto validação e teste deixaram de acompanhar essa melhora.
+A menor perda de validação ocorreu na época 17. O treinamento parou na época 67 e restaurou os pesos da época 17. A parada antecipada e a seleção dos pesos consideraram somente a perda de validação. A perda do teste foi calculada posteriormente para a figura e não participou do treinamento, da escolha da época ou do ajuste de hiperparâmetros. A Figura~\ref{fig:mono-loss} mostra que a perda de treino continuou caindo enquanto validação e teste deixaram de acompanhar essa melhora.
 
 \begin{figure}[htb]
     \centering
@@ -105,7 +105,7 @@ Diferença de imagem & -0,50 \\
 
 \subsection{Bateria espacial com profundidade do Gazebo}
 
-As dez runs completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. A duração média foi 77,37~s, com desvio de 4,49~s, e o planejamento levou em média 99,18~ms.
+As dez execuções completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. A duração média foi 77,37~s, com desvio de 4,49~s, e o planejamento levou em média 99,18~ms.
 
 \begin{table}[htb]
 \centering
@@ -127,12 +127,12 @@ Tempo médio de planejamento & 99,18~ms \\
 
 A precisão média de ocupação foi 1,0, a revocação 0,584 e a taxa de falso espaço livre 0,316. Esse último valor não significa que o sensor do Gazebo errou em 31,6\%. A métrica compara o mapa parcial acumulado pelo drone, limitado aos raios observados e às regras de atualização, com uma referência de ocupação mais ampla. Ela mede divergência entre mapas sob cobertura diferente. Por isso, a evidência de segurança usada na bateria foi a verificação dos caminhos adotados, e não a interpretação isolada dessa taxa.
 
-A Figura~\ref{fig:mono-mapa-astar} apresenta uma projeção no plano NED da primeira run da bateria. Os pontos ocupados foram filtrados pela faixa de voo; as linhas mostram os caminhos efetivamente adotados.
+A Figura~\ref{fig:mono-mapa-astar} apresenta uma projeção no plano NED da primeira execução da bateria. Os pontos ocupados foram filtrados pela faixa de voo; as linhas mostram os caminhos efetivamente adotados.
 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/resultados_mapa_astar.png}
-    \caption{Mapa de referência e caminhos A* adotados na primeira run da bateria final.}
+    \caption{Mapa de referência e caminhos A* adotados na primeira execução da bateria final.}
     \label{fig:mono-mapa-astar}
     \legend{Fonte: elaborado pelo autor a partir dos registros da bateria.}
 \end{figure}

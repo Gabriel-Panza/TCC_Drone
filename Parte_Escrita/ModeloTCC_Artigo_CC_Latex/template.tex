@@ -122,14 +122,14 @@
 \pagebreak
 \textual
 \begin{center}
-\Large {Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Estimativa de Proximidade em VANTs\\
+\Large {Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial Seguro em VANTs\\
 %\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
-\textit{Before the Architecture: Experimental Evaluation of Monocular and Inertial Signals for Proximity Estimation in UAVs}}
+\textit{Before the Architecture: Experimental Evaluation of Monocular Perception and Safe Spatial Planning for UAVs}}
 \end{center}
 \vspace{.2cm} 
 
 \begin{flushright}
-Gabriel Justino Panza\footnote{Graduando do Curso de Ciência da Computação - UFF.} 
+Gabriel Justino Panza\footnote{Graduando do Curso de Ciência da Computação - UFF. Matrícula: 221031135.}
 
 Prof. Dr. Leandro Augusto Frata Fernandes\footnote{Orientador - Instituto de Computação - UFF.}
 
@@ -145,7 +145,7 @@ Dr. Eduardo Charles Vasconcellos\footnote{Pesquisador e coorientador.}
 \vspace{-.3cm}
 
 \noindent
-Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A primeira etapa usa 40 execuções completas e 1.234 intervalos sincronizados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Uma perceptron multicamada foi comparada com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A rede não venceu em todos os alvos; retirar IMU e atitude elevou o MAE em 6,8\% na média. Na segunda etapa, profundidade foi convertida em ocupação tridimensional e usada por um planejador A*. Com profundidade do Gazebo, dez de dez runs completaram a rota sem adotar caminhos inseguros. Sete das oito versões monoculares avaliadas passaram pelo critério por pixel, mas nenhuma passou pelo portão espacial completo. O voo monocular não foi autorizado. Os resultados mostram que métricas por pixel são insuficientes para liberar um estimador destinado ao planejamento.
+Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A primeira etapa usa 40 execuções completas e 1.234 intervalos sincronizados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Uma perceptron multicamada foi comparada com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A rede não venceu em todos os alvos; retirar IMU e atitude elevou o MAE em 6,8\% na média. Na segunda etapa, profundidade foi convertida em ocupação tridimensional e usada por um planejador A*. Com profundidade do Gazebo, dez de dez execuções completaram a rota sem adotar caminhos inseguros. Sete das oito versões monoculares avaliadas passaram pelo critério por pixel, mas nenhuma passou pelo portão espacial completo. O voo monocular não foi autorizado. Os resultados mostram que métricas por pixel são insuficientes para liberar um estimador destinado ao planejamento.
 
 \vspace{.4cm}
  
@@ -223,7 +223,7 @@ O desvio monocular baseado em fluxo já foi estudado em outros trabalhos. Em ger
 
 \subsubsection{Ambiente, coleta e sincronização}
 
-Os experimentos são executados em \textit{Software in the Loop} (SITL) com PX4, Gazebo e \textit{Robot Operating System}~2 (ROS~2). O quadricóptero simulado possui uma câmera nos canais vermelho, verde e azul (RGB) frontal, usada na estabilização da imagem, no cálculo do fluxo óptico e no desvio. Uma câmera de profundidade alinhada fornece somente os valores de referência. Esses valores não são usados pelo controlador nem entram no modelo.
+Os experimentos são executados em \textit{Software in the Loop} (SITL) com PX4, Gazebo e \textit{Robot Operating System}~2 (ROS~2). O quadricóptero simulado possui uma câmera frontal nos canais vermelho, verde e azul (RGB). No fluxo legado, essas imagens são estabilizadas e usadas no cálculo do fluxo óptico e na lógica reativa de desvio. No fluxo espacial, a imagem RGB alimenta o estimador monocular de profundidade, e o A* substitui a decisão reativa de desvio. Uma câmera de profundidade alinhada fornece os alvos da análise tabular e a referência para avaliar o estimador monocular. Na bateria espacial de referência, essa profundidade também alimenta o mapa e o A* para validar a geometria e o planejamento antes da inclusão do estimador monocular. Ela não entra nas entradas da MLP nem no modelo monocular.
 
 O ambiente simulado utilizado nos experimentos foi desenvolvido com o apoio do pesquisador Eduardo Charles Vasconcellos, especialmente na configuração do cenário, do VANT e dos componentes relacionados ao voo autônomo.
 
@@ -249,7 +249,7 @@ A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas a
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 runs formam o treino, duas a validação fixa e três o teste fixo. O arquivo espacial possui 103 runs completas produzidas em etapas diferentes e não é tratado como uma coorte tabular homogênea.
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 execuções formam o treino, duas a validação fixa e três o teste fixo. Separadamente, o diretório espacial contém 103 diretórios de execuções completas, produzidos durante diferentes etapas de desenvolvimento, treinamento, diagnóstico e validação. Esse arquivo não é tratado como uma coorte homogênea nem como 103 repetições equivalentes.
 
 A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas execuções completas. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
 
@@ -299,13 +299,13 @@ Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O
 
 O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
 
-A v19 usou 20 runs no treino, uma run de calibração e a run 3 da bateria final como validação. Essa mesma run foi o conjunto primário do portão e, por isso, não é chamada de teste independente. As runs 6 e 10 da bateria e duas runs antigas ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
+A v19 usou 20 execuções no treino, uma execução de calibração e a terceira execução da bateria final como validação. Essa mesma execução foi o conjunto primário do portão e, por isso, não é chamada de teste independente. A sexta e a décima execuções da bateria, além de duas execuções antigas, ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
 
 Esse modo não usa os comandos reativos de fluxo óptico. O A* fornece pontos de posição, enquanto o PX4 continua responsável pela estabilização e pelo acompanhamento físico desses pontos. Portanto, ``sem controle reativo'' não significa voo sem controle, mas uma separação entre percepção e planejamento, avaliados neste trabalho, e o controle de baixo nível já fornecido pelo piloto automático.
 
 \subsection{Evidências experimentais}
 
-A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo. Entre 9 e 40 runs, o erro caiu em cinco dos seis alvos, mas os marcos intermediários oscilaram.
+A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo. Entre 9 e 40 execuções, o erro caiu em cinco dos seis alvos, mas os marcos intermediários oscilaram.
 
 \begin{figure}[htb]
 \centering
@@ -315,7 +315,7 @@ A Figura~\ref{fig:artigo-curva-aprendizado} apresenta o MAE no teste fixo. Entre
 \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-A menor perda de validação ocorreu na época 17. O treinamento encerrou na época 67 e restaurou esses pesos. A Figura~\ref{fig:artigo-loss} evidencia o sobreajuste posterior.
+A menor perda de validação ocorreu na época 17. O treinamento encerrou na época 67 e restaurou esses pesos. A parada antecipada e a escolha da época usaram somente a perda de validação. A perda do teste foi calculada posteriormente para compor a figura e não participou do treinamento, da seleção dos pesos ou do ajuste de hiperparâmetros. A Figura~\ref{fig:artigo-loss} evidencia o sobreajuste posterior.
 
 \begin{figure}[htb]
 \centering
@@ -374,12 +374,12 @@ Diferença de imagem & -0,50\% \\
 \legend{Fonte: elaborado pelo autor.}
 \end{table}
 
-Na bateria espacial, as dez runs completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados, sem caminho inseguro. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
+Na bateria espacial, as dez execuções completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados, sem caminho inseguro. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
 
 \begin{figure}[htb]
 \centering
 \includegraphics[width=\textwidth]{figuras/resultados_mapa_astar.png}
-\caption{Mapa de referência e caminhos A* adotados na primeira run final.}
+\caption{Mapa de referência e caminhos A* adotados na primeira execução final.}
 \label{fig:artigo-mapa}
 \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -403,7 +403,7 @@ Colisões & 0 & 2 & 1 & 0 & 1 & 0 & 1 & 0 \\
 \legend{Fonte: relatório final consolidado.}
 \end{table}
 
-Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A configuração v19 de melhor posição integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão: falhou três dos quatro critérios numéricos. O ONNX avaliado tem SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}.
+Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A configuração v19 de melhor posição integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão: falhou três dos quatro critérios numéricos. A identificação completa do artefato ONNX avaliado está registrada no Apêndice C.
 
 \section{Conclusão}
 
@@ -430,7 +430,7 @@ As limitações incluem um único cenário simulado, uma rota principal, eventos
 \addcontentsline{toc}{chapter}{APÊNDICE C - Configuração e disponibilidade}
 
 \noindent
-O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 runs e 1.234 intervalos, divididos em 35 runs de treino, duas de validação e três de teste no marco final.
+O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 execuções e 1.234 intervalos, divididos em 35 execuções de treino, duas de validação e três de teste no marco final.
 
 \noindent
 O modelo monocular final é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.
