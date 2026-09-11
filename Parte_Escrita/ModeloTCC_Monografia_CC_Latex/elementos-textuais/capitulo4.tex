@@ -2,6 +2,8 @@
 
 \section{Introdução}
 
+Este capítulo descreve a implementação usada para produzir e analisar os dados. O sistema reúne dois fluxos: o legado, baseado em atributos de movimento e fluxo óptico, e o espacial, que transforma profundidade em um mapa de ocupação e em caminhos para o PX4. Os dois compartilham o mesmo ambiente simulado, mas respondem a perguntas diferentes.
+
 \section{Ambiente experimental}
 
 Os experimentos usam SITL, com PX4 como piloto automático, Gazebo como ambiente físico e ROS~2 como camada de comunicação. O computador do laboratório possui processador Intel Core i7-14700K, com 20 núcleos e 28 \textit{threads}, 64~GB de memória de acesso aleatório (RAM) e uma unidade de processamento gráfico (GPU) NVIDIA GeForce RTX 4080 SUPER com 16~GB de memória de vídeo.
@@ -14,9 +16,9 @@ O sistema executa Ubuntu 22.04.5 com suporte de longo prazo (LTS) no \textit{Win
 
 O controlador recebe posição local e dados inerciais do PX4, publica comandos no modo \textit{Offboard} e processa imagens de uma câmera RGB monocular frontal. Uma câmera de profundidade alinhada fornece os valores de referência. A profundidade não participa da lógica reativa.
 
-O controlador executa a 25~Hz e limita a velocidade a 12~m/s. A missão percorre quatro pontos relativos no sistema norte-leste-baixo (NED), em metros: $(-25,25,-1{,}65)$, $(-50,70,-1{,}65)$, $(-25,25,-1{,}65)$ e $(0,0,-1{,}65)$. Os pontos intermediários são aceitos dentro de um raio de 4~m. A lógica de desvio fica desativada nos 8~m finais do retorno. A missão termina quando o veículo chega a menos de 3~m do último ponto e conclui o pouso e o desarme previstos pelo controlador.
+O percurso espacial de referência usa três objetivos relativos no sistema norte-leste-baixo (NED), em metros: $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$. O A* fornece pontos de posição ao modo \textit{Offboard}, enquanto o PX4 mantém a estabilização do veículo. A configuração final usa raio horizontal de segurança de 1,25~m, banda e inflação verticais de 0,10~m no mapa de planejamento e tolerância vertical de 0,50~m. Essas margens foram escolhidas antes da bateria final: valores verticais maiores faziam as copas das árvores bloquear o plano de voo mesmo quando havia separação em altura.
 
-A versão final contém 40 execuções e 1.234 intervalos sincronizados. Os diretórios de \texttt{logs} e \texttt{datasets} são associados pela ordem e pelo horário de criação. Cada par corresponde à mesma execução, embora seus nomes possam diferir por alguns segundos.
+A base consolidada contém 103 execuções completas e 8.305 intervalos sincronizados. Destas, 102 atendem aos critérios usados nos marcos da MLP. Execuções abortadas ou sem manifesto final não entram na análise. Os diretórios de \texttt{logs} e \texttt{datasets} são associados pelo identificador e pelos horários registrados em seus manifestos.
 
 A Figura~\ref{fig:metodologia-trajetorias} apresenta quatro trajetórias distribuídas ao longo da coleta. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
 
@@ -52,12 +54,12 @@ O coletor associa cada intervalo RGB ao mapa de profundidade mais recente. Amost
 
 Os dados são gravados em arquivos NumPy com mapeamento em memória. Cada execução possui um manifesto \textit{JavaScript Object Notation} (JSON) com esquema, quantidade de amostras, parâmetros e nomes dos vetores. Esse formato permite ler as execuções sem manter todas as imagens e matrizes na RAM e também permite ignorar uma execução incompleta.
 
-A Figura~\ref{fig:metodologia-intervalos} apresenta a duração dos intervalos nas 40 execuções.
+A Figura~\ref{fig:metodologia-intervalos} apresenta a duração dos intervalos nas execuções completas.
 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.png}
-    \caption{Distribuição do intervalo temporal entre atualizações visuais nas 40 execuções.}
+    \caption{Distribuição do intervalo temporal entre atualizações visuais nas execuções completas.}
     \label{fig:metodologia-intervalos}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -74,7 +76,7 @@ A Figura~\ref{fig:metodologia-sincronizacao} coloca na mesma sequência o percen
 
 \section{Notebook de análise}
 
-O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33 e 40 execuções, sempre preservando os casos anteriores.
+O notebook carrega os pares de diretórios, verifica a qualidade temporal e constrói as entradas e os alvos. Valores não finitos recebem zero após o carregamento. A curva de aprendizado usa conjuntos cumulativos de 9, 17, 25, 33, 50, 67, 85 e 102 execuções, sempre preservando os casos anteriores e os mesmos conjuntos de validação e teste.
 
 As entradas incluem duração e atraso de sincronização; deltas de posição e atitude; integrais e variações de giroscópio e acelerômetro; comandos de risco, frenagem e desvio; estatísticas do fluxo; retenção de pontos; e descritores da diferença de imagem. O notebook também testa a representação dos ângulos por seno e cosseno.
 
@@ -102,8 +104,10 @@ A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da v
 
 \section{Dois fluxos de execução}
 
-O fluxo legado, usado na coleta das 40 execuções, mantém a lógica reativa baseada em fluxo óptico e publica setpoints de velocidade. Ele continua disponível para reprodução das análises tabulares e para trabalhos futuros sobre controle. O fluxo espacial seleciona \texttt{navigation\_mode=spatial\_astar}, desativa a influência dos comandos reativos e transforma os caminhos do A* em setpoints de posição. Nesse segundo fluxo, “sem controle reativo” não significa ausência de controle físico: o PX4 ainda estabiliza o veículo e acompanha os pontos recebidos.
+O fluxo legado mantém a lógica reativa baseada em fluxo óptico e publica \textit{setpoints} de velocidade. Ele continua disponível para reproduzir as análises tabulares e para trabalhos futuros sobre controle. O fluxo espacial seleciona \texttt{navigation\_mode=spatial\_astar}, desativa a influência dos comandos reativos e transforma os caminhos do A* em \textit{setpoints} de posição. Nesse segundo fluxo, sem controle reativo não significa ausência de controle físico: o PX4 ainda estabiliza o veículo e acompanha os pontos recebidos.
 
 Por segurança, \texttt{spatial\_execute\_path} permanece falso nos arquivos YAML. Com esse valor, o sistema constrói mapas e planos sem armar. O voo com profundidade de referência exige ativação explícita desse parâmetro. O modo monocular possui um portão adicional: mesmo com a ativação explícita, sua bateria só deve ocorrer depois da aprovação offline. O roteiro completo e os comandos ficam em \path{docs/execucao_pipeline_espacial.md}.
 
 \section{Considerações finais}
+
+A implementação mantém coleta, análise tabular, percepção monocular e navegação espacial em componentes separados. Essa organização foi necessária para repetir decisões offline e para impedir que uma falha do estimador fosse confundida com uma falha do planejador ou do PX4. Os resultados obtidos com essa estrutura são apresentados no próximo capítulo.

@@ -2,36 +2,72 @@
 
 \section{Introdução}
 
+Este capítulo apresenta os resultados dos dois eixos experimentais. O primeiro verifica o que pode ser aprendido a partir dos intervalos sincronizados de voo. O segundo avalia se a profundidade, quando transformada em ocupação tridimensional, sustenta caminhos seguros. Os resultados foram mantidos separados porque uma previsão numérica razoável não implica, por si só, uma decisão segura de navegação.
+
 \section{Material e métodos}
 
 \subsection{Divisão dos dados e métricas}
 
+Após a remoção de execuções abortadas e incompletas, permaneceram 103 runs e 8.305 intervalos válidos. A análise de crescimento utilizou até 102 runs elegíveis, nos marcos 9, 17, 25, 33, 50, 67, 85 e 102. Validação e teste foram fixados por execução completa. MAE, RMSE e correlação foram calculados nas unidades originais de cada alvo. Para eventos de proximidade também foram usados acurácia balanceada, precisão, revocação, F1 e precisão média.
+
 \subsection{Eventos e análise das entradas}
+
+Além da MLP multissaída, foram avaliados uma previsão constante pela média do treino, Random Forest, Extra Trees e um modelo em duas etapas para eventos de proximidade. A estabilidade da MLP foi repetida com cinco sementes. A contribuição das entradas foi estudada por gradientes do erro na validação e por ablação, retirando um grupo de cada vez e treinando novamente.
+
+Na validação espacial, a bateria com profundidade de referência foi executada em SITL. Os estimadores monoculares v12 a v19 passaram primeiro por métricas de profundidade e depois por repetição espacial offline. O portão exigia disponibilidade de planos, limite de falso espaço livre e ausência de colisões contra o mapa de referência. O SITL monocular só seria autorizado após a aprovação completa.
 
 \section{Evidências experimentais}
 
 \subsection{Crescimento do conjunto de treino}
 
+O aumento do conjunto de treino melhorou a comparação com a média constante, mas o ganho não foi uniforme entre todos os alvos. No marco de 102 runs, a MLP com representação angular por seno e cosseno obteve, no teste, MAE de 0,364~m para $\Delta P10$, 0,810~m para $\Delta P50$ e 3,068~m para $\Delta P90$. Para as proporções de pixels próximos, os MAEs foram 3,457, 5,280 e 3,066 pontos percentuais nos limiares de 2, 5 e 10~m. As correlações ficaram entre 0,718 e 0,843. O maior erro no $\Delta P90$ mostra que mudanças na parte distante da distribuição continuam mais difíceis de representar.
+
 \subsection{Perdas e representação angular}
+
+A melhor época não foi a última época executada, o que confirma a utilidade da parada antecipada. Na execução consolidada, as curvas foram registradas até a época 170 e os pesos escolhidos vieram do menor erro de validação. A representação por seno e cosseno evitou a descontinuidade artificial de ângulos próximos a $-\pi$ e $\pi$. Seu efeito foi avaliado mantendo divisão, arquitetura e semente, sem misturá-lo ao efeito do aumento dos dados.
 
 \subsection{Sementes e modelos de referência}
 
+Nas cinco sementes, o desvio padrão do MAE de teste variou de 0,002~m em $\Delta P10$ a 0,068 ponto percentual na proporção abaixo de 5~m. Para $\Delta P90$, o MAE médio foi 2,986~m, com desvio de 0,053~m. Essa variação é pequena diante da diferença entre os alvos e indica que a conclusão principal não depende de uma inicialização favorável. Os modelos de árvores e a média do treino foram mantidos como referências, impedindo que o resultado da MLP fosse interpretado sem comparação.
+
 \subsection{Eventos de proximidade}
 
+No marco de 102 runs, o classificador de eventos atingiu F1 de 0,959 na validação e 0,953 no teste. A acurácia balanceada foi 0,774 e 0,765, respectivamente. A diferença entre F1 e acurácia balanceada ocorre porque eventos são frequentes no conjunto: no teste, 91,1\% das amostras pertencem à classe positiva. Por isso, F1 alto sozinho não demonstra que os casos sem evento foram bem separados.
+
 \subsection{Gradientes e ablação}
+
+Os gradientes mostraram que a sensibilidade muda conforme o alvo e a amostra. Entre os maiores erros apareceram descritores da diferença de imagem, deslocamento vertical, retenção do fluxo e integrais do giroscópio. A ablação forneceu uma evidência mais estável: retirar os descritores de diferença de imagem elevou o MAE médio em 13,7\% para a variação de pixels abaixo de 10~m e em 21,1\% para $\Delta P90$. IMU e atitude também contribuíram, enquanto comandos reativos e sincronização tiveram efeito menor e, em alguns casos, próximo da variação entre sementes. Isso não torna os grupos sem efeito inúteis, mas mostra onde a informação mais consistente se concentrou.
 
 \section{Implicações para o posicionamento}
 
 \subsection{Efeito da quantidade de dados}
 
+Os marcos adicionais reduziram a dependência de conclusões obtidas com poucas trajetórias. O resultado, porém, não sustentou a ideia de que apenas coletar mais dados resolveria todos os alvos. Os erros ligados ao percentil distante continuaram maiores, sugerindo limitação da representação resumida e não somente falta de amostras.
+
 \subsection{Estabilidade e modelos de referência}
+
+A baixa dispersão entre sementes mostra que o treinamento da MLP é reprodutível dentro do protocolo adotado. As referências tabulares continuam necessárias: elas distinguem ganho real de uma rede neural de um resultado que poderia ser obtido por uma previsão constante ou por árvores.
 
 \subsection{Entradas e concentração dos erros}
 
+Gradiente e ablação responderam perguntas diferentes. O gradiente indicou quais entradas estavam ligadas ao erro local; a ablação mediu a perda de desempenho quando um grupo inteiro deixou de estar disponível. A concordância parcial entre as duas análises reforçou a importância da mudança visual e da dinâmica do veículo, sem permitir uma interpretação causal.
+
 \subsection{Classificação ou regressão dos eventos}
+
+O problema de eventos não deve ser resumido pela taxa de acerto da classe positiva. Como a classe é desbalanceada, a acurácia balanceada mostrou uma dificuldade que o F1 ocultava. Para uso em segurança, os falsos negativos e os casos sem evento precisam ser examinados separadamente antes de empregar o classificador como gatilho de controle.
 
 \subsection{Validação espacial}
 
+Com profundidade de referência, as dez runs da bateria finalizaram os três objetivos, totalizando 30 objetivos globais alcançados. Houve 156 tentativas de planejamento, 147 planos bem-sucedidos e 132 caminhos adotados. Nenhum caminho adotado foi classificado como inseguro pelo mapa de referência. A duração média foi 77,37~s, com desvio padrão de 4,49~s, e o tempo médio de planejamento foi 99,18~ms.
+
+O mapa de referência apresentou precisão média de ocupação igual a 1,0 e revocação média de 0,584. O valor indica um mapa conservador: os voxels marcados como ocupados estavam corretos, mas parte dos obstáculos de referência não foi incorporada. A taxa média de falso espaço livre foi 0,316. Esse valor não produziu caminhos adotados inseguros na bateria, porém impede tratar o mapa como reconstrução completa do cenário.
+
+Os modelos monoculares tiveram resultado diferente. Sete das oito versões avaliadas passaram pelo critério de profundidade por pixel; a v15 não passou. Entre os modelos qualificados, o MAE ficou entre 1,242 e 1,498~m e o erro relativo absoluto entre 0,141 e 0,159. Ainda assim, nenhum modelo passou pelo portão espacial. A v19, por exemplo, obteve MAE de 1,286~m e não gerou colisões no conjunto primário, mas alcançou somente 41,2\% de sucesso de planejamento e taxa de falso espaço livre de 0,184. Como também não atingiu o número mínimo de quadros do portão, os conjuntos secundários não foram executados e o SITL monocular permaneceu bloqueado.
+
 \section{Princípios metodológicos derivados}
 
+Os experimentos levaram a quatro decisões metodológicas. A divisão precisa ocorrer por execução, e não por intervalo. A avaliação de um estimador destinado à navegação precisa incluir o uso espacial de sua saída. Resultados de segurança devem registrar caminhos adotados, vetos e abortos, em vez de contar apenas missões concluídas. Por fim, um resultado negativo de portão deve ser preservado: ele identifica de forma objetiva a etapa que ainda não está pronta para voo.
+
 \section{Considerações finais}
+
+O eixo tabular mostrou que os sinais sincronizados contêm informação sobre mudanças de proximidade, com maior contribuição dos descritores visuais e de movimento. O eixo espacial mostrou que a geometria, o mapa e o A* funcionam com profundidade de referência, mas que a profundidade monocular disponível ainda não sustenta o mesmo nível de segurança. Essa diferença é o principal resultado da validação.

@@ -2,6 +2,20 @@
 
 \section{Posição e contribuição}
 
+Este trabalho investigou como avaliar sinais monoculares e inerciais antes de usá-los em uma navegação autônoma. A contribuição principal não é um novo controlador ou um novo algoritmo de planejamento. É um procedimento experimental que liga coleta sincronizada, divisão por execução, referências simples, análise dos erros e um portão espacial de segurança.
+
+A base final reuniu 103 execuções completas e 8.305 intervalos. A MLP apresentou resultados estáveis entre sementes e superou a referência constante nos alvos analisados. Diferença de imagem, movimento e sinais inerciais concentraram parte importante da informação, enquanto os erros do percentil distante permaneceram altos. Na etapa espacial, a profundidade do Gazebo permitiu completar dez de dez runs sem adotar caminhos inseguros. O mesmo não ocorreu com as versões monoculares v12 a v19. Elas podiam obter métricas por pixel aceitáveis e, ainda assim, produzir falso espaço livre ou poucos caminhos executáveis.
+
+Esses resultados sustentam a posição defendida: antes de aumentar a complexidade da arquitetura ou colocar o estimador no laço de voo, é preciso verificar a representação e a consequência espacial dos erros. O bloqueio do SITL monocular não é uma ausência de resultado. Ele mostra que a métrica por pixel, isolada, seria um critério insuficiente de liberação.
+
 \section{Limitações}
 
+Os experimentos foram realizados em um único cenário simulado, com um modelo de veículo e uma rota principal. A profundidade de referência do Gazebo não reproduz todo o ruído de um sensor real. A faixa vertical estreita foi adequada à rota em altitude quase constante, mas não generaliza automaticamente para subidas, descidas ou obstáculos suspensos.
+
+Os atributos tabulares resumem as imagens e perdem informação espacial. Os eventos de proximidade são desbalanceados, o que limita a interpretação de F1 alto. Na validação monocular, o conjunto primário da v19 também participou da validação durante o treinamento e, por isso, não foi tratado como teste independente. Como o primeiro estágio do portão falhou, os conjuntos secundários não foram executados.
+
 \section{Agenda de trabalhos futuros}
+
+O passo seguinte é ampliar a diversidade dos pares RGB--profundidade, incluindo outras rotas, alturas, iluminação e cenas, e reservar desde o início um conjunto espacial que não participe de treinamento nem de escolha de hiperparâmetros. Também é necessário calibrar a incerteza da profundidade por região da imagem e incorporá-la à ocupação, em vez de usar somente margens globais.
+
+Depois da aprovação offline, o modelo deve ser testado primeiro em missões curtas e supervisionadas, mantendo o mapa de referência como guardião. A avaliação em hardware real deve começar com baixa velocidade e ambientes controlados. No eixo tabular, arquiteturas temporais e atributos espaciais podem ser comparados à MLP atual, sempre preservando a divisão por execução e as mesmas referências.

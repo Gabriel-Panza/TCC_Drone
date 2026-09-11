@@ -2,18 +2,54 @@
 
 \section{Contexto}
 
+Veículos aéreos não tripulados podem percorrer ambientes onde posição e mapa global não estão disponíveis. Nesses casos, uma câmera frontal é uma fonte atraente de informação por ter baixo peso e custo, mas a imagem monocular não fornece distância diretamente. Fluxo óptico, movimento do veículo e estimadores de profundidade ajudam a recuperar parte dessa informação, embora seus erros possam chegar ao planejamento e produzir decisões inseguras.
+
+O problema não está apenas em escolher um modelo. Ele também envolve sincronizar sensores, evitar vazamento entre treino e teste, entender quais entradas sustentam a previsão e verificar se o erro numérico altera o espaço livre usado pelo planejador. Uma profundidade com erro médio aceitável pode deslocar a superfície justamente na região por onde o drone pretende passar.
+
 \section{Posição defendida}
 
+Este trabalho defende que a complexidade do modelo deve ser aumentada somente depois de uma avaliação controlada dos dados e de suas consequências para a navegação. A avaliação por pixel é necessária, mas não suficiente. Quando a saída será usada em um mapa de ocupação, ela também precisa ser testada pela disponibilidade e segurança dos caminhos produzidos.
+
 \section{Perguntas de pesquisa}
+
+As perguntas que orientam o trabalho são:
+
+\begin{enumerate}
+    \item O aumento do número de execuções melhora a previsão das mudanças de proximidade?
+    \item Os resultados permanecem estáveis entre sementes e diante de referências simples?
+    \item Quais grupos de entradas mais contribuem para a generalização e para os maiores erros?
+    \item Separar detecção e regressão ajuda a interpretar eventos de proximidade?
+    \item Uma estimativa monocular aprovada por métricas de profundidade também permite construir caminhos espaciais seguros?
+\end{enumerate}
 
 \section{Objetivos}
 
 \subsection{Objetivo geral}
 
+Desenvolver e aplicar uma metodologia reprodutível para avaliar informação visual e inercial de um VANT, desde os intervalos sincronizados de voo até o uso da profundidade em mapeamento tridimensional e planejamento de caminhos.
+
 \subsection{Objetivos específicos}
+
+\begin{itemize}
+    \item organizar execuções completas em uma representação comum por intervalos;
+    \item comparar uma MLP com referências constantes e modelos de árvores;
+    \item medir o efeito do crescimento dos dados e da inicialização do treinamento;
+    \item analisar eventos de proximidade, gradientes do erro e ablação de grupos de entradas;
+    \item implementar reprojeção, mapa de ocupação, A* e verificações de segurança;
+    \item validar o pipeline espacial com profundidade de referência;
+    \item estabelecer um portão offline para decidir se um estimador monocular está pronto para SITL.
+\end{itemize}
 
 \section{Metodologia}
 
+Os experimentos foram realizados em SITL com PX4, Gazebo e ROS~2. A primeira parte usa intervalos consecutivos de câmera, fluxo óptico, movimento, IMU, comandos e profundidade de referência. As execuções são separadas integralmente entre treino, validação e teste. Uma MLP multissaída é avaliada em conjuntos crescentes, comparada com referências e examinada por sementes, eventos, gradientes e ablação.
+
+A segunda parte reprojeta profundidade em uma grade esparsa de ocupação e usa A* para gerar caminhos no referencial NED. O pipeline é validado primeiro com a profundidade do Gazebo. Versões ajustadas do Depth Anything V2 passam por métricas por pixel e por repetição espacial offline. Somente a aprovação completa permitiria iniciar o voo monocular.
+
 \section{Escopo}
 
+O trabalho avalia percepção e planejamento em simulação. Não propõe um novo algoritmo de fluxo óptico, de profundidade ou de busca, e não substitui o controle de baixo nível do PX4. Também não afirma prontidão para voo real. O foco está no protocolo que conecta dados, modelos, mapa e decisão de segurança.
+
 \section{Organização do texto}\label{Organizacao_do_texto}
+
+O Capítulo~\ref{cap:fundamentacao} apresenta a fundamentação e os trabalhos relacionados. O Capítulo~\ref{cap:proposta} define a proposta metodológica. O Capítulo~\ref{cap:implementacao} descreve o ambiente e o código. O Capítulo~\ref{cap:validacao} reúne os resultados e suas implicações. Por fim, o Capítulo~\ref{cap:conclusoes} apresenta as conclusões, limitações e próximos passos.
