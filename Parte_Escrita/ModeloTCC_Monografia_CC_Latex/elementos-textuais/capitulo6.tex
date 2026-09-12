@@ -8,11 +8,34 @@ A base tabular final reuniu 40 execuções completas e 1.234 intervalos. A MLP a
 
 Esses resultados sustentam a posição defendida: antes de aumentar a complexidade da arquitetura ou colocar o estimador no laço de voo, é preciso verificar a representação e a consequência espacial dos erros. O bloqueio do SITL monocular não é uma ausência de resultado. Ele mostra que a métrica por pixel, isolada, seria um critério insuficiente de liberação.
 
+\section{Respostas às perguntas de pesquisa}
+
+O aumento do conjunto trouxe ganhos modestos e irregulares, embora cinco dos seis alvos tenham terminado com erro menor. As cinco sementes produziram pouca variação no MAE, indicando que a conclusão sobre a MLP é estável. IMU e atitude tiveram a contribuição mais consistente entre gradientes e ablação. Informar o evento real ao regressor produziu apenas uma melhora pequena, portanto o erro ficou concentrado na estimação do sinal e da magnitude. Por fim, métricas aceitáveis por pixel não garantiram utilidade espacial, pois nenhuma versão monocular aprovou o portão completo.
+
+\begin{table}[htb]
+\centering
+\caption{Perguntas de pesquisa, experimentos e respostas.}
+\label{tab:mono-perguntas}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{4.3cm}p{4.2cm}p{6.0cm}}
+\hline
+\textbf{Pergunta} & \textbf{Experimento} & \textbf{Resposta} \\
+\hline
+Mais dados melhoram o desempenho? & Marcos de 9 a 40 execuções & Ganhos modestos, irregulares e dependentes do alvo. \\
+O resultado é estável? & MLP com cinco sementes e referências & Baixa variação entre sementes; nenhum modelo venceu todos os alvos. \\
+Quais entradas contribuem? & Gradientes e ablação & IMU e atitude tiveram a contribuição mais consistente. \\
+Onde se concentra o erro de evento? & Classificador, regressor e evento real & Principalmente na regressão do sinal e da magnitude. \\
+Métrica por pixel garante caminho útil? & Repetição espacial e A* & Não; as versões monoculares falharam no portão espacial. \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
+
 \section{Limitações}
 
 Os experimentos foram realizados em um único cenário simulado, com um modelo de veículo e uma rota principal. A profundidade de referência do Gazebo não reproduz todo o ruído de um sensor real. A faixa vertical estreita foi adequada à rota em altitude quase constante, mas não generaliza automaticamente para subidas, descidas ou obstáculos suspensos.
 
-Os atributos tabulares resumem as imagens e perdem informação espacial. Os eventos de proximidade são desbalanceados, o que limita a interpretação de F1 alto. Na validação monocular, o conjunto primário da v19 também participou da validação durante o treinamento e, por isso, não foi tratado como teste independente. Como o primeiro estágio do portão falhou, os conjuntos secundários não foram executados.
+Os atributos tabulares resumem as imagens e perdem informação espacial. Os eventos de proximidade são desbalanceados, o que limita a interpretação de F1 alto. A MLP foi repetida com cinco sementes, as ablações com três e os modelos de árvores com uma, o que limita comparações de diferenças pequenas entre essas famílias. Na validação monocular, o conjunto primário da v19 também participou da validação durante o treinamento e, por isso, não foi tratado como teste independente. Como o primeiro estágio do portão falhou, os conjuntos secundários não foram executados. A latência completa do pipeline espacial também não foi medida ponta a ponta.
 
 \section{Agenda de trabalhos futuros}
 

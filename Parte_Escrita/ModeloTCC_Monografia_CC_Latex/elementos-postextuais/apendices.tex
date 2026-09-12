@@ -8,6 +8,8 @@
 
 O ambiente reproduzido usa Ubuntu 22.04.5 LTS em WSL~2, Python 3.10.12, ROS~2 Humble, Gazebo Harmonic 8.10.0 e PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}. O veículo é o \texttt{x500\_mono\_cam} no cenário \texttt{baylands}. A rota espacial final contém os objetivos NED $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$~m.
 
+O caminho \path{datasets/depth_ground_truth/old} registra a organização da base tabular no computador do laboratório. Os dados brutos desse diretório não são publicados no GitHub devido ao volume e, portanto, o caminho não representa um recurso publicamente reproduzível.
+
 Os arquivos \path{config/spatial_debug.yaml} e \path{config/spatial_monocular.yaml} mantêm a execução desativada por padrão. A bateria exige ativação explícita pelo script guardado. O raio horizontal de segurança é 1,25~m; banda e inflação verticais do mapa estimado são 0,10~m; no guardião de referência, ambas são 0,20~m.
 
 \section{Processamento e sincronização}

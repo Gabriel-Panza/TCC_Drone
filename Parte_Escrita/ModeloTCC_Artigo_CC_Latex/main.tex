@@ -91,7 +91,7 @@
 }
 \makeatother
 
-\titulo{Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial com Guardião de Segurança em Simulação}
+\titulo{Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Percepção de Proximidade em VANTs}
 \autor{Gabriel Justino Panza}
 \local{Niterói}
 \data{2026}
@@ -122,7 +122,7 @@
 \pagebreak
 \textual
 \begin{center}
-\Large {Antes da Arquitetura: Avaliação Experimental de Percepção Monocular e Planejamento Espacial com Guardião de Segurança em Simulação\\
+\Large {Antes da Arquitetura: Avaliação Experimental de Sinais Monoculares e Inerciais para Percepção de Proximidade em VANTs\\
 %\footnote{Trabalho de conclusão de curso apresentado ao curso de Bacharelado em Ciência da Computação da Universidade Federal Fluminense como requisito parcial para conclusão do curso.}
 \textit{Before the Architecture: Experimental Evaluation of Monocular Perception and Safe Spatial Planning for UAVs}}
 \end{center}
@@ -231,7 +231,7 @@ Os experimentos foram executados em um computador com processador Intel Core i7-
 
 No fluxo espacial, a missão percorre três objetivos relativos no sistema norte-leste-baixo (NED): $(-25,25,-1{,}5)$, $(-50,70,-1{,}5)$ e $(-25,25,-1{,}5)$ metros. O A* fornece pontos de posição ao modo \textit{Offboard}, e o PX4 mantém a estabilização. A configuração final usa raio horizontal de segurança de 1,25~m, banda e inflação verticais de 0,10~m e tolerância vertical de 0,50~m.
 
-A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas ao longo da coleta. A Figura~\ref{fig:artigo-imu} apresenta as variações das velocidades angulares nas mesmas execuções, usadas para caracterizar a atitude e o movimento do veículo.
+As quatro execuções das Figuras~\ref{fig:artigo-trajetorias} e~\ref{fig:artigo-imu} foram escolhidas pela posição cronológica na coleta, cobrindo o início, dois momentos intermediários e o fim, entre as execuções que possuíam trajetórias e sinais inerciais completos. A escolha não usou o erro dos modelos. A primeira figura mostra os percursos, e a segunda apresenta as variações das velocidades angulares nas mesmas execuções.
 
 \begin{figure}[htb]
     \centering
@@ -249,7 +249,24 @@ A Figura~\ref{fig:artigo-trajetorias} mostra quatro trajetórias distribuídas a
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 execuções formam o treino, duas a validação fixa e três o teste fixo. Separadamente, o diretório espacial contém 103 diretórios de execuções completas, produzidos durante diferentes etapas de desenvolvimento, treinamento, diagnóstico e validação. Esse arquivo não é tratado como uma coorte homogênea nem como 103 repetições equivalentes.
+Cada amostra representa a mudança entre duas atualizações consecutivas da lógica visual. Os registros de voo e o conjunto de dados de visão são relacionados por execução. A análise descarta intervalos sem fluxo ou profundidade, com profundidade repetida ou tempos inválidos. A base tabular contém 40 execuções completas e 1.234 intervalos válidos. No marco final, 35 execuções formam o treino, duas a validação fixa e três o teste fixo. Separadamente, o arquivo espacial contém 103 diretórios de execuções completas, produzidos durante diferentes etapas. As funções finais auditáveis são: 20 execuções no treino da v19, uma na calibração, uma no portão primário e quatro reservadas para o estágio secundário; a bateria de referência possui dez execuções. As quatro execuções de foco pertencem às 20 de treino, e parte dos conjuntos reservados pertence à bateria de referência. Essas contagens se sobrepõem e não somam 103. Os demais diretórios registram desenvolvimento e diagnóstico de versões anteriores, sem constituir uma bateria equivalente.
+
+\begin{table}[htb]
+\centering
+\caption{Usos auditáveis das execuções na etapa espacial final.}
+\label{tab:artigo-composicao-espacial}
+\begin{tabular}{lr}
+\hline
+Treino da v19 & 20 \\
+Calibração da v19 & 1 \\
+Portão espacial primário & 1 \\
+Conjuntos reservados para o estágio secundário & 4 \\
+Bateria SITL com profundidade do Gazebo & 10 \\
+Arquivo espacial completo, com etapas heterogêneas & 103 \\
+\hline
+\end{tabular}
+\legend{Fonte: configurações de treino, matriz do portão e \path{docs/auditoria_final_espacial.md}. As categorias podem se sobrepor.}
+\end{table}
 
 A Figura~\ref{fig:artigo-intervalos} mostra a distribuição da duração desses intervalos nas execuções completas. A Figura~\ref{fig:artigo-sincronizacao} coloca o percentil 90 do fluxo e a variação de pixels abaixo de 5~m na mesma sequência de leitura. Essa visualização permite inspecionar o conjunto produzido após o pareamento entre RGB, fluxo e profundidade, sem afirmar causalidade entre as grandezas.
 
@@ -285,6 +302,8 @@ A separação é feita por execução, com validação e teste fixos, enquanto o
 
 A estabilidade da MLP é avaliada com as sementes 7, 21, 42, 84 e 123, sem alterar os conjuntos ou os hiperparâmetros. Random Forest e Extra Trees, ambos com 500 árvores, no mínimo duas amostras por folha, 70\% das entradas candidatas e semente 42, formam referências tabulares adicionais. A ablação remove um grupo de entradas por vez e repete cada configuração com as sementes 21, 42 e 84. A comparação usa a diferença percentual de MAE em relação ao modelo completo da mesma semente.
 
+Essa cobertura é assimétrica: a MLP usa cinco sementes, cada ablação usa três e as árvores aparecem com uma. Pequenas diferenças entre famílias de modelos, portanto, não são tratadas como evidência de superioridade estatística.
+
 \subsubsection{Explicabilidade}
 
 O gradiente do erro quadrático é calculado em relação às entradas padronizadas. O módulo desses valores é reunido na validação por atributo e por grupo de entradas. Nos maiores erros, são mostradas as três entradas mais sensíveis. Quando todos os gradientes são zero, nenhum ranking é apresentado. Essa análise indica sensibilidade perto de cada amostra, mas não permite afirmar que uma entrada seja a causa do erro.
@@ -293,11 +312,31 @@ O \href{https://github.com/Gabriel-Panza/TCC_Drone}{repositório do projeto no G
 
 \subsubsection{Validação espacial complementar}
 
+\begin{figure}[htb]
+\centering
+\fbox{\begin{minipage}{0.94\textwidth}
+\centering
+\textbf{Eixo tabular dos sinais}\\
+RGB, fluxo, IMU, atitude, movimento e comandos $\rightarrow$ intervalos sincronizados $\rightarrow$ MLP e árvores $\rightarrow$ sementes, eventos, gradientes e ablação
+
+\vspace{0.3cm}\hrule\vspace{0.3cm}
+
+\textbf{Eixo espacial da profundidade}\\
+RGB $\rightarrow$ profundidade monocular $\rightarrow$ mapa de ocupação 3D $\rightarrow$ A* $\rightarrow$ portão espacial\\
+\small Profundidade do Gazebo: referência por pixel, mapa de comparação e bateria de validação da geometria.
+\end{minipage}}
+\caption{Visão geral dos dois eixos experimentais.}
+\label{fig:artigo-fluxo-dois-eixos}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
 A etapa espacial preserva a posição central do artigo e acrescenta um teste de utilidade posterior às métricas por pixel. A profundidade densa é reprojetada com o modelo pinhole da câmera, transformada do referencial óptico para o corpo do VANT e depois para o sistema NED. Cada raio acrescenta evidência de espaço livre antes da superfície e de ocupação no ponto final. Evidências temporais, uma faixa vertical ao redor da altitude de voo e margens distintas para espaço livre e ocupado reduzem a influência do solo, das copas e de observações isoladas.
 
 Antes do planejamento, os obstáculos são expandidos pelo raio de segurança. O A* percorre somente voxels conhecidos como livres e usa vizinhança tridimensional. Segmentos que cruzam voxels ocupados ou desconhecidos são rejeitados. Quando o destino ainda não foi observado, o sistema escolhe um subobjetivo em uma fronteira livre que produza avanço. O caminho passa por simplificação com linha de visada, divisão em pontos de passagem e uma nova verificação de segurança antes da publicação.
 
-O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão por pixel exigia MAE global de no máximo 2,0~m, AbsRel de no máximo 0,30, MAE até 5~m de no máximo 1,0~m, viés positivo até 5~m de no máximo 0,5~m, percentil 95 do erro positivo até 5~m de no máximo 1,25~m, MAE entre 5 e 10~m de no máximo 1,5~m e latência no percentil 95 de no máximo 400~ms. O portão espacial exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis.
+O protocolo tem dois estágios. Primeiro, profundidade, mapa e A* foram avaliados com a profundidade do Gazebo em dez execuções consecutivas. Depois, um Depth Anything V2 ViT-S foi refinado nas versões v12 a v19 e avaliado offline em execuções reservadas. O mapa estimado foi comparado com o mapa de referência produzido com profundidade do Gazebo. O portão por pixel exigia MAE global de no máximo 2,0~m, AbsRel de no máximo 0,30, MAE até 5~m de no máximo 1,0~m, viés positivo até 5~m de no máximo 0,5~m, percentil 95 do erro positivo até 5~m de no máximo 1,25~m, MAE entre 5 e 10~m de no máximo 1,5~m e latência no percentil 95 de no máximo 400~ms. O portão espacial exigia pelo menos 100 quadros, caminho executável de 1,5~m, sucesso de planejamento de 80\%, falso espaço livre de no máximo 10\% e ausência de colisão em todos os planos executáveis. Os valores foram definidos ao fim do desenvolvimento e congelados antes da bateria final. Colisão, falso espaço livre e caminho executável expressam requisitos conservadores de segurança; os demais consideram a frequência de processamento e a extensão da rota. O mínimo de 100 quadros evita aprovar um replay curto, sem observações suficientes para testar persistência do mapa e replanejamentos sucessivos.
+
+As mudanças principais entre versões foram controladas. A v12 estabeleceu o ajuste inicial e as margens espaciais; a v13 aumentou a penalização de subestimações perigosas e superfícies falsas na altitude de voo. A v14 incorporou execuções completas da nova bateria, com separação por execução; a v15 concentrou amostras difíceis de troncos e bordas de copas. A v16 ampliou o treino para 20 execuções completas e equilibrou segurança com disponibilidade de espaço livre. A v17 atacou uma superestimação localizada associada a uma colisão análoga; a v18 tratou simultaneamente superestimação perigosa e subestimação que bloqueava corredores livres. A v19 partiu da v18 e ajustou apenas os dois últimos blocos do codificador, com taxa baixa, como tentativa final conservadora.
 
 A v19 usou 20 execuções no treino e uma execução separada de calibração. As quatro execuções de foco são um subconjunto das 20, repetido durante o treinamento. A terceira execução da bateria final foi usada como validação e como conjunto primário do portão; por isso, não é chamada de teste independente. A sexta e a décima execuções da bateria, além de duas execuções antigas, ficaram reservadas para o estágio secundário, que não foi executado porque o estágio primário falhou.
 
@@ -374,7 +413,7 @@ Diferença de imagem & -0,50\% \\
 \legend{Fonte: elaborado pelo autor.}
 \end{table}
 
-Na bateria espacial, as dez execuções completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados. As nove tentativas sem solução foram tratadas por interrupção do avanço e novo planejamento, sem encerrar as missões. Foram registrados 50 vetos de caminho ativo e 50 frenagens concluídas, sem caminho adotado inseguro. Essa evidência vale para a rota fixa, o cenário simulado e os obstáculos estáticos avaliados; objetos em movimento não foram testados. A duração foi $77,37 \pm 4,49$~s e o planejamento levou 99,18~ms em média.
+Na bateria espacial, as dez execuções completaram 30 objetivos. Houve 147 planos bem-sucedidos em 156 tentativas e 132 caminhos adotados. As nove tentativas sem solução foram tratadas por interrupção do avanço e novo planejamento, sem encerrar as missões. Foram registrados 50 vetos de caminho ativo e 50 frenagens concluídas, sem caminho adotado inseguro. Essa evidência vale para a rota fixa, o cenário simulado e os obstáculos estáticos avaliados; objetos em movimento não foram testados. A duração foi $77,37 \pm 4,49$~s; o intervalo de confiança de 95\% para a média, com distribuição $t$ e dez execuções, foi de 74,16 a 80,58~s. O planejamento levou 99,18~ms em média.
 
 \begin{figure}[htb]
 \centering
@@ -400,20 +439,39 @@ Falso livre & 0,367 & 0,390 & 0,431 & 0,304 & 0,291 & 0,184 & 0,263 & 0,184 \\
 Colisões & 0 & 2 & 1 & 0 & 1 & 0 & 1 & 0 \\
 \hline
 \end{tabular}}
-\legend{Fonte: relatório final consolidado.}
+\legend{Fonte: \path{docs/auditoria_final_espacial.md}, gerado a partir do relatório final consolidado.}
 \end{table}
 
 As versões v12 e v13 usaram o conjunto espacial histórico disponível naquele estágio. Da v14 à v19, a terceira execução da bateria final, produzida posteriormente, foi mantida como conjunto primário. Logo, a transição entre v13 e v14 não constitui uma comparação controlada no mesmo conjunto.
 
-Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A v15 excedeu apenas o MAE entre 5 e 10~m: 1,648~m para o limite de 1,5~m. O estimador monocular final avaliado, v19, integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão. A execução completa recebeu 1.227 quadros; o processamento a cada dez quadros e 45 indisponibilidades de profundidade sincronizada resultaram nos 77 quadros úteis, sem rejeição por idade. Em 24 quadros da avaliação offline, a inferência levou 286,7~ms em média e 292,0~ms no percentil 95; isso atende ao limite de 400~ms, mas não comprova tempo real em outras plataformas. A identificação completa do artefato ONNX avaliado está registrada no Apêndice C.
+Sete versões passaram pelo critério por pixel, mas nenhuma aprovou o portão espacial. A v15 excedeu apenas o MAE entre 5 e 10~m: 1,648~m para o limite de 1,5~m. O estimador monocular final avaliado, v19, integrou 77 quadros, obteve 41,2\% de sucesso, falso espaço livre de 0,184 e nenhuma colisão. A execução completa recebeu 1.227 quadros; o processamento a cada dez quadros e 45 indisponibilidades de profundidade sincronizada resultaram nos 77 quadros úteis, sem rejeição por idade. Em 24 quadros da avaliação offline, a inferência levou 286,7~ms em média e 292,0~ms no percentil 95; isso atende ao limite de 400~ms, mas não comprova tempo real em outras plataformas. O planejamento foi medido na bateria de referência, enquanto a inferência foi medida no ensaio monocular offline. Esses tempos não pertencem à mesma execução e não podem ser somados como latência total. O intervalo completo entre receber a imagem, atualizar o mapa, planejar e publicar o caminho não foi instrumentado, o que limita qualquer afirmação de operação próxima de tempo real. A identificação completa do artefato ONNX avaliado está registrada no Apêndice C.
 
 \section{Conclusão}
 
-Os experimentos confirmaram que os intervalos sincronizados contêm informação útil sobre mudanças de proximidade e que a conclusão é estável entre sementes. A MLP não venceu em todos os alvos, e IMU e atitude formaram o grupo mais consistente na ablação.
+As perguntas de pesquisa podem ser respondidas diretamente. O aumento de dados trouxe ganhos modestos e irregulares, embora cinco dos seis alvos tenham terminado com erro menor. As cinco sementes produziram pouca variação no MAE, indicando estabilidade da conclusão sobre a MLP. IMU e atitude apresentaram a contribuição mais consistente entre gradientes e ablação. No modelo em duas etapas, informar o evento real melhorou pouco o MAE, mostrando que a regressão do sinal e da magnitude concentrou o erro. Por fim, a aprovação por pixel não garantiu utilidade espacial: nenhuma versão monocular passou pelo portão completo.
+
+\begin{table}[htb]
+\centering
+\caption{Relação entre perguntas, experimentos e respostas.}
+\label{tab:artigo-perguntas}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{4.3cm}p{4.2cm}p{6.0cm}}
+\hline
+\textbf{Pergunta} & \textbf{Experimento} & \textbf{Resposta} \\
+\hline
+Mais dados melhoram o desempenho? & Marcos de 9 a 40 execuções & Ganhos modestos, irregulares e dependentes do alvo. \\
+O resultado é estável? & MLP com cinco sementes e referências & Baixa variação entre sementes; nenhum modelo venceu todos os alvos. \\
+Quais entradas contribuem? & Gradientes e ablação & IMU e atitude tiveram a contribuição mais consistente. \\
+Onde se concentra o erro de evento? & Classificador, regressor e evento real & Principalmente na regressão do sinal e da magnitude. \\
+Métrica por pixel garante caminho útil? & Repetição espacial e A* & Não; as versões monoculares falharam no portão espacial. \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor.}
+\end{table}
 
 A contribuição principal é o protocolo que liga esses resultados à navegação. A separação por execução reduz vazamento temporal; as referências evitam avaliar a MLP isoladamente; e o portão espacial impede que uma métrica por pixel seja usada como autorização de voo. Com profundidade de referência, mapa e A* completaram a bateria sem adotar caminhos inseguros. Com profundidade monocular, o portão reprovou todas as versões avaliadas. Portanto, o pipeline espacial de referência foi validado no cenário estudado, mas o voo monocular ainda não possui evidência suficiente para ser liberado.
 
-As limitações incluem um único cenário simulado, uma rota principal, eventos desbalanceados e uma faixa de voo quase constante. Trabalhos futuros devem ampliar a diversidade dos pares RGB--profundidade, reservar conjuntos espaciais independentes desde o início e modelar a incerteza da profundidade por região da imagem. Somente depois de aprovar novamente o portão offline devem ser realizados voos monoculares curtos e supervisionados.
+As limitações incluem um único cenário simulado, uma rota principal, eventos desbalanceados, uma faixa de voo quase constante, cobertura desigual de sementes entre modelos e ausência de latência ponta a ponta. Trabalhos futuros devem ampliar a diversidade dos pares RGB--profundidade, reservar conjuntos espaciais independentes desde o início e modelar a incerteza da profundidade por região da imagem. Somente depois de aprovar novamente o portão offline devem ser realizados voos monoculares curtos e supervisionados.
 
 \newpage
 \bibliography{references}
@@ -432,7 +490,7 @@ As limitações incluem um único cenário simulado, uma rota principal, eventos
 \addcontentsline{toc}{chapter}{APÊNDICE C - Configuração e disponibilidade}
 
 \noindent
-O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 execuções e 1.234 intervalos, divididos em 35 execuções de treino, duas de validação e três de teste no marco final.
+O ambiente usa PX4 no commit \texttt{e2708705a8ca625854f1129fd9dde2ae8ae16d59}, ROS~2 Humble, Gazebo Harmonic 8.10.0 e Python 3.10.12. A base tabular possui 40 execuções e 1.234 intervalos, divididos em 35 execuções de treino, duas de validação e três de teste no marco final. O caminho local \path{datasets/depth_ground_truth/old} descreve a organização no computador do laboratório; os dados contidos nele não estão disponíveis publicamente no GitHub.
 
 \noindent
 O estimador monocular final avaliado é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. As quatro execuções de foco são um subconjunto das 20 execuções de treino; a execução de calibração é separada. Configurações e proveniência estão em \path{config/depth_v19_final_training.json} e \path{config/spatial_v19_final_validation_sweep.json}. O código está em \url{https://github.com/Gabriel-Panza/TCC_Drone}.

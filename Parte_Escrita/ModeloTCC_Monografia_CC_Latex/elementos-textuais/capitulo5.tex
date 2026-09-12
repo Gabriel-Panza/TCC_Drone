@@ -12,6 +12,23 @@ No eixo tabular, 35 execuções formam o treino final, duas compõem a validaç�
 
 No eixo espacial, a bateria final de referência contém as dez execuções consecutivas registradas entre \texttt{run\_20260831\_082418\_723471} e \texttt{run\_20260831\_084356\_708163}. O arquivo completo possui 103 diretórios de execuções completas, mas eles não formam um único conjunto: versões diferentes reutilizaram subconjuntos para desenvolvimento, treino e diagnóstico.
 
+\begin{table}[htb]
+\centering
+\caption{Usos auditáveis das execuções na etapa espacial final.}
+\label{tab:mono-composicao-espacial}
+\begin{tabular}{lr}
+\hline
+Treino da v19 & 20 \\
+Calibração da v19 & 1 \\
+Portão espacial primário & 1 \\
+Conjuntos reservados para o estágio secundário & 4 \\
+Bateria SITL com profundidade do Gazebo & 10 \\
+Arquivo espacial completo, com etapas heterogêneas & 103 \\
+\hline
+\end{tabular}
+\legend{Fonte: configurações de treino, matriz do portão e \path{docs/auditoria_final_espacial.md}. As categorias podem se sobrepor.}
+\end{table}
+
 \subsection{Composição da validação monocular}
 
 A versão v19 usou 20 execuções completas no treino e uma execução separada apenas para calibração. As quatro execuções de foco são um subconjunto dessas 20 execuções, repetido de forma dirigida no treinamento. O treino efetivo registrou 3.322 quadros. A terceira execução da bateria final, \texttt{run\_20260831\_082836\_332335}, foi usada na validação durante o treinamento e também como conjunto primário do portão. Portanto, ela não é um teste independente.
@@ -105,7 +122,7 @@ Diferença de imagem & -0,50 \\
 
 \subsection{Bateria espacial com profundidade do Gazebo}
 
-As dez execuções completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. As nove tentativas sem solução não encerraram as missões: o controlador interrompeu o avanço quando necessário e voltou a planejar após novas observações. A bateria registrou 50 vetos de caminho ativo e 50 frenagens concluídas. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. Esses números valem para a rota fixa e o cenário simulado avaliados, não demonstram segurança geral. A duração média foi 77,37~s, com desvio de 4,49~s, e o planejamento levou em média 99,18~ms.
+As dez execuções completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. As nove tentativas sem solução não encerraram as missões: o controlador interrompeu o avanço quando necessário e voltou a planejar após novas observações. A bateria registrou 50 vetos de caminho ativo e 50 frenagens concluídas. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. Esses números valem para a rota fixa e o cenário simulado avaliados, não demonstram segurança geral. A duração média foi 77,37~s, com desvio de 4,49~s. O intervalo de confiança de 95\% para essa média, calculado com distribuição $t$ e dez execuções, foi de 74,16 a 80,58~s. O planejamento levou em média 99,18~ms.
 
 \begin{table}[htb]
 \centering
@@ -124,7 +141,7 @@ Duração média & 77,37 $\pm$ 4,49~s \\
 Tempo médio de planejamento & 99,18~ms \\
 \hline
 \end{tabular}
-\legend{Fonte: relatório final consolidado.}
+\legend{Fonte: \path{docs/auditoria_final_espacial.md}, gerado a partir do relatório final consolidado.}
 \end{table}
 
 A precisão média de ocupação foi 1,0, a revocação 0,584 e a taxa de falso espaço livre 0,316. Esse último valor não significa que o sensor do Gazebo errou em 31,6\%. A métrica compara o mapa parcial acumulado pelo drone, limitado aos raios observados e às regras de atualização, com uma referência de ocupação mais ampla. Ela mede divergência entre mapas sob cobertura diferente. Por isso, a evidência de segurança usada na bateria foi a verificação dos caminhos adotados, e não a interpretação isolada dessa taxa.
@@ -162,12 +179,12 @@ v18 & 1,292 & 0,141 & 52,9\% & 0,263 & 1 \\
 v19 & 1,286 & 0,141 & 41,2\% & 0,184 & 0 \\
 \hline
 \end{tabular}}
-\legend{Fonte: relatório final consolidado.}
+\legend{Fonte: \path{docs/auditoria_final_espacial.md}, gerado a partir do relatório final consolidado.}
 \end{table}
 
 Sete versões passaram pelo critério por pixel; a v15 foi reprovada apenas no MAE da faixa de 5 a 10~m: 1,648~m diante do limite de 1,5~m. Nenhuma aprovou o portão espacial completo. O estimador monocular final avaliado, v19, integrou 77 quadros, abaixo do mínimo de 100, obteve 41,2\% de sucesso de planejamento, abaixo de 80\%, e falso espaço livre de 0,184, acima de 0,10. A execução era completa e recebeu 1.227 quadros de câmera, mas o processamento ocorria a cada dez quadros; entre os quadros candidatos, 45 não tinham profundidade sincronizada e nenhum foi rejeitado por idade. Assim, 77 quadros foram efetivamente integrados e persistidos. O limite do portão considera esses quadros úteis, não todos os quadros recebidos. Por isso, os quatro conjuntos secundários não foram executados e o SITL monocular permaneceu bloqueado.
 
-O artefato avaliado foi \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, com SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. A configuração de melhor posição no portão foi \texttt{v19\_scale1p0\_shift1p2}: escala 1,0, deslocamento conservador de 1,2~m, margem livre de 3,0~m, incerteza ocupada de 1,5~m e banda e inflação verticais de 0,10~m. Na avaliação offline de 24 quadros, a inferência da v19 levou 286,7~ms em média e 292,0~ms no percentil 95. Esse valor satisfaz o limite experimental de 400~ms, mas não demonstra operação em tempo real em outras plataformas.
+O artefato avaliado foi \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, com SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. A configuração de melhor posição no portão foi \texttt{v19\_scale1p0\_shift1p2}: escala 1,0, deslocamento conservador de 1,2~m, margem livre de 3,0~m, incerteza ocupada de 1,5~m e banda e inflação verticais de 0,10~m. Na avaliação offline de 24 quadros, a inferência da v19 levou 286,7~ms em média e 292,0~ms no percentil 95. Esse valor satisfaz o limite experimental de 400~ms, mas não demonstra operação em tempo real em outras plataformas. O planejamento foi medido na bateria de referência e a inferência no ensaio monocular offline. Como os valores vêm de execuções diferentes, eles não podem ser somados para estimar a latência total. O intervalo entre receber a imagem, atualizar o mapa, planejar e publicar o caminho não foi instrumentado nesta bateria.
 
 \section{Considerações finais}
 

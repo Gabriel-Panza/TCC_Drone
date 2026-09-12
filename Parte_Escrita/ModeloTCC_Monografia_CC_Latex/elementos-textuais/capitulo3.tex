@@ -8,6 +8,24 @@ A posição central é que o aumento da complexidade do modelo deve ocorrer some
 
 A metodologia foi organizada para responder às perguntas apresentadas no Capítulo~\ref{cap:introducao}. Para isso, cada execução é tratada como uma unidade experimental, os sinais são sincronizados em uma representação comum e os modelos são avaliados com validação e teste fixos. Também são usados modelos de referência, várias sementes, análise de eventos, atribuição por gradientes e ablação de grupos de entradas.
 
+\begin{figure}[htb]
+\centering
+\fbox{\begin{minipage}{0.92\textwidth}
+\centering
+\textbf{Eixo tabular dos sinais}\\
+RGB, fluxo, IMU, atitude, movimento e comandos $\rightarrow$ intervalos sincronizados $\rightarrow$ MLP e árvores $\rightarrow$ sementes, eventos, gradientes e ablação
+
+\vspace{0.35cm}\hrule\vspace{0.35cm}
+
+\textbf{Eixo espacial da profundidade}\\
+RGB $\rightarrow$ profundidade monocular $\rightarrow$ mapa de ocupação 3D $\rightarrow$ A* $\rightarrow$ portão espacial\\
+\small Profundidade do Gazebo: referência por pixel, mapa de comparação e bateria de validação da geometria.
+\end{minipage}}
+\caption{Visão geral dos dois eixos experimentais.}
+\label{fig:fluxo-dois-eixos}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
 \section{Unidade de análise}
 
 Uma amostra corresponde ao intervalo entre duas atualizações consecutivas da lógica visual. Em vez de usar posição, atitude ou profundidade absolutas, a representação registra as variações ocorridas no intervalo. Essa escolha aproxima os dados da dinâmica usada pelo controlador e permite comparar sinais que possuem taxas de atualização diferentes.

@@ -20,7 +20,7 @@ O percurso espacial de referência usa três objetivos relativos no sistema nort
 
 A base tabular consolidada contém 40 execuções completas e 1.234 intervalos sincronizados. Trinta e cinco execuções compõem o treino no marco final, duas formam a validação fixa e três formam o teste fixo. O rótulo de 40 execuções representa o total disponível nesse marco. Separadamente, o diretório espacial contém 103 diretórios de execuções completas, produzidos em diferentes etapas de desenvolvimento, treinamento, diagnóstico e validação. Ele funciona como arquivo experimental e não como uma segunda coorte homogênea ou como 103 repetições equivalentes.
 
-A Figura~\ref{fig:metodologia-trajetorias} apresenta quatro trajetórias distribuídas ao longo da coleta. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
+As quatro execuções das Figuras~\ref{fig:metodologia-trajetorias} e~\ref{fig:metodologia-imu} foram escolhidas pela posição cronológica na coleta, cobrindo o início, dois momentos intermediários e o fim, entre os casos com trajetória e sinais inerciais completos. O erro dos modelos não participou da escolha. A variação entre os percursos faz parte dos casos que o modelo precisa representar.
 
 \begin{figure}[htb]
     \centering
@@ -84,6 +84,8 @@ O modelo principal é uma MLP multissaída em PyTorch. Entradas e alvos recebem 
 
 O limite é de 300 épocas. A parada antecipada monitora a MSE da validação, exige melhora superior a $10^{-4}$ e encerra após 50 épocas sem avanço. Ao final, os pesos da melhor época retornam ao modelo. O \textit{dropout} e a parada antecipada são técnicas usuais para reduzir sobreajuste \cite{Srivastava2014,Prechelt1998}.
 
+A MLP foi repetida com cinco sementes, enquanto cada ablação usou três e Random Forest e Extra Trees foram executados com uma semente. Essa diferença de cobertura impede interpretar pequenas vantagens entre as famílias como superioridade estatística.
+
 \section{Núcleo da validação espacial}
 
 A validação espacial foi separada do nó ROS~2 para permitir testes da geometria e do planejamento sem executar o simulador. O módulo recebe um mapa de profundidade, os parâmetros intrínsecos e uma transformação homogênea entre a câmera e o referencial local. A reprojeção segue o modelo de câmera pinhole e produz pontos no espaço tridimensional. A transformação câmera--corpo inclui o deslocamento da câmera no VANT; a pose do PX4 leva os pontos ao referencial NED.
@@ -98,9 +100,9 @@ Essa separação mantém explícita a origem da profundidade. No modo \texttt{gr
 
 \section{Estimador monocular e portões de validação}
 
-O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A sequência de versões v12 a v19 testou mudanças controladas no ajuste fino e nas margens usadas para converter a profundidade em ocupação. A versão v19 descongelou apenas os dois últimos blocos do codificador, com taxa de aprendizado baixa, preservando as demais partes do modelo anterior.
+O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A v12 estabeleceu o ajuste inicial e as margens espaciais. A v13 reforçou penalizações para subestimações perigosas e superfícies falsas na altitude de voo. A v14 incorporou execuções completas da bateria final, e a v15 concentrou amostras difíceis de troncos e bordas de copas. A v16 ampliou o treino para 20 execuções completas; a v17 atacou superestimação localizada ligada a uma colisão análoga; e a v18 equilibrou esse risco com as subestimações que bloqueavam corredores livres. A v19 partiu da v18 e descongelou somente os dois últimos blocos do codificador, com taxa de aprendizado baixa, preservando as demais partes do modelo anterior.
 
-A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. A configuração final previa uma etapa primária e quatro conjuntos secundários. A etapa primária reprovou todos os candidatos antes da execução dos conjuntos secundários. Essa execução não entrou nos gradientes, mas foi usada como validação durante o treinamento da v19 e, portanto, não deve ser descrita como teste independente. Como nenhuma configuração v19 aprovou o portão completo, o voo SITL monocular não foi iniciado.
+A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. Os limites foram definidos ao fim do desenvolvimento e congelados antes da bateria final. Os critérios de colisão, falso espaço livre e caminho executável expressam requisitos conservadores de segurança; os demais consideram a rota e a frequência de processamento. O mínimo de 100 quadros impede que um trecho curto e favorável aprove o modelo sem testar persistência do mapa e replanejamentos sucessivos. A configuração final previa uma etapa primária e quatro conjuntos secundários. A etapa primária reprovou todos os candidatos antes da execução dos conjuntos secundários. Essa execução não entrou nos gradientes, mas foi usada como validação durante o treinamento da v19 e, portanto, não deve ser descrita como teste independente. Como nenhuma configuração v19 aprovou o portão completo, o voo SITL monocular não foi iniciado.
 
 \section{Dois fluxos de execução}
 
