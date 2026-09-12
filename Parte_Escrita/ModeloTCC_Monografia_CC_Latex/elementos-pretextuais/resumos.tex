@@ -5,13 +5,17 @@
 \setlength{\absparsep}{18pt}
 
 \begin{resumo}
-Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A análise reúne dois eixos. No primeiro, 40 execuções completas e 1.234 intervalos sincronizados foram usados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Uma perceptron multicamada foi comparada com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A MLP não venceu em todos os alvos; a retirada de IMU e atitude elevou o MAE em 6,8\% na média. No segundo eixo, a profundidade foi reprojetada em uma grade tridimensional de ocupação e usada por um planejador A*. Com profundidade de referência do Gazebo, dez de dez execuções completaram a rota, com 30 objetivos alcançados e nenhum caminho inseguro adotado. Oito versões de um Depth Anything V2 métrico foram avaliadas. Embora sete passassem pelo critério de profundidade por pixel, nenhuma passou pelo portão espacial completo. Por isso, o voo monocular não foi autorizado. O resultado mostra que métricas por pixel não bastam para liberar um estimador destinado ao planejamento.
+Este trabalho apresenta uma metodologia para avaliar percepção monocular antes de seu uso em navegação autônoma de um veículo aéreo não tripulado. A análise reúne dois eixos. No primeiro, 40 execuções completas e 1.234 intervalos sincronizados foram usados para estudar mudanças de proximidade a partir de fluxo óptico, movimento, unidade de medição inercial, comandos e diferença de imagem. Um perceptron multicamada foi comparado com referências constantes e modelos de árvores, usando divisão por execução, conjuntos fixos, cinco sementes, eventos, gradientes e ablação. A MLP não venceu em todos os alvos; a retirada de IMU e atitude elevou o MAE em 6,8\% na média. No segundo eixo, a profundidade foi reprojetada em uma grade tridimensional de ocupação e usada por um planejador A*. Com profundidade de referência do Gazebo, dez de dez execuções completaram a rota, com 30 objetivos alcançados e nenhum caminho inseguro adotado. Oito versões de um Depth Anything V2 métrico foram avaliadas. Embora sete passassem pelo critério de profundidade por pixel, nenhuma passou pelo portão espacial completo. Por isso, o voo monocular não foi autorizado. O resultado mostra que métricas por pixel não bastam para liberar um estimador destinado ao planejamento.
 
 \vspace{\onelineskip}
 
 \noindent
 \textbf{Palavras-chave}: navegação autônoma; visão monocular; profundidade; mapeamento tridimensional; veículo aéreo não tripulado.
 \end{resumo}
+
+\begin{center}
+\textbf{Before the Architecture: Experimental Evaluation of Monocular and Inertial Signals for Proximity Perception in UAVs}
+\end{center}
 
 \begin{resumo}[Abstract]
 \begin{otherlanguage*}{english}

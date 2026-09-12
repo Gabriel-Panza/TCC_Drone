@@ -34,7 +34,7 @@ Cada execução completa permanece em apenas um dos conjuntos de treino, valida�
 
 \section{Organização dos dados multimodais}
 
-Os dados de cada intervalo são divididos em seis grupos: sincronização; movimento; IMU e atitude; fluxo óptico e risco; diferença de imagem; e comandos reativos. A câmera de profundidade fornece somente a referência para os alvos. Ela não participa do cálculo das entradas, da decisão de voo nem da geração dos comandos.
+Os dados de cada intervalo são divididos em seis grupos: sincronização; movimento; IMU e atitude; fluxo óptico e risco; diferença de imagem; e comandos reativos. Neste eixo tabular, a câmera de profundidade fornece somente a referência para os alvos e não participa do cálculo das entradas, da decisão de voo nem da geração dos comandos. No eixo espacial monocular, ela também serve de referência para avaliar mapa e caminhos. Já na bateria espacial de referência, sua profundidade alimenta diretamente o mapa e o A*, participando da decisão de alto nível; essa bateria valida geometria e planejamento antes da substituição pela estimativa monocular.
 
 Os alvos representam deltas dos percentis P10, P50 e P90 da profundidade, em metros, e deltas da porcentagem de pixels abaixo de 2, 5 e 10~m, em pontos percentuais. Dessa forma, o modelo tenta estimar como a distribuição de profundidade mudou durante o intervalo, e não reconstruir um mapa de profundidade completo.
 

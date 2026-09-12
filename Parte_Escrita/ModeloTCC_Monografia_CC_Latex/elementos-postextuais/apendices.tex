@@ -12,6 +12,8 @@ O caminho \path{datasets/depth_ground_truth/old} registra a organização da bas
 
 Os arquivos \path{config/spatial_debug.yaml} e \path{config/spatial_monocular.yaml} mantêm a execução desativada por padrão. A bateria exige ativação explícita pelo script guardado. O raio horizontal de segurança é 1,25~m; banda e inflação verticais do mapa estimado são 0,10~m; no guardião de referência, ambas são 0,20~m.
 
+A grade usa resolução de 0,75~m, conectividade 26 e limiares de log-odds de 0,6 para ocupado e $-0,6$ para livre. O mapa é atualizado a cada dez quadros; o replanejamento nominal ocorre a cada 1,5~s e a revalidação do caminho em execução, a cada 0,25~s.
+
 \section{Processamento e sincronização}
 
 A base tabular está arquivada em \path{datasets/depth_ground_truth/old}: 40 manifestos, 1.234 intervalos válidos, 35 execuções de treino no marco final, duas de validação e três de teste. O diretório \path{datasets/spatial_mapping} contém 103 diretórios de execuções completas, produzidos em etapas diferentes, e não deve ser interpretado como um conjunto tabular único nem como 103 repetições equivalentes.
@@ -25,5 +27,7 @@ A MLP possui camadas ocultas de 64 e 16 unidades, ReLU, \textit{dropout} de 0,30
 \section{Proveniência do estimador monocular final}
 
 O arquivo do estimador monocular final avaliado é \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}. Seu SHA-256 é \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. O treino usou 20 execuções; as quatro execuções de foco são um subconjunto delas. A execução de calibração é separada desses grupos. A configuração e a seleção estão em \path{config/depth_v19_final_training.json}; o portão está em \path{config/spatial_v19_final_validation_sweep.json}.
+
+O manifesto completo do refinamento está em \path{models/depth_anything_v2_metric_baylands_vits_v19_final.training.json}. O inventário individual das 103 execuções está em \path{estudos_e_analises/logs/inventario_execucoes_espaciais.csv}. Os relatórios dos quatro conjuntos secundários ficam em \path{logs/spatial_offline_sweep/v19_independent_final}; todos reprovaram o portão completo.
 
 \end{apendicesenv}
