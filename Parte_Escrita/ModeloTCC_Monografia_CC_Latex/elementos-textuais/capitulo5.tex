@@ -47,7 +47,7 @@ A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
-    \caption{MAE da MLP e da média do treino nos cinco marcos, com teste fixo. O marcador com barras no marco final mostra o intervalo de confiança de 95\% da MLP em cinco sementes; os marcos anteriores não foram repetidos.}
+    \caption{MAE da MLP nos cinco marcos. As barras são IC95 da média entre cinco sementes, calculados com distribuição $t$ e $n=5$; representam variação algorítmica no mesmo teste fixo, não novas coletas.}
     \label{fig:mono-curva-aprendizado}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -64,7 +64,7 @@ A menor perda de validação ocorreu na época 17. O treinamento parou na época
 
 \subsection{MLP, referências e estabilidade}
 
-A Tabela~\ref{tab:mono-modelos} reúne o MAE do teste. A MLP é apresentada pela média de cinco sementes. Nenhum modelo venceu em todos os alvos; para P10 e P90, a média do treino foi a melhor referência.
+A Tabela~\ref{tab:mono-modelos} reúne o MAE do teste. MLP, Random Forest e Extra Trees são apresentadas pela média e pelo desvio padrão das mesmas cinco sementes, usando os mesmos conjuntos fixos. Nenhum modelo venceu em todos os alvos; para P10 e P90, a média do treino foi a melhor referência.
 
 \begin{table}[htb]
 \centering
@@ -73,31 +73,31 @@ A Tabela~\ref{tab:mono-modelos} reúne o MAE do teste. A MLP é apresentada pela
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccc}
 \hline
-\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{Random Forest} & \textbf{Extra Trees} & \textbf{Média do treino} \\
+\textbf{Alvo} & \textbf{MLP média $\pm$ desvio} & \textbf{RF média $\pm$ desvio} & \textbf{ET média $\pm$ desvio} & \textbf{Média do treino} \\
 \hline
-$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & 0,0886 & 0,0910 & \textbf{0,0867} \\
-$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{0,1762} & 0,1838 & 0,1886 \\
-$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & 0,9235 & 0,9391 & \textbf{0,8246} \\
-$\Delta$ pixels $<2$ m (p.p.) & \textbf{1,0566} $\pm 0,0268$ & 1,0735 & 1,1229 & 1,0869 \\
-$\Delta$ pixels $<5$ m (p.p.) & $1,7834 \pm 0,0436$ & \textbf{1,7659} & 1,7981 & 1,8488 \\
-$\Delta$ pixels $<10$ m (p.p.) & \textbf{0,8423} $\pm 0,0318$ & 0,8602 & 0,8712 & 0,9096 \\
+$\Delta P10$ (m) & $0,0921 \pm 0,0034$ & $0,0884 \pm 0,0006$ & $0,0906 \pm 0,0004$ & \textbf{0,0867} \\
+$\Delta P50$ (m) & $0,1820 \pm 0,0056$ & \textbf{$0,1766 \pm 0,0010$} & $0,1818 \pm 0,0019$ & 0,1886 \\
+$\Delta P90$ (m) & $0,9259 \pm 0,0273$ & $0,9255 \pm 0,0031$ & $0,9421 \pm 0,0125$ & \textbf{0,8246} \\
+$\Delta$ pixels $<2$ m (p.p.) & \textbf{$1,0566 \pm 0,0268$} & $1,0752 \pm 0,0033$ & $1,1250 \pm 0,0013$ & 1,0869 \\
+$\Delta$ pixels $<5$ m (p.p.) & $1,7834 \pm 0,0436$ & \textbf{$1,7652 \pm 0,0116$} & $1,7978 \pm 0,0058$ & 1,8488 \\
+$\Delta$ pixels $<10$ m (p.p.) & \textbf{$0,8423 \pm 0,0318$} & $0,8612 \pm 0,0043$ & $0,8773 \pm 0,0123$ & 0,9096 \\
 \hline
 \end{tabular}}
 \legend{Fonte: elaborado pelo autor.}
 \end{table}
 
-O coeficiente de variação do MAE da MLP ficou entre 2,4\% e 3,8\%. A época escolhida variou de 22 a 182, mas o nível final de erro mudou pouco. A inicialização não altera as conclusões gerais.
+O coeficiente de variação do MAE da MLP ficou entre 2,4\% e 3,8\%. A época escolhida variou de 22 a 182, mas o nível final de erro mudou pouco. No diagnóstico pareado, MLP--Random Forest apresentou $(d_z,p)$ de $(1,32;0,042)$, $(1,15;0,061)$ e $(0,08;0,868)$ para P10, P50 e P90, e $(-0,48;0,339)$, $(0,40;0,425)$ e $(-0,66;0,215)$ para os limiares de 2, 5 e 10~m. MLP--Extra Trees apresentou, na mesma ordem, $(0,72;0,184)$, $(0,11;0,824)$, $(-0,94;0,103)$, $(-3,13;0,002)$, $(-0,30;0,545)$ e $(-1,01;0,087)$. Com cinco pares e múltiplos alvos, esses resultados são exploratórios e não demonstram superioridade geral.
 
 \subsection{Eventos, gradientes e ablação}
 
 O classificador final de eventos obteve acurácia balanceada de 0,615, precisão de 0,789, revocação de 0,870 e F1 de 0,828. O pipeline completo teve MAE de 1,770 ponto percentual para pixels abaixo de 5~m. Quando a indicação real de evento foi fornecida somente para diagnóstico, o MAE caiu para 1,744. A diferença pequena indica que a regressão do sinal e da magnitude concentra a maior parte do erro.
 
-A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. IMU e atitude reuniram 43,4\% da sensibilidade média e sua retirada elevou o MAE médio em 6,8\%. A Tabela~\ref{tab:mono-ablacao} mostra o efeito médio de cada grupo nos seis alvos. Valores negativos significam que a retirada reduziu o erro médio, dentro da variabilidade observada entre sementes.
+A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. IMU e atitude reuniram 43,4\% da sensibilidade média e sua retirada elevou o MAE em 5,45\% na média agregada dos seis alvos. O efeito não foi uniforme: foi negativo em P90 e alguns IC95 por alvo incluíram zero. A Tabela~\ref{tab:mono-ablacao} mostra o efeito médio de cada grupo. Valores negativos significam que a retirada reduziu o erro médio, dentro da variabilidade observada entre sementes.
 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
-    \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas. As barras da ablação mostram a dispersão média entre as três sementes pareadas.}
+    \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas. Cada configuração usa cinco sementes; as barras resumem os IC95 por alvo, calculados com distribuição $t$ e $n=5$.}
     \label{fig:mono-ablacao}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -110,15 +110,15 @@ A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. IMU e atitude re
 \hline
 \textbf{Grupo retirado} & \textbf{$\Delta$ MAE médio (\%)} \\
 \hline
-IMU e atitude & 6,81 \\
-Comandos reativos & 1,71 \\
-Sincronização & 1,33 \\
-Fluxo óptico e risco & 0,00 \\
-Movimento & -0,04 \\
-Diferença de imagem & -0,50 \\
+IMU e atitude & 5,45 \\
+Comandos reativos & 0,92 \\
+Fluxo óptico e risco & -0,67 \\
+Sincronização & -0,70 \\
+Movimento & -1,00 \\
+Diferença de imagem & -1,58 \\
 \hline
 \end{tabular}
-\legend{Fonte: elaborado pelo autor a partir de três sementes por ablação.}
+\legend{Fonte: elaborado pelo autor a partir de cinco sementes por ablação.}
 \end{table}
 
 \subsection{Bateria espacial com profundidade do Gazebo}

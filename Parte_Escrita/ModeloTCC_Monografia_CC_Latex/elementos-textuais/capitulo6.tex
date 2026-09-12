@@ -4,13 +4,13 @@
 
 Este trabalho investigou como avaliar sinais monoculares e inerciais antes de usá-los em uma navegação autônoma. A contribuição principal não é um novo controlador ou um novo algoritmo de planejamento. É um procedimento experimental que liga coleta sincronizada, divisão por execução, referências simples, análise dos erros e um portão espacial de segurança.
 
-A base tabular final reuniu 40 execuções completas e 1.234 intervalos. A MLP apresentou resultados estáveis entre sementes, mas não superou a referência constante em todos os alvos. IMU e atitude formaram o grupo mais consistente na ablação, enquanto mudanças extremas permaneceram difíceis. Na etapa espacial, a profundidade do Gazebo permitiu completar dez de dez execuções sem adotar caminhos inseguros. O mesmo não ocorreu com as versões monoculares v12 a v19. Elas podiam obter métricas por pixel aceitáveis e, ainda assim, produzir falso espaço livre ou poucos caminhos executáveis.
+A base tabular final reuniu 40 execuções completas e 1.234 intervalos. A MLP apresentou baixa variação algorítmica entre sementes no conjunto fixo, mas não superou a referência constante em todos os alvos. IMU e atitude formaram o grupo com maior efeito médio agregado na ablação, embora o efeito variasse entre alvos; mudanças extremas permaneceram difíceis. Na etapa espacial, a profundidade do Gazebo permitiu completar dez de dez execuções sem adotar caminhos inseguros. O mesmo não ocorreu com as versões monoculares v12 a v19. Elas podiam obter métricas por pixel aceitáveis e, ainda assim, produzir falso espaço livre ou poucos caminhos executáveis.
 
 Esses resultados sustentam a posição defendida: antes de aumentar a complexidade da arquitetura ou colocar o estimador no laço de voo, é preciso verificar a representação e a consequência espacial dos erros. O bloqueio do SITL monocular não é uma ausência de resultado. Ele mostra que a métrica por pixel, isolada, seria um critério insuficiente de liberação.
 
 \section{Respostas às perguntas de pesquisa}
 
-O aumento do conjunto trouxe ganhos modestos e irregulares, embora cinco dos seis alvos tenham terminado com erro menor. As cinco sementes produziram pouca variação no MAE, indicando que a conclusão sobre a MLP é estável. IMU e atitude tiveram a contribuição mais consistente entre gradientes e ablação. Informar o evento real ao regressor produziu apenas uma melhora pequena, portanto o erro ficou concentrado na estimação do sinal e da magnitude. Por fim, métricas aceitáveis por pixel não garantiram utilidade espacial, pois nenhuma versão monocular aprovou o portão completo.
+O aumento do conjunto trouxe ganhos modestos e irregulares, embora cinco dos seis alvos tenham terminado com erro menor. As cinco sementes produziram pouca variação no MAE, indicando estabilidade algorítmica no conjunto fixo. IMU e atitude tiveram a maior contribuição agregada entre gradientes e ablação, com variação entre alvos. Informar o evento real ao regressor produziu apenas uma melhora pequena, portanto o erro ficou concentrado na estimação do sinal e da magnitude. Por fim, métricas aceitáveis por pixel não garantiram utilidade espacial, pois nenhuma versão monocular aprovou o portão completo.
 
 \begin{table}[htb]
 \centering
@@ -23,7 +23,7 @@ O aumento do conjunto trouxe ganhos modestos e irregulares, embora cinco dos sei
 \hline
 Mais dados melhoram o desempenho? & Marcos de 9 a 40 execuções & Ganhos modestos, irregulares e dependentes do alvo. \\
 O resultado é estável? & MLP com cinco sementes e referências & Baixa variação entre sementes; nenhum modelo venceu todos os alvos. \\
-Quais entradas contribuem? & Gradientes e ablação & IMU e atitude tiveram a contribuição mais consistente. \\
+Quais entradas contribuem? & Gradientes e ablação & IMU e atitude tiveram a maior contribuição agregada, com variação entre alvos. \\
 Onde se concentra o erro de evento? & Classificador, regressor e evento real & Principalmente na regressão do sinal e da magnitude. \\
 Métrica por pixel garante caminho útil? & Repetição espacial e A* & Não; as versões monoculares falharam no portão espacial. \\
 \hline
@@ -35,7 +35,7 @@ Métrica por pixel garante caminho útil? & Repetição espacial e A* & Não; as
 
 Os experimentos foram realizados em um único cenário simulado, com um modelo de veículo, uma rota principal, obstáculos estáticos, ausência de vento e sem variação controlada de iluminação ou clima. A profundidade de referência do Gazebo não incorpora um modelo realista de ruído de sensor. A faixa vertical estreita foi adequada à rota em altitude quase constante, mas não generaliza automaticamente para subidas, descidas ou obstáculos suspensos.
 
-Os atributos tabulares resumem as imagens e perdem informação espacial. Os eventos de proximidade são desbalanceados, o que limita a interpretação de F1 alto. A MLP foi repetida com cinco sementes e as ablações com três, mas Random Forest e Extra Trees foram executados apenas com a semente 42. Diferenças pequenas entre famílias permanecem descritivas, sem teste de hipótese ou intervalo de confiança das árvores. A curva de crescimento mostra o intervalo de confiança de 95\% somente no marco final, único repetido em cinco sementes; a ablação mostra a dispersão das três sementes pareadas.
+Os atributos tabulares resumem as imagens e perdem informação espacial. Os eventos de proximidade são desbalanceados, o que limita a interpretação de F1 alto. MLP, árvores, os cinco marcos e as ablações foram repetidos com cinco sementes. Os IC95, testes pareados e tamanhos de efeito reduzem a assimetria anterior, mas cinco pares ainda oferecem pouca potência, e as comparações exploratórias entre seis alvos não receberam correção de multiplicidade.
 
 Na validação monocular, o conjunto primário da v19 também participou da validação durante o treinamento e não é independente do desenvolvimento. Os quatro conjuntos secundários foram processados depois do congelamento, mas permanecem no cenário \texttt{baylands}; não houve avaliação fora dele. A reprovação offline impediu o voo SITL monocular, portanto o comportamento integrado do estimador em voo não foi medido. Também não foi usado um relógio comum desde o recebimento do RGB, passando por pré-processamento, inferência, integração e A*, até a publicação; os tempos parciais não constituem latência ponta a ponta.
 

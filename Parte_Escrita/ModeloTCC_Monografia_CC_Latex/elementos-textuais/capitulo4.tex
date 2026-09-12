@@ -84,7 +84,7 @@ O modelo principal é uma MLP multissaída em PyTorch. Entradas e alvos recebem 
 
 O limite é de 300 épocas. A parada antecipada monitora a MSE da validação, exige melhora superior a $10^{-4}$ e encerra após 50 épocas sem avanço. Ao final, os pesos da melhor época retornam ao modelo. O \textit{dropout} e a parada antecipada são técnicas usuais para reduzir sobreajuste \cite{Srivastava2014,Prechelt1998}.
 
-A MLP foi repetida com cinco sementes, enquanto cada ablação usou três e Random Forest e Extra Trees foram executados com uma semente. Essa diferença de cobertura impede interpretar pequenas vantagens entre as famílias como superioridade estatística.
+A MLP, Random Forest, Extra Trees, cada marco da curva e cada configuração de ablação foram repetidos com as sementes 7, 21, 42, 84 e 123. As comparações entre MLP e árvores incluem IC95, teste $t$ pareado por semente e $d_z$ de Cohen. O pareamento controla apenas a aleatoriedade computacional no mesmo conjunto fixo, sem equivaler a cinco novas coletas. Como existem cinco pares, seis alvos e nenhuma correção de multiplicidade, os testes são exploratórios.
 
 \section{Núcleo da validação espacial}
 

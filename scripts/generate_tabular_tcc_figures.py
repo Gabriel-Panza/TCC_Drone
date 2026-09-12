@@ -32,31 +32,23 @@ def save_all(figure, filename):
 
 
 def learning_curve():
-    results = pd.read_csv(LOGS / "comparacao_mlp_splits_fixos.csv")
-    robust = pd.read_csv(LOGS / "robustez_multiplas_sementes_resumo.csv")
+    results = pd.read_csv(LOGS / "curva_crescimento_cinco_sementes_resumo.csv")
     results = results.query("split == 'teste'").copy()
-    robust = robust.query("split == 'teste'").set_index("alvo_delta")
     targets = list(TARGET_LABELS)
     figure, axes = plt.subplots(2, 3, figsize=(13, 7), sharex=True)
     for axis, target in zip(axes.flat, targets):
-        subset = results.query("alvo_delta == @target")
-        for model, group in subset.groupby("modelo"):
-            group = group.sort_values("marco_runs")
-            axis.plot(group["marco_runs"], group["MAE"], marker="o", label=model)
-        final = subset["marco_runs"].max()
-        if target in robust.index:
-            row = robust.loc[target]
-            axis.errorbar(
-                [final], [row["MAE_medio"]], yerr=[row["MAE_ic95"]],
-                fmt="s", color="black", capsize=4, label="MLP: IC95 (5 sementes)",
-            )
+        subset = results.query("alvo_delta == @target").sort_values("marco_runs")
+        axis.errorbar(
+            subset["marco_runs"], subset["MAE_medio"], yerr=subset["IC95_MAE"],
+            marker="o", capsize=4, label="MLP: média e IC95 (5 sementes)",
+        )
         axis.set_title(TARGET_LABELS[target])
         axis.set_xlabel("Execuções disponíveis")
         axis.set_ylabel("MAE")
         axis.grid(alpha=0.25)
     handles, labels = axes.flat[0].get_legend_handles_labels()
     figure.legend(handles, labels, loc="lower center", ncol=3)
-    figure.suptitle("MAE no teste fixo; IC95 disponível no marco final")
+    figure.suptitle("MAE no teste fixo; média e IC95 em cinco sementes por marco")
     figure.tight_layout(rect=(0, 0.08, 1, 0.95))
     save_all(figure, "resultados_curva_aprendizado.png")
 
@@ -81,7 +73,7 @@ def loss_curves():
 
 def attribution_and_ablation():
     importance = pd.read_csv(LOGS / "importancia_gradiente_erro_validacao.csv")
-    ablation = pd.read_csv(LOGS / "ablacao_grupos_entradas_resumo.csv")
+    ablation = pd.read_csv(LOGS / "ablacao_grupos_cinco_sementes_resumo.csv")
     importance_group = (
         importance.groupby("grupo", as_index=False)["importancia_pct"].mean()
         .sort_values("importancia_pct", ascending=False)
@@ -90,7 +82,7 @@ def attribution_and_ablation():
         ablation.groupby("grupo_removido", as_index=False)
         .agg(
             media=("delta_MAE_pct_medio", "mean"),
-            desvio=("delta_MAE_pct_desvio", "mean"),
+            desvio=("IC95_delta_MAE_pct", "mean"),
         )
         .fillna({"desvio": 0.0})
         .sort_values("media", ascending=False)
@@ -104,7 +96,7 @@ def attribution_and_ablation():
         yerr=ablation_group["desvio"], capsize=4,
     )
     axes[1].axhline(0, color="black", linewidth=0.8)
-    axes[1].set_title("Ablação: média e dispersão entre sementes")
+    axes[1].set_title("Ablação: média e IC95 entre cinco sementes")
     axes[1].set_ylabel("Variação do MAE (%)")
     for axis in axes:
         axis.tick_params(axis="x", rotation=35)
