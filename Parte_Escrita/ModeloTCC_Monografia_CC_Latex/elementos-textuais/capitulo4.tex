@@ -100,7 +100,25 @@ Essa separação mantém explícita a origem da profundidade. No modo \texttt{gr
 
 \section{Estimador monocular e portões de validação}
 
-O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A v12 estabeleceu o ajuste inicial e as margens espaciais. A v13 reforçou penalizações para subestimações perigosas e superfícies falsas na altitude de voo. A v14 incorporou execuções completas da bateria final, e a v15 concentrou amostras difíceis de troncos e bordas de copas. A v16 ampliou o treino para 20 execuções completas; a v17 atacou superestimação localizada ligada a uma colisão análoga; e a v18 equilibrou esse risco com as subestimações que bloqueavam corredores livres. A v19 partiu da v18 e descongelou somente os dois últimos blocos do codificador, preservando os demais blocos. O refinamento usou duas épocas, lotes de duas imagens, AdamW com regularização de $10^{-2}$, taxa de $5\times10^{-7}$ na cabeça e $2\times10^{-8}$ no codificador, semente 42, 3.322 quadros efetivos de treino e 77 de validação. A exportação ONNX recebe imagens de $686\times518$ pixels.
+O estimador parte do Depth Anything V2 ViT-S ajustado para profundidade métrica \cite{DepthAnythingV2}. Os pares RGB--profundidade gravados no cenário \texttt{baylands} foram separados por execução completa. A v12 estabeleceu o ajuste inicial e as margens espaciais. A v13 reforçou penalizações para subestimações perigosas e superfícies falsas na altitude de voo. A v14 incorporou execuções completas da bateria final, e a v15 concentrou amostras difíceis de troncos e bordas de copas. A v16 ampliou o treino para 20 execuções completas; a v17 atacou superestimação localizada ligada a uma colisão análoga; e a v18 equilibrou esse risco com as subestimações que bloqueavam corredores livres. A v19 partiu da v18 e descongelou somente os dois últimos blocos do codificador, preservando os demais blocos. O refinamento usou duas épocas, lotes de duas imagens, AdamW com regularização de $10^{-2}$, taxa de $5\times10^{-7}$ na cabeça e $2\times10^{-8}$ no codificador, semente 42, 3.322 quadros efetivos de treino e 77 de validação. Treino e validação redimensionaram RGB e profundidade para $686\times518$ pixels, e a exportação ONNX manteve essa entrada.
+
+A função objetivo combinou SILog, erro relativo absoluto ponderado por bordas e penalizações direcionadas:
+\[
+\mathcal{L}=L_{\mathrm{SILog}}+0{,}30L_{\mathrm{rel}}
++0{,}08L_{\mathrm{cauda},5}
++0{,}55(L_{\mathrm{sup}}+L_{\mathrm{inf}})
++0{,}50(L_{\mathrm{cauda,sup}}+L_{\mathrm{cauda,inf}})
++0{,}55L_{\mathrm{borda,sup}}
++0{,}50L_{\mathrm{borda,inf}}
++0{,}10L_{\nabla}.
+\]
+São válidos os pixels cuja referência é finita e está entre 0,5 e 30~m. A previsão é truncada inferiormente em 0,05~m e a referência, em 0,5~m. Para $g=\log \hat d-\log d$, o primeiro termo é
+\[
+L_{\mathrm{SILog}}=\sqrt{\overline{g^2}-0{,}5\,\overline{g}^{,2}+10^{-8}}.
+\]
+$L_{\mathrm{rel}}$ é a média ponderada de $|\hat d-d|/\max(d,1)$, dividida pela soma dos pesos de borda. $L_{\mathrm{cauda},5}$ é a média dos 10\% maiores erros positivos ponderados onde a referência está até 5~m. Superestimação e subestimação são médias ponderadas, normalizadas pela soma dos pesos, em profundidades até 20~m; cada cauda retém e promedia os 5\% maiores valores ponderados. Os termos de borda usam a mesma normalização entre pixels com gradiente relativo de pelo menos 0,10. O peso é $1+3{,}5\min(\nabla_r/0{,}10,1)$, sendo $\nabla_r$ o maior gradiente relativo horizontal ou vertical da referência. O termo $L_{\nabla}$ é a média do erro absoluto entre gradientes logarítmicos horizontal e vertical.
+
+As quatro execuções de foco, já incluídas nas 20 execuções de treino, foram acrescentadas uma segunda vez. Foram selecionados exatamente 253 quadros difíceis em raio de 7~m, com alvo de um quadro por execução e divisão da guinada em faixas de $30^\circ$. Cada quadro foi acrescentado duas vezes, totalizando 506 inserções adicionais. Cada amostra de treino tinha probabilidade 0,5 de espelhamento horizontal conjunto de RGB e profundidade. Brilho e contraste eram sorteados uniformemente em $[0{,}85;1{,}15]$ e gama em $[0{,}9;1{,}1]$. Esses aumentos não foram aplicados na validação.
 
 A avaliação não escolhe o modelo apenas por MAE ou erro relativo. Depois da validação por pixel, os quadros são repetidos offline para reconstruir os mapas e executar o A*. O portão espacial verifica falsos espaços livres, disponibilidade de caminho e colisões contra o mapa de referência. Os limites foram definidos ao fim do desenvolvimento e congelados antes da bateria final. Os critérios de colisão, falso espaço livre e caminho executável expressam requisitos conservadores de segurança; os demais consideram a rota e a frequência de processamento. O mínimo de 100 quadros impede que um trecho curto e favorável aprove o modelo sem testar persistência do mapa e replanejamentos sucessivos. A execução primária foi usada como validação durante o treinamento da v19 e não é um teste independente. Depois do congelamento do artefato e dos parâmetros, os quatro conjuntos secundários foram reprocessados offline. Nenhum aprovou o portão completo; por isso, o voo SITL monocular não foi iniciado.
 

@@ -70,6 +70,26 @@ Xiao et al. combinam divergência de fluxo e dados inerciais para prevenir colis
 
 Esses estudos mostram que o fluxo carrega informação de movimento e proximidade, mas também reforçam a necessidade de considerar o movimento próprio. A diferença deste trabalho está no protocolo de dados: fluxo, IMU, deslocamento, comandos e profundidade de referência são reunidos no mesmo intervalo e avaliados por grupos.
 
+Os resultados numéricos não são colocados lado a lado porque cada estudo usa sensores, cenas, saídas e divisões experimentais diferentes. A Tabela~\ref{tab:comparacao-relacionados} compara apenas dimensões de método que podem ser verificadas sem supor equivalência entre métricas.
+
+\begin{table}[htb]
+\centering
+\caption{Comparação qualitativa com linhas de trabalhos relacionados.}
+\label{tab:comparacao-relacionados}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{3.0cm}p{2.5cm}p{3.2cm}p{2.5cm}p{2.6cm}}
+\hline
+\textbf{Linha} & \textbf{Cenário} & \textbf{Entrada e saída} & \textbf{Validação espacial} & \textbf{Planejamento} \\
+\hline
+Loquercio et al. \cite{Loquercio2021} & natural e artificial & imagem para política de voo & desempenho em voo & integrado à política \\
+Profundidade monocular \cite{DepthAnythingV2} & bases visuais diversas & RGB para profundidade & métricas por pixel & não é o foco \\
+Fluxo visual-inercial \cite{Xiao2021} & navegação de VANT & fluxo e inércia para risco & prevenção de colisão & reação local \\
+Este trabalho & Gazebo, \texttt{baylands} & sinais para proximidade; RGB para profundidade & ocupação, falso livre e colisão discreta & A* como portão posterior \\
+\hline
+\end{tabular}}
+\legend{Fonte: elaborado pelo autor a partir dos trabalhos citados.}
+\end{table}
+
 \section{Posicionamento do trabalho}
 
 A literatura avança principalmente pela criação de estimadores de profundidade, políticas de voo e mecanismos de desvio. Esses trabalhos mostram o potencial da visão monocular, mas também relatam ruído, dependência do movimento próprio, custo computacional e dificuldade de generalização. Há espaço, portanto, para estudos que examinem os dados antes de aumentar a complexidade do modelo.

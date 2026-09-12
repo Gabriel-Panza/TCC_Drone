@@ -47,7 +47,7 @@ A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
-    \caption{MAE da MLP e da média do treino nos cinco marcos, com teste fixo.}
+    \caption{MAE da MLP e da média do treino nos cinco marcos, com teste fixo. O marcador com barras no marco final mostra o intervalo de confiança de 95\% da MLP em cinco sementes; os marcos anteriores não foram repetidos.}
     \label{fig:mono-curva-aprendizado}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -97,7 +97,7 @@ A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. IMU e atitude re
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
-    \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas.}
+    \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas. As barras da ablação mostram a dispersão média entre as três sementes pareadas.}
     \label{fig:mono-ablacao}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
@@ -125,6 +125,34 @@ Diferença de imagem & -0,50 \\
 
 As dez execuções completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. As nove tentativas sem solução não encerraram as missões: o controlador interrompeu o avanço quando necessário e voltou a planejar após novas observações. A bateria registrou 50 vetos de caminho ativo e 50 frenagens concluídas. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. Esses números valem para a rota fixa e o cenário simulado avaliados, não demonstram segurança geral. A duração média foi 77,37~s, com desvio de 4,49~s. O intervalo de confiança de 95\% para essa média, calculado com distribuição $t$ e dez execuções, foi de 74,16 a 80,58~s. O planejamento levou em média 99,18~ms, com desvio padrão de 67,14~ms, mediana de 100,72~ms, percentil 95 de 217,30~ms e intervalo observado de 3,69 a 298,91~ms nas 156 tentativas.
 
+Os intervalos das demais métricas usam bootstrap das dez execuções completas, com 10.000 reamostragens e semente 42. Essa unidade evita supor independência entre tentativas da mesma missão. Os IC95 foram: sucesso de planejamento de 90,67\% a 97,40\%; falso espaço livre de 0,289 a 0,342; precisão de ocupação de 1,000 a 1,000; revocação de 0,564 a 0,604; e médias de vetos e frenagens de 3,4 a 6,6 por execução. Eles descrevem somente a variabilidade da rota observada.
+
+\begin{table}[htb]
+\centering
+\caption{Resultados individuais da bateria espacial de referência.}
+\label{tab:mono-bateria-individual}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrrr}
+\hline
+Execução & Duração (s) & Planos (sucesso/tentativa) & Adotados & Vetos & Frenagens & Objetivos & Inseguros \\
+\hline
+1 & 76,87 & 15/16 & 14 & 6 & 6 & 3 & 0 \\
+2 & 73,56 & 14/15 & 13 & 5 & 5 & 3 & 0 \\
+3 & 85,97 & 14/17 & 14 & 7 & 7 & 3 & 0 \\
+4 & 72,93 & 9/9   & 8  & 1 & 1 & 3 & 0 \\
+5 & 84,61 & 22/23 & 19 & 8 & 8 & 3 & 0 \\
+6 & 77,79 & 14/14 & 11 & 3 & 3 & 3 & 0 \\
+7 & 75,11 & 16/17 & 14 & 4 & 4 & 3 & 0 \\
+8 & 73,64 & 15/15 & 15 & 9 & 9 & 3 & 0 \\
+9 & 76,52 & 13/13 & 11 & 1 & 1 & 3 & 0 \\
+10 & 76,71 & 15/17 & 13 & 6 & 6 & 3 & 0 \\
+\hline
+Total & 773,71 & 147/156 & 132 & 50 & 50 & 30 & 0 \\
+\hline
+\end{tabular}}
+\legend{Fonte: \path{logs/spatial_final_analysis/final_20260901/reference_runs.csv}.}
+\end{table}
+
 \begin{table}[htb]
 \centering
 \caption{Resumo da bateria espacial final com profundidade do Gazebo.}
@@ -147,7 +175,13 @@ Mediana / percentil 95 do planejamento & 100,72 / 217,30~ms \\
 \legend{Fonte: relatório final consolidado da auditoria espacial.}
 \end{table}
 
-A precisão média de ocupação foi 1,0, a revocação 0,584 e a taxa de falso espaço livre 0,316. Esse último valor não significa que o sensor do Gazebo errou em 31,6\%. A métrica compara o mapa parcial acumulado pelo drone, limitado aos raios observados e às regras de atualização, com uma referência de ocupação mais ampla. Ela mede divergência entre mapas sob cobertura diferente. Por isso, a evidência de segurança usada na bateria foi a verificação dos caminhos adotados, e não a interpretação isolada dessa taxa.
+A precisão média de ocupação foi 1,0, a revocação 0,584 e a taxa de falso espaço livre 0,316. Sejam $O_r$ os voxels ocupados do mapa de referência e $F_e$ os voxels classificados como livres no mapa avaliado. A implementação calcula
+\[
+\mathrm{TFL}=\frac{|O_r\cap F_e|}{|O_r|}.
+\]
+O denominador contém todos os voxels ocupados da referência, inclusive os que podem estar fora da cobertura do estado parcial avaliado. Assim, 0,316 não significa que o sensor do Gazebo errou em 31,6\%; representa divergência entre mapas com cobertura temporal diferente.
+
+No replay, uma colisão ocorre quando os voxels enumerados conservadoramente ao longo de um caminho executável interceptam $O_r$ depois da inflação de segurança. O teste é discreto e não calcula a distância euclidiana contínua entre a malha do VANT e a geometria do obstáculo. A resolução de 0,75~m e a inflação tornam o critério conservador, mas a evidência permanece restrita à grade. Por isso, a bateria usa a verificação dos caminhos adotados, e não a interpretação isolada da taxa de falso espaço livre.
 
 A Figura~\ref{fig:mono-mapa-astar} apresenta uma projeção no plano NED da primeira execução da bateria. Os pontos ocupados foram filtrados pela faixa de voo; as linhas mostram os caminhos efetivamente adotados.
 
@@ -188,6 +222,8 @@ v19 & 1,286 & 0,141 & 41,2\% & 0,184 & 0 \\
 Sete versões passaram pelo critério por pixel; a v15 foi reprovada apenas no MAE da faixa de 5 a 10~m: 1,648~m diante do limite de 1,5~m. Nenhuma aprovou o portão espacial completo. O estimador monocular final avaliado, v19, integrou 77 quadros, abaixo do mínimo de 100, obteve 41,2\% de sucesso de planejamento, abaixo de 80\%, e falso espaço livre de 0,184, acima de 0,10. A execução era completa e recebeu 1.227 quadros de câmera, mas o processamento ocorria a cada dez quadros; entre os quadros candidatos, 45 não tinham profundidade sincronizada e nenhum foi rejeitado por idade. Assim, 77 quadros foram efetivamente integrados e persistidos.
 
 Nos quatro conjuntos secundários, os pares quadros, sucesso de planejamento e falso espaço livre foram, respectivamente: 80, 42,9\% e 0,206 na sexta execução da bateria; 68, 88,2\% e 0,305 na décima; 122, 36,4\% e 0,182 na execução antiga independente; e 117, 16,7\% e 0,275 na execução histórica reservada. Nenhum aprovou o portão completo. As duas execuções antigas atingiram o mínimo de quadros, mas reprovaram os limites de sucesso e falso espaço livre. O resultado confirma a insuficiência espacial fora do conjunto primário.
+
+A decisão primária não é sensível a pequenas variações dos limiares. Para que os valores observados da v19 fossem aprovados sem alterar o modelo, seria necessário reduzir ao mesmo tempo o mínimo de quadros de 100 para 77, o sucesso mínimo de 80\% para 41,2\% e elevar o falso espaço livre máximo de 10\% para 18,4\%. Logo, a reprovação permanece para perturbações locais dos limites congelados.
 
 O artefato avaliado foi \path{models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx}, com SHA-256 \texttt{b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4}. A configuração de melhor posição no portão foi \texttt{v19\_scale1p0\_shift1p2}: escala 1,0, deslocamento conservador de 1,2~m, margem livre de 3,0~m, incerteza ocupada de 1,5~m e banda e inflação verticais de 0,10~m. Na avaliação offline de 24 quadros, a inferência da v19 levou 286,7~ms em média e 292,0~ms no percentil 95. Esse valor satisfaz o limite experimental de 400~ms, mas não demonstra operação em tempo real em outras plataformas. O planejamento foi medido na bateria de referência e a inferência no ensaio monocular offline. Como os valores vêm de execuções diferentes, eles não podem ser somados para estimar a latência total. O intervalo entre receber a imagem, atualizar o mapa, planejar e publicar o caminho não foi instrumentado nesta bateria.
 
