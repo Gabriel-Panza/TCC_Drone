@@ -1,162 +1,245 @@
-# TCC_Drone: Avaliação de Sinais Monoculares e Inerciais em VANTs
+# Antes da Arquitetura
 
-> A branch `main` reúne a versão atual do estudo, incluindo o pipeline legado reativo e a validação espacial com mapa 3D e A*.
+**Avaliação Experimental de Sinais Monoculares e Inerciais para Percepção de Proximidade em VANTs**
 
-## Pontos centrais do repositório
+Este repositório contém o código e os documentos de um Trabalho de Conclusão de Curso sobre como avaliar informação visual e inercial antes de escolher uma arquitetura mais complexa para navegação autônoma. O estudo não propõe um novo controlador. Seu foco é verificar se os dados representam mudanças de proximidade de forma estável e se a profundidade monocular produz informação espacial útil para planejamento.
 
-O projeto possui dois fluxos principais e uma validação espacial consolidada:
+O projeto reúne dois eixos experimentais:
 
-1. **Execução do pipeline de voo e coleta:** [`main.py`](main.py). Esse arquivo inicia os nós ROS 2 e coordena a coleta. O modo selecionado pode preservar a navegação reativa anterior ou usar mapa 3D e A*.
-2. **Execução das métricas e dos experimentos:** [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb). O notebook reúne o carregamento dos dados, as verificações de qualidade, o treinamento dos modelos, as comparações, a explicabilidade e a geração dos resultados apresentados no TCC.
-3. **Validação espacial complementar:** [`spatial_mapping/`](spatial_mapping). O módulo reúne a reprojeção da profundidade, a grade 3D de ocupação e o planejamento A*. Seu papel é verificar se a informação de proximidade produz conhecimento espacial útil, sem desenvolver um novo controlador de voo.
+1. **Análise tabular dos sinais:** fluxo óptico, IMU, atitude, movimento, comandos e diferença de imagem são sincronizados por intervalo visual e avaliados com MLP, modelos de árvores, várias sementes, eventos, gradientes e ablação.
+2. **Validação espacial da profundidade:** profundidade métrica é reprojetada em uma grade 3D de ocupação, usada por um planejador A* e submetida a portões de segurança antes de qualquer voo monocular.
 
-Os diretórios `logs/` e `datasets/` que armazenam os dados brutos não estão disponíveis no GitHub devido ao volume dos arquivos. A análise tabular usa 40 execuções e 1.234 intervalos; separadamente, o acervo espacial local reúne 103 execuções completas produzidas em diferentes fases. Esses arquivos permanecem ignorados pelo Git e são necessários para refazer integralmente as análises a partir dos dados brutos. O notebook versionado mantém o código, as configurações e as saídas da análise final.
+> A profundidade monocular v19 passou pelo critério por pixel, mas não passou pelo portão espacial completo. Por isso, o voo monocular em SITL permaneceu bloqueado. Esse resultado negativo controlado é parte central do trabalho.
 
-Este projeto é parte de um Trabalho de Conclusão de Curso (TCC) que defende a análise controlada dos dados antes da escolha de arquiteturas mais complexas para navegação monocular. O estudo investiga quais sinais representam variações de proximidade, quão estável é essa relação e onde os erros ficam concentrados.
+## Resultados finais
 
-O voo reativo fornece o ambiente de coleta, mas o trabalho não propõe nem compara controladores. A validação espacial acrescenta um mapa tridimensional e usa o A* como teste da utilidade da percepção. O resultado dessa etapa é um caminho formado por pontos de passagem; o PX4 continua responsável por executar esses pontos.
+| Eixo | Evidência | Resultado |
+|---|---|---|
+| Sinais tabulares | 40 execuções e 1.234 intervalos válidos | Ganhos modestos com mais dados; resultados estáveis entre sementes; IMU e atitude foram o grupo mais consistente |
+| Profundidade de referência + mapa + A* | Bateria fixa com 10 execuções | 10/10 missões completas, 30 objetivos, 147/156 planos e nenhum caminho inseguro adotado |
+| Profundidade monocular v19 + mapa + A* | Avaliação por pixel e replay espacial | Critério por pixel aprovado; portão espacial reprovado; SITL monocular não autorizado |
 
-A simulação de alta fidelidade é alcançada através da integração do controlador de voo **PX4 (SITL)** com o motor físico **Gazebo Harmonic**, enquanto toda a inteligência e controle de alto nível rodam sobre o **ROS 2 (Humble)**, comunicando-se via middleware **Micro XRCE-DDS Agent**.
+A conclusão principal é que uma métrica de profundidade aceitável por pixel não garante um mapa seguro ou caminhos executáveis.
 
-## Visão geral visual
-
-A primeira etapa transforma duas atualizações consecutivas da câmera em um intervalo sincronizado. Fluxo óptico, movimento, IMU, atitude e comandos formam as entradas; a câmera de profundidade fornece apenas os alvos usados na avaliação.
-
-![Sequência sincronizada do fluxo visual e da variação de proximidade](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/metodologia_sincronizacao.png)
-
-Na etapa espacial, a profundidade é reprojetada em voxels livres e ocupados. O A* percorre somente o espaço conhecido como livre, e um guardião verifica cada caminho antes e durante a execução pelo PX4. A figura abaixo mostra uma projeção NED de uma execução da bateria final com profundidade de referência.
+![Sensibilidade dos grupos de entradas e ablação](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_explicabilidade_ablacao.png)
 
 ![Mapa de referência e caminhos A* adotados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_mapa_astar.png)
 
-## Ideia do Projeto e Funcionalidades
+Os números e a proveniência da etapa espacial estão consolidados em [`docs/auditoria_final_espacial.md`](docs/auditoria_final_espacial.md).
 
-O objetivo principal é organizar e avaliar sinais visuais e inerciais produzidos durante voos simulados. As principais características do projeto incluem:
+## Arquitetura
 
-*   **Execução Offboard:** O fluxo legado usa vetores de velocidade; a validação espacial envia somente pontos de passagem e deixa a dinâmica de voo a cargo do PX4.
-*   **Coleta Visual e Inercial:** Uma câmera monocular, o fluxo óptico, a IMU, o movimento e os comandos do sistema são sincronizados por intervalo visual.
-*   **Avaliação Experimental:** MLP, referências simples, modelos de árvores, várias sementes, eventos, gradientes e ablação ajudam a localizar os limites da representação.
-*   **Validação Espacial:** A profundidade por pixel pode ser reprojetada em uma grade 3D e submetida ao A* para verificar se o mapa permite gerar um caminho livre de obstáculos.
+```mermaid
+flowchart LR
+    PX4[PX4 SITL] --> ROS[ROS 2 / Micro XRCE-DDS]
+    GZ[Gazebo Baylands] --> RGB[Câmera RGB]
+    GZ --> GT[Profundidade de referência]
+    PX4 --> STATE[Pose, atitude e IMU]
 
----
+    RGB --> LEGACY[Fluxo legado]
+    STATE --> LEGACY
+    GT --> LABELS[Alvos de proximidade]
+    LEGACY --> DATA[Intervalos sincronizados]
+    LABELS --> DATA
+    DATA --> NOTEBOOK[Notebook de métricas]
+    NOTEBOOK --> TABULAR[MLP, árvores, sementes, eventos, gradientes e ablação]
 
-## Arquitetura do Código
+    RGB --> MONO[Depth Anything V2 métrico]
+    MONO --> MAP[Mapa de ocupação 3D]
+    GT --> REFMAP[Mapa de referência]
+    MAP --> ASTAR[A* em espaço observado e livre]
+    REFMAP --> GATE[Guardião e portão espacial]
+    ASTAR --> GATE
+    GATE --> SETPOINTS[Pontos de posição NED]
+    SETPOINTS --> PX4
+```
 
-O código foi estruturado de forma modular, dividindo as responsabilidades de rede (ROS 2) e lógica de controle em dois arquivos distintos.
+No modo espacial, “sem controle reativo” não significa ausência de controle físico. O A* produz pontos de posição, enquanto o PX4 estabiliza o veículo e executa o controle de baixo nível.
 
-### 1. `main.py` (Ponto de Entrada / Orquestrador)
-É o arquivo executável do projeto. Ele é responsável por:
-*   Inicializar o ambiente do ROS 2.
-*   Instanciar o nó do controlador de voo (`DroneOffboardNode`).
-*   Manter o programa vivo e rodando o `rclpy.spin()`, garantindo que os callbacks de sensores e atuadores ocorram continuamente.
+### Componentes principais
 
-### 2. `drone_controller.py` (Execução e Coleta)
-Este arquivo contém a comunicação com o PX4, a lógica de voo usada nas coletas e o processamento visual. Ele herda a classe Node do ROS 2 e é responsável por:
-*   **Comunicação Bidirecional:** Publicar mensagens (`OffboardControlMode`, `TrajectorySetpoint`, `VehicleCommand`) e assinar sensores (VehicleLocalPosition, tópicos de imagem da câmera).
-*   **Modos de navegação:** Preservar a execução reativa anterior e, no modo espacial, converter os caminhos do A* em setpoints de posição publicados a 25 Hz.
-*   **Visão computacional:** Usar CvBridge e OpenCV para extrair os sinais do estudo e, na validação espacial, acumular a profundidade em um mapa 3D sem aplicar os antigos comandos reativos ao voo.
+| Caminho | Responsabilidade |
+|---|---|
+| [`main.py`](main.py) | Ponto de entrada dos nós ROS 2 e seleção do modo de navegação |
+| [`drone_controller.py`](drone_controller.py) | Comunicação Offboard, coleta, fluxo legado e execução dos caminhos espaciais |
+| [`monocular_depth_node.py`](monocular_depth_node.py) | Inferência ONNX e publicação da profundidade monocular métrica |
+| [`spatial_mapping/`](spatial_mapping) | Geometria, grade de ocupação, fronteiras, A*, verificação e recuperação |
+| [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb) | Análise tabular, modelos, explicabilidade e figuras do estudo |
+| [`scripts/run_spatial_battery.sh`](scripts/run_spatial_battery.sh) | Execução automatizada das baterias espaciais |
+| [`scripts/build_spatial_final_report.py`](scripts/build_spatial_final_report.py) | Consolidação dos resultados e hashes dos artefatos |
 
-### 3. `estudos_e_analises/estudo_das_metricas.ipynb` (Análise dos Experimentos)
+## Modos de execução
 
-É o ponto central da análise feita após a coleta. O notebook:
+| Modo | Profundidade usada pelo mapa | Decisão de alto nível | Estado final |
+|---|---|---|---|
+| `legacy_reactive` | Não usa mapa 3D para navegar | Lógica reativa baseada em fluxo óptico | Preservado para reprodução e trabalhos futuros |
+| `ground_truth_debug` | Profundidade do Gazebo | A* e pontos de posição | Validado na bateria final |
+| `monocular_topic` | Saída do estimador monocular | A* e pontos de posição | Bloqueado pelo portão espacial |
 
-* relaciona os diretórios correspondentes de `logs/` e `datasets/`;
-* verifica sincronização, intervalos válidos, trajetórias e dados da IMU;
-* treina a MLP e acompanha as curvas de perda;
-* compara os marcos de crescimento do conjunto com validação e teste fixos;
-* avalia várias sementes, modelos de árvores e ablação de grupos de entradas;
-* executa a análise de eventos e a explicabilidade por gradientes;
-* exporta os CSVs e gráficos usados no dashboard e na parte escrita.
+## Ambiente de referência
 
-### 4. `spatial_mapping/` (Validação Espacial)
+- Ubuntu 22.04.5 LTS em WSL 2;
+- ROS 2 Humble;
+- Gazebo Harmonic 8.10.0;
+- PX4 no commit `e2708705a8ca625854f1129fd9dde2ae8ae16d59`;
+- Python 3.10.12;
+- veículo `x500_mono_cam` no mundo `baylands`.
 
-O módulo, ainda desacoplado do ROS 2, contém:
+Os pacotes Python usados na análise estão em [`requirements.txt`](requirements.txt). PX4, Gazebo, ROS 2, Micro XRCE-DDS Agent e o workspace ROS 2 precisam ser instalados separadamente.
 
-* reprojeção do mapa de profundidade para pontos 3D;
-* transformação dos pontos para um referencial comum;
-* acumulação de espaço livre e ocupado em voxels;
-* expansão dos obstáculos por uma margem de segurança;
-* planejamento A* em três dimensões.
+```bash
+cd ~/TCC_Drone
+python3 -m pip install -r requirements.txt
+source /opt/ros/humble/setup.bash
+source ~/TCC_Drone/ws_ros2/install/setup.bash
+```
 
-O encadeamento dessa etapa é: imagem RGB ou profundidade do Gazebo → profundidade métrica → reprojeção 3D → grade de ocupação → inflação dos obstáculos → A* → verificação do caminho → pontos de posição → controle de baixo nível pelo PX4. No modo monocular, um mapa paralelo produzido com a profundidade do Gazebo permanece restrito à avaliação e ao veto experimental de segurança.
+## Execução da bateria espacial
 
-O protocolo e as métricas planejadas estão em [`docs/validacao_espacial_3d.md`](docs/validacao_espacial_3d.md).
-O roteiro de execução em etapas está em [`docs/execucao_pipeline_espacial.md`](docs/execucao_pipeline_espacial.md).
+A bateria automatizada usa dois terminais. Ajuste `PROJECT_DIR`, `PX4_DIR` e `ROS_OVERLAY` se o projeto não estiver nos caminhos usados no laboratório.
 
-O fluxo possui dois modos explícitos:
+### Terminal 1: comunicação e imagens
 
-* `ground_truth_debug`: usa a profundidade do Gazebo para validar geometria, mapa e A*. Não representa um resultado monocular.
-* `monocular_topic`: recebe profundidade métrica pelo tópico `/monocular_depth` e mantém o Gazebo somente como referência de avaliação.
-
-O adaptador [`monocular_depth_node.py`](monocular_depth_node.py) aceita um modelo ONNX externo. Os pesos não fazem parte do repositório: o ensaio monocular só pode começar depois que um modelo métrico, ou uma saída inversa calibrada de forma independente, for configurado e validado contra a referência do simulador.
-
-Por segurança, `spatial_execute_path` fica desligado nos arquivos de configuração. O primeiro teste constrói o mapa sem armar o drone. A execução dos pontos do A* precisa ser habilitada explicitamente depois da inspeção dos eixos e da escala.
-
----
-
-## Como Executar a Simulação
-
-Para executar os experimentos espaciais, são necessários **2 terminais** em um ambiente Linux ou WSL. O primeiro mantém a comunicação ROS 2 ativa. O segundo executa a bateria automatizada, que abre PX4 e Gazebo, aplica os parâmetros necessários, inicia o código Python e reinicia a simulação entre as runs.
-
-**Terminal 1: Micro XRCE-DDS Agent e pontes ROS 2/Gazebo**
 ```bash
 source /opt/ros/humble/setup.bash
 
 MicroXRCEAgent udp4 -p 8888 &
 
-ros2 run ros_gz_bridge parameter_bridge /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
+ros2 run ros_gz_bridge parameter_bridge \
+  /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
 
-ros2 run ros_gz_bridge parameter_bridge /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
+ros2 run ros_gz_bridge parameter_bridge \
+  /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
 
 wait
 ```
 
-Mantenha esse terminal aberto durante toda a bateria. O script de limpeza preserva o `MicroXRCEAgent` e reinicia apenas PX4 e Gazebo.
+Mantenha esse terminal aberto. O executor reinicia PX4 e Gazebo entre as execuções, mas preserva o agente e as pontes.
 
-**Terminal 2: bateria espacial automatizada**
-
-Primeiro, valide a configuração sem abrir o simulador:
+### Terminal 2: validação e bateria de referência
 
 ```bash
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
+
+# Confere caminhos, configuração e processos sem iniciar a missão.
 ./scripts/run_spatial_battery.sh ground_truth_debug 1 --dry-run
-```
 
-Depois, execute a bateria de referência. O exemplo abaixo realiza dez runs:
-
-```bash
+# Executa a bateria com dez missões.
 ./scripts/run_spatial_battery.sh ground_truth_debug 10
 ```
 
-O script inicia automaticamente PX4 e Gazebo no mundo `baylands`, aplica `EKF2_MAG_CHK_STR=0.25` e `NAV_DLL_ACT=0`, executa `main.py` com `spatial_execute_path=true`, encerra cada run e prepara a seguinte. Os logs da bateria ficam em `logs/spatial_battery/` e cada dataset espacial fica em `datasets/spatial_mapping/`.
+O script abre PX4 e Gazebo, aplica os parâmetros necessários, executa `main.py` com `spatial_execute_path=true`, encerra a missão e prepara a próxima. As saídas ficam em:
 
-O modo monocular usa o mesmo arranjo de dois terminais, mas exige um ONNX qualificado e relatórios compatíveis com o mesmo hash:
+- `logs/spatial_battery/AAAAmmdd_HHMMSS_ground_truth_debug/`;
+- `datasets/spatial_mapping/run_AAAAMMDD_HHMMSS/`.
+
+Antes de uma bateria real, confirme que os tópicos estão ativos:
 
 ```bash
-MONOCULAR_MODEL_PATH=/caminho/absoluto/modelo.onnx \
-  ./scripts/run_spatial_battery.sh monocular_topic 1 --dry-run
-
-MONOCULAR_MODEL_PATH=/caminho/absoluto/modelo.onnx \
-  ./scripts/run_spatial_battery.sh monocular_topic 10
+ros2 topic hz /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image
+ros2 topic hz /sim_depth_ground_truth
 ```
 
-No estado final do estudo, a bateria monocular em SITL permanece bloqueada porque o modelo v19 não passou por todos os gates espaciais. O comando acima documenta o fluxo e só deve ser liberado quando os relatórios indicarem aprovação.
+## Inspeção manual sem voo
 
-### Pipeline legado reativo
-
-O fluxo anterior continua disponível por `navigation_mode:=legacy_reactive`. Depois de manter o Terminal 1 ativo, inicie PX4 e Gazebo e execute o nó ROS 2 com:
+Este modo constrói o mapa com a profundidade do Gazebo, mas mantém o armamento desabilitado:
 
 ```bash
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
 source ~/TCC_Drone/ws_ros2/install/setup.bash
+
+PYTHONNOUSERSITE=1 python3 main.py --ros-args \
+  --params-file config/spatial_debug.yaml
+```
+
+Para analisar a execução salva:
+
+```bash
+python3 estudos_e_analises/analisar_mapeamento_espacial.py \
+  ~/TCC_Drone/datasets/spatial_mapping/run_AAAAMMDD_HHMMSS
+```
+
+O analisador gera `spatial_summary.json` e `spatial_map_3d.html` dentro do diretório da execução.
+
+## Pipeline monocular
+
+O nó monocular exige um modelo ONNX métrico ou uma saída inversa calibrada de forma independente:
+
+```bash
+PYTHONNOUSERSITE=1 python3 monocular_depth_node.py --ros-args \
+  --params-file config/monocular_depth_onnx.yaml \
+  -p model_path:=/CAMINHO/ABSOLUTO/modelo_metrico.onnx
+```
+
+O mapa pode ser avaliado sem voo com:
+
+```bash
+PYTHONNOUSERSITE=1 python3 main.py --ros-args \
+  --params-file config/spatial_monocular.yaml
+```
+
+A bateria automatizada verifica o arquivo ONNX, seu SHA-256 e os relatórios de qualificação:
+
+```bash
+MONOCULAR_MODEL_PATH=/CAMINHO/ABSOLUTO/modelo.onnx \
+MONOCULAR_VALIDATION_REPORT=/CAMINHO/validacao.json \
+MONOCULAR_MAPPING_REPORT=/CAMINHO/mapeamento.json \
+  ./scripts/run_spatial_battery.sh monocular_topic 1 --dry-run
+```
+
+**O modelo v19 final não está autorizado para voo monocular.** A execução em SITL só deve ocorrer depois que os critérios por pixel e espaciais forem aprovados com relatórios ligados ao mesmo hash do modelo.
+
+## Pipeline legado reativo
+
+O fluxo usado nas coletas tabulares permanece disponível. Com PX4, Gazebo, agente e ponte RGB ativos:
+
+```bash
+cd ~/TCC_Drone
+source /opt/ros/humble/setup.bash
+source ~/TCC_Drone/ws_ros2/install/setup.bash
+
 PYTHONNOUSERSITE=1 python3 main.py --ros-args \
   -p navigation_mode:=legacy_reactive \
   -p ground_truth_depth_topic:=/sim_depth_ground_truth \
   -p save_ground_truth_dataset:=true
 ```
 
-Nesse modo, o fluxo óptico e a lógica de risco geram comandos de velocidade. No modo `spatial_astar`, esses comandos não participam da navegação: o A* produz pontos de posição e o PX4 executa o controle de baixo nível. O roteiro detalhado de depuração, mapa parado e execução manual está em [`docs/execucao_pipeline_espacial.md`](docs/execucao_pipeline_espacial.md).
+Nesse modo, o fluxo óptico e a lógica de risco produzem comandos de velocidade. Ele está separado do modo `spatial_astar`, no qual os comandos reativos não alteram a navegação.
 
-O dataset descarta automaticamente frames RGB com timestamp repetido, pares que reutilizam o mesmo frame de profundidade e intervalos temporais inválidos. Ao final de cada run, confira no `manifest.json` os campos `quality_counters`: `rgb_frames_rejected_nonmonotonic` deve ser baixo, e cada amostra salva deve ter `dt_s > 0` e `depth_dt_s > 0`.
+![Fluxo visual e variação de proximidade sincronizados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/metodologia_sincronizacao.png)
+
+## Testes e relatórios
+
+Execute a suíte espacial antes de alterar geometria, ocupação ou planejamento:
+
+```bash
+cd ~/TCC_Drone
+python3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+No computador que contém os dados e modelos finais, gere novamente o pacote de evidências com:
+
+```bash
+python3 scripts/build_spatial_final_report.py
+```
+
+O relatório inclui o resumo da bateria de referência, a comparação v12-v19, a decisão dos portões e hashes dos artefatos.
+
+## Dados e reprodutibilidade
+
+Os dados brutos, mapas, pesos e logs não são publicados no GitHub devido ao volume. O repositório mantém código, configurações, notebook com saídas, manifestos e documentação de proveniência. Os caminhos `datasets/depth_ground_truth/old` e `datasets/spatial_mapping` descrevem a organização existente no computador do laboratório.
+
+Documentação complementar:
+
+- [execução detalhada do pipeline espacial](docs/execucao_pipeline_espacial.md);
+- [metodologia da validação 3D](docs/validacao_espacial_3d.md);
+- [auditoria final da etapa espacial](docs/auditoria_final_espacial.md);
+- [reprodutibilidade das figuras](docs/reproducibilidade_figuras_tcc.md);
+- [roteiro de apresentação da etapa espacial](docs/roteiro_apresentacao_espacial.md).
+
+## Licença
+
+Consulte o arquivo [`LICENSE`](LICENSE).
