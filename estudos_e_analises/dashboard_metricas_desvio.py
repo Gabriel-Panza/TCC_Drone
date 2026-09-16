@@ -32,6 +32,10 @@ ANALYSIS_LOG_DIR = ANALYSIS_DIR / "logs"
 SPATIAL_DATASET_DIR = PROJECT_ROOT / "datasets" / "spatial_mapping"
 NOTEBOOK_PATH = ANALYSIS_DIR / "estudo_das_metricas.ipynb"
 MLP_FIXED_RESULTS_PATH = ANALYSIS_LOG_DIR / "comparacao_mlp_splits_fixos.csv"
+MLP_GROWTH_RESULTS_PATH = ANALYSIS_LOG_DIR / "curva_crescimento_cinco_sementes_resumo.csv"
+TREE_RESULTS_PATH = ANALYSIS_LOG_DIR / "baseline_arvores_cinco_sementes_resumo.csv"
+ABLATION_RESULTS_PATH = ANALYSIS_LOG_DIR / "ablacao_grupos_cinco_sementes_resumo.csv"
+PAIRED_RESULTS_PATH = ANALYSIS_LOG_DIR / "comparacao_pareada_tamanho_efeito.csv"
 EVENT_FIXED_RESULTS_PATH = ANALYSIS_LOG_DIR / "comparacao_eventos_splits_fixos.csv"
 ANGULAR_COMPARISON_PATH = ANALYSIS_LOG_DIR / "comparacao_representacao_angular_splits_fixos.csv"
 LOSS_CURVES_PATH = ANALYSIS_LOG_DIR / "curvas_loss_mlp.csv"
@@ -40,7 +44,7 @@ GROUPED_GRADIENT_IMPORTANCE_PATH = ANALYSIS_LOG_DIR / "importancia_gradiente_err
 LARGEST_GRADIENT_ERRORS_PATH = ANALYSIS_LOG_DIR / "maiores_erros_gradiente_validacao.csv"
 DASHBOARD_INTERVAL_CACHE_PATH = ANALYSIS_LOG_DIR / "dashboard_depth_intervals.pkl"
 DASHBOARD_INTERVAL_CACHE_META_PATH = ANALYSIS_LOG_DIR / "dashboard_depth_intervals.meta.json"
-DASHBOARD_INTERVAL_CACHE_VERSION = 1
+DASHBOARD_INTERVAL_CACHE_VERSION = 2
 
 
 def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
@@ -122,10 +126,7 @@ BATCH_SPECS = (
     (17, "Primeiras 17 runs"),
     (25, "Primeiras 25 runs"),
     (33, "Primeiras 33 runs"),
-    (50, "Primeiras 50 runs"),
-    (67, "Primeiras 67 runs"),
-    (85, "Primeiras 85 runs"),
-    (102, "Todas elegiveis (102 runs)"),
+    (40, "Todas elegiveis (40 runs)"),
 )
 BATCH_LABELS = dict(BATCH_SPECS)
 # Mantem as referencias embutidas antigas importaveis quando os CSVs nao existem.
@@ -388,7 +389,8 @@ def list_depth_metadata_files() -> list[Path]:
 
 
 def list_depth_interval_runs() -> list[Path]:
-    return list_analysis_run_dirs(PROJECT_ROOT)
+    legacy = PROJECT_ROOT / "datasets" / "depth_ground_truth" / "old"
+    return sorted(path.parent for path in legacy.glob("run_*/manifest.json"))
 
 
 def filter_synchronized_intervals(df: pd.DataFrame, require_depth_dt: bool = True) -> pd.DataFrame:
@@ -1812,6 +1814,24 @@ def summarize_batch_intervals(df: pd.DataFrame) -> pd.DataFrame:
 def reference_mlp_df() -> pd.DataFrame:
     """Retorna os resultados controlados da MLP ou a referencia embutida."""
 
+    growth = load_validated_csv(
+        MLP_GROWTH_RESULTS_PATH,
+        {"marco_runs", "split", "alvo_delta", "MAE_medio", "MAE_desvio", "IC95_MAE"},
+    )
+    if not growth.empty:
+        growth = growth[growth["split"] == "teste"].copy()
+        growth["leva"] = growth["marco_runs"].map(lambda value: batch_label(int(value)))
+        growth["modelo"], growth["MAE"], growth["RMSE"] = "MLP", growth["MAE_medio"], np.nan
+        trees = load_validated_csv(
+            TREE_RESULTS_PATH,
+            {"modelo", "split", "alvo_delta", "MAE_medio", "MAE_desvio", "IC95_MAE"},
+        )
+        if not trees.empty:
+            trees = trees[trees["split"] == "teste"].copy()
+            trees["leva"], trees["MAE"], trees["RMSE"] = batch_label(40), trees["MAE_medio"], np.nan
+            growth = pd.concat([growth, trees], ignore_index=True, sort=False)
+        return growth[["leva", "modelo", "alvo_delta", "MAE", "RMSE"]]
+
     fixed = load_validated_csv(
         MLP_FIXED_RESULTS_PATH,
         {"marco_runs", "modelo", "split", "alvo_delta", "MAE", "RMSE"},
@@ -2208,7 +2228,12 @@ def figure_mlp_reference_mae(mlp_df: pd.DataFrame) -> go.Figure:
         (label, "MLP", BATCH_COLORS.get(label, COLORS["drone"]))
         for label in available_labels
     ]
-    series.append((available_labels[-1], "Media treino", COLORS["risk"]))
+    final_label = available_labels[-1]
+    series.extend([
+        (final_label, "Random Forest", "#f59e0b"),
+        (final_label, "Extra Trees", "#7c3aed"),
+        (final_label, "Media treino", COLORS["risk"]),
+    ])
     for leva, modelo, color in series:
         part = mlp_df[(mlp_df["leva"] == leva) & (mlp_df["modelo"] == modelo)].set_index("alvo_delta")
         values = [float(part.loc[target, "MAE"]) if target in part.index else np.nan for target in target_order]
@@ -2378,6 +2403,14 @@ def load_model_diagnostics() -> dict[str, pd.DataFrame]:
                 "feature_1", "importancia_1_pct", "feature_2", "importancia_2_pct",
                 "feature_3", "importancia_3_pct",
             },
+        ),
+        "ablation": load_validated_csv(
+            ABLATION_RESULTS_PATH,
+            {"alvo_delta", "grupo_removido", "delta_MAE_pct_medio", "IC95_delta_MAE_pct", "n"},
+        ),
+        "paired": load_validated_csv(
+            PAIRED_RESULTS_PATH,
+            {"comparador", "alvo_delta", "n_pares", "cohen_dz", "p_valor_bilateral"},
         ),
     }
 
