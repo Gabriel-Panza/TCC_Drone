@@ -183,6 +183,8 @@ cython_debug/
 # Arquivos de Ambiente
 ws_ros2/
 
+# Dados
+Parte_Escrita/
 datasets/
 logs/
 .sim_env/
@@ -192,20 +194,4 @@ models/.venv/
 models/export_env/
 models/runtime_env/
 models/train_env/
-
-# Fontes e figuras de Parte_Escrita fazem parte do projeto.
-# Apenas artefatos gerados pela compilação LaTeX permanecem ignorados.
-Parte_Escrita/**/*.aux
-Parte_Escrita/**/*.bbl
-Parte_Escrita/**/*.blg
-Parte_Escrita/**/*.brf
-Parte_Escrita/**/*.idx
-Parte_Escrita/**/*.lof
-Parte_Escrita/**/*.lot
-Parte_Escrita/**/*.out
-Parte_Escrita/**/*.pdf
-Parte_Escrita/**/*.synctex.gz
-Parte_Escrita/**/*.toc
 /models
-estudos_e_analises/logs/dashboard_depth_intervals.pkl
-estudos_e_analises/logs/dashboard_depth_intervals.meta.json
