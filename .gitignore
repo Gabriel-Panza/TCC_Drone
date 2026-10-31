@@ -195,3 +195,8 @@ models/export_env/
 models/runtime_env/
 models/train_env/
 /models
+
+# Fontes acadêmicos e evidências finais publicáveis
+logs
+datasets
+Parte_Escrita

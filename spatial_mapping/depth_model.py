@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from .depth_preprocessing import preprocess_metric_bgr
 
 
 class MetricDepthOnnx:
@@ -84,29 +85,8 @@ class MetricDepthOnnx:
     def preprocess(self, bgr_image):
         """Aplica o resize e a normalizacao usados na exportacao do modelo."""
 
-        image = np.asarray(bgr_image)
-        if image.ndim != 3 or image.shape[2] != 3:
-            raise ValueError("bgr_image deve possuir formato (H, W, 3)")
-        image_ratio = image.shape[1] / image.shape[0]
-        model_ratio = self.input_width / self.input_height
-        relative_error = abs(image_ratio - model_ratio) / image_ratio
-        if relative_error > self.input_aspect_tolerance:
-            raise ValueError(
-                "proporcao da imagem incompativel com a entrada ONNX: "
-                f"imagem={image_ratio:.4f}, modelo={model_ratio:.4f}, "
-                f"erro={relative_error:.4f}"
-            )
-        resized = cv2.resize(
-            image,
-            (self.input_width, self.input_height),
-            interpolation=cv2.INTER_CUBIC,
-        )
-        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-        normalized = (rgb - self.mean) / self.std
-        return np.ascontiguousarray(
-            np.transpose(normalized, (2, 0, 1))[None, ...],
-            dtype=np.float32,
-        )
+        return preprocess_metric_bgr(bgr_image,self.input_width,self.input_height,
+                                     self.mean,self.std,self.input_aspect_tolerance)
 
     def forward(self, blob):
         """Executa somente o grafo ONNX no backend configurado."""

@@ -9,6 +9,7 @@ from itertools import product
 
 import numpy as np
 from .traversal import segment_voxels
+from .interval_fusion import IntervalHypotheses
 
 
 Voxel = tuple[int, int, int]
@@ -29,6 +30,10 @@ class OccupancyGridConfig:
     occupied_support_radius_voxels: int = 0
     pending_clear_free_observations_required: int = 3
     occupied_evidence_window_frames: int = 6
+    latch_pending_obstacles: bool = False
+    interval_hypothesis_fusion: bool = False
+    interval_fusion_baseline_m: float = .75
+    interval_fusion_free_views: int = 2
     free_viewpoint_sectors_required: int = 1
     free_viewpoint_sector_deg: float = 45.0
 
@@ -62,6 +67,8 @@ class OccupancyGrid3D:
         self._pending_free_observations: dict[Voxel, int] = {}
         self._free_viewpoint_sectors: dict[Voxel, set[int]] = {}
         self._confirmed_occupied: set[Voxel] = set()
+        self.interval_hypotheses = IntervalHypotheses(
+            self.config.interval_fusion_baseline_m,self.config.interval_fusion_free_views)
 
     def world_to_voxel(self, point):
         point_array = np.asarray(point, dtype=np.float64)
@@ -92,6 +99,10 @@ class OccupancyGrid3D:
         free_space_margin_ratio=0.0,
         free_space_margin_max_m=None,
         occupied_uncertainty_m=0.0,
+        occupied_segments=None,
+        free_endpoints=None,
+        narrow_interval_mask=None,
+        interval_free_validator=None,
     ):
         """Integra espaco livre observado e ocupa apenas extremos selecionados.
 
@@ -110,6 +121,21 @@ class OccupancyGrid3D:
             raise ValueError("endpoints deve possuir formato (N, 3)")
         if occupied_mask.shape != (len(points),):
             raise ValueError("endpoint_is_occupied deve possuir formato (N,)")
+        if occupied_segments is not None:
+            occupied_segments = np.asarray(occupied_segments, dtype=float)
+            free_endpoints = np.asarray(free_endpoints, dtype=float)
+            if (occupied_segments.shape != (len(points),2,3)
+                    or free_endpoints.shape != points.shape
+                    or not np.isfinite(occupied_segments).all()
+                    or not np.isfinite(free_endpoints).all()):
+                raise ValueError('invalid interval geometry')
+        elif free_endpoints is not None:
+            raise ValueError('free interval endpoints require occupied segments')
+        narrow_mask = np.zeros(len(points),dtype=bool)
+        if narrow_interval_mask is not None:
+            narrow_mask = np.asarray(narrow_interval_mask,dtype=bool)
+            if narrow_mask.shape != (len(points),):
+                raise ValueError('invalid narrow interval mask')
         if free_space_margin_m < 0:
             raise ValueError("free_space_margin_m nao pode ser negativo")
         if free_space_margin_ratio < 0:
@@ -128,7 +154,8 @@ class OccupancyGrid3D:
         self._expire_old_occupied_evidence()
         free_observed_this_frame = set()
         occupied_observed_this_frame = set()
-        for point, mark_endpoint_occupied in zip(points, occupied_mask):
+        possible_this_frame = set()
+        for index, (point, mark_endpoint_occupied) in enumerate(zip(points, occupied_mask)):
             distance = float(np.linalg.norm(point - origin))
             if not np.isfinite(distance) or distance == 0 or distance > max_range_m:
                 continue
@@ -141,7 +168,11 @@ class OccupancyGrid3D:
                     effective_free_margin_m,
                     free_space_margin_max_m,
                 )
-            if effective_free_margin_m > 0:
+            if occupied_segments is not None:
+                # Never carve inside the possible obstacle interval. The first
+                # interval voxel is excluded even for a ray outside the band.
+                free_voxels = self._ray_voxels(origin, free_endpoints[index])[:-1]
+            elif effective_free_margin_m > 0:
                 free_distance = max(0.0, distance - effective_free_margin_m)
                 free_endpoint = origin + (point - origin) * (
                     free_distance / distance
@@ -151,6 +182,17 @@ class OccupancyGrid3D:
                 free_voxels = ray[:-1]
             free_observed_this_frame.update(free_voxels)
             if mark_endpoint_occupied:
+                if occupied_segments is not None:
+                    voxels = set(self.segment_voxels(*occupied_segments[index]))
+                    if self.config.interval_hypothesis_fusion and not narrow_mask[index]:
+                        possible_this_frame.update(voxels)
+                    else:
+                        occupied_observed_this_frame.update(voxels)
+                        if self.config.interval_hypothesis_fusion:
+                            for voxel in voxels:
+                                self.interval_hypotheses.record_narrow(voxel,origin,self._integration_frame,
+                                    self.config.occupied_evidence_window_frames)
+                    continue
                 occupied_start_distance = max(
                     0.0,
                     distance - occupied_uncertainty_m,
@@ -162,6 +204,13 @@ class OccupancyGrid3D:
                     self._ray_voxels(occupied_start, point)
                 )
 
+        if self.config.interval_hypothesis_fusion:
+            atomic = self._confirmed_occupied | set(self._occupied_evidence_frames) | occupied_observed_this_frame
+            candidates = free_observed_this_frame & ((self.interval_hypotheses.possible | possible_this_frame) - atomic)
+            certified = set() if interval_free_validator is None else set(interval_free_validator(candidates))
+            if not certified <= candidates:
+                raise ValueError('free validator returned unobserved voxels')
+            self.interval_hypotheses.observe(possible_this_frame,certified,origin,atomic)
         for voxel in free_observed_this_frame - occupied_observed_this_frame:
             if voxel in self._confirmed_occupied:
                 continue
@@ -171,6 +220,11 @@ class OccupancyGrid3D:
             if len(sectors) < self.config.free_viewpoint_sectors_required:
                 continue
             if voxel in self._occupied_evidence_frames:
+                # Static-scene safety layer: one positive hit blocks navigation
+                # just as in the reference. Conflicting free rays must not turn
+                # it into a shortcut while confirmation is still outstanding.
+                if self.config.latch_pending_obstacles:
+                    continue
                 free_count = self._pending_free_observations.get(voxel, 0) + 1
                 self._pending_free_observations[voxel] = free_count
                 if (
@@ -196,7 +250,8 @@ class OccupancyGrid3D:
         return set(self._confirmed_occupied)
 
     def free_voxels(self):
-        unavailable = self._confirmed_occupied | set(self._occupied_evidence_frames)
+        unavailable = (self._confirmed_occupied | set(self._occupied_evidence_frames)
+                       | self.interval_hypotheses.possible)
         return {
             voxel
             for voxel, value in self._log_odds.items()
@@ -220,6 +275,8 @@ class OccupancyGrid3D:
         self._occupied_evidence_frames.pop(voxel, None)
         self._pending_free_observations.pop(voxel, None)
         self._free_viewpoint_sectors.pop(voxel, None)
+        if self.config.interval_hypothesis_fusion:
+            self.interval_hypotheses.ego_free(voxel)
         evidence = min(
             self.config.free_threshold - 1e-6,
             -self.config.free_decrement,
@@ -281,6 +338,9 @@ class OccupancyGrid3D:
     def _confirm_if_supported(self, voxel):
         if voxel in self._confirmed_occupied:
             return
+        if (self.config.interval_hypothesis_fusion and voxel in self.interval_hypotheses.narrow_views
+                and len(self.interval_hypotheses.narrow_views.get(voxel,[])) < 2):
+            return
         if (
             self.occupied_evidence_count(voxel)
             < self.config.occupied_observations_required
@@ -302,7 +362,8 @@ class OccupancyGrid3D:
             frames.intersection_update(
                 frame for frame in frames if frame >= oldest_frame
             )
-            if not frames and voxel not in self._confirmed_occupied:
+            if (not frames and voxel not in self._confirmed_occupied
+                    and not self.config.latch_pending_obstacles):
                 self._occupied_evidence_frames.pop(voxel, None)
                 self._pending_free_observations.pop(voxel, None)
 
@@ -323,6 +384,9 @@ class OccupancyGrid3D:
         self,
         radius_m,
         vertical_radius_m=None,
+        *,
+        include_pending=False,
+        include_hypotheses=False,
     ):
         """Expande obstaculos com raios horizontal e vertical independentes."""
 
@@ -332,8 +396,13 @@ class OccupancyGrid3D:
             vertical_radius_m = radius_m
         if vertical_radius_m <= 0:
             raise ValueError("vertical_radius_m deve ser positivo")
+        obstacles = self.occupied_voxels()
+        if include_pending:
+            obstacles = obstacles | self.pending_occupied_voxels()
+        if include_hypotheses:
+            obstacles = obstacles | self.interval_hypotheses.possible
         if radius_m == 0:
-            return set(self.occupied_voxels())
+            return set(obstacles)
 
         resolution = self.config.resolution_m
         horizontal_voxels = int(np.ceil(radius_m / resolution))
@@ -355,7 +424,7 @@ class OccupancyGrid3D:
         ]
         return {
             (voxel[0] + dx, voxel[1] + dy, voxel[2] + dz)
-            for voxel in self.occupied_voxels()
+            for voxel in obstacles
             for dx, dy, dz in valid_offsets
         }
 
@@ -363,6 +432,8 @@ class OccupancyGrid3D:
         voxel = tuple(voxel)
         if voxel in self._confirmed_occupied:
             return "occupied"
+        if voxel in self.interval_hypotheses.possible:
+            return 'unknown'
         if voxel in self._occupied_evidence_frames:
             return "unknown"
         value = self._log_odds.get(voxel, 0.0)

@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime
 from cv_bridge import CvBridge
 from rclpy.node import Node
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.qos import QoSProfile, qos_profile_sensor_data, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleAttitude
 from sensor_msgs.msg import Image
@@ -78,6 +79,10 @@ class DroneOffboardNode(Node):
     def __init__(self):
         super().__init__('drone_offboard_node')
 
+        self.spatial_async_mapping = bool(self.declare_parameter('spatial_async_mapping', False).value)
+        self.spatial_sensor_group = MutuallyExclusiveCallbackGroup() if self.spatial_async_mapping else None
+        self.spatial_observation_runtime = None
+
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE, 
@@ -93,7 +98,8 @@ class DroneOffboardNode(Node):
             VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         self.local_pos_sub = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position_v1', self.pos_callback, qos_profile)
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position_v1', self.pos_callback, qos_profile,
+            callback_group=self.spatial_sensor_group)
 
         # Inicializa a ponte de conversão ROS -> OpenCV
         self.bridge = CvBridge()
@@ -396,6 +402,8 @@ class DroneOffboardNode(Node):
                 1,
                 int(self.declare_parameter('spatial_depth_stride', 40).value),
             ),
+            depth_edge_stride=(int(self.declare_parameter('spatial_depth_edge_stride', 0).value) or None),
+            depth_edge_relative_threshold=float(self.declare_parameter('spatial_depth_edge_relative_threshold', .10).value),
             min_depth_m=float(
                 self.declare_parameter('spatial_min_depth_m', 0.5).value
             ),
@@ -479,6 +487,9 @@ class DroneOffboardNode(Node):
                     ).value
                 ),
             ),
+            protect_pending_obstacles=bool(
+                self.declare_parameter('spatial_protect_pending_obstacles', False).value
+            ),
             obstacle_vertical_band_m=float(
                 self.declare_parameter(
                     'spatial_obstacle_vertical_band_m',
@@ -539,6 +550,10 @@ class DroneOffboardNode(Node):
             ),
             occupied_observations_required=1,
             occupied_support_radius_voxels=0,
+            depth_free_space_margin_m=0.,
+            depth_free_space_margin_ratio=0.,
+            depth_free_space_margin_max_m=None,
+            depth_occupied_uncertainty_m=0.,
         )
         self.spatial_reference_navigator = (
             SpatialNavigator(reference_config)
@@ -718,14 +733,14 @@ class DroneOffboardNode(Node):
             Image, 
             '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image',
             self.image_callback, 
-            qos_profile_sensor_data)
+            qos_profile_sensor_data, callback_group=self.spatial_sensor_group)
 
         if self.depth_gt_topic:
             self.depth_gt_sub = self.create_subscription(
                 Image,
                 self.depth_gt_topic,
                 self.depth_ground_truth_callback,
-                qos_profile_sensor_data)
+                qos_profile_sensor_data, callback_group=self.spatial_sensor_group)
             self.get_logger().info(
                 f'Ground truth de profundidade habilitado em {self.depth_gt_topic}. '
                 'A navegacao continua usando somente a camera monocular RGB.'
@@ -739,6 +754,7 @@ class DroneOffboardNode(Node):
                 self.monocular_depth_topic,
                 self.monocular_depth_callback,
                 qos_profile_sensor_data,
+                callback_group=self.spatial_sensor_group,
             )
             self.get_logger().info(
                 f'Profundidade monocular para o mapa: {self.monocular_depth_topic}.'
@@ -771,7 +787,7 @@ class DroneOffboardNode(Node):
             VehicleAttitude, 
             '/fmu/out/vehicle_attitude', 
             self.attitude_callback, 
-            qos_profile)
+            qos_profile, callback_group=self.spatial_sensor_group)
 
         self.current_x = None
         self.current_y = None
@@ -994,6 +1010,19 @@ class DroneOffboardNode(Node):
                     'Use este modo para validar mapa, eixos e sincronizacao.'
                 )
 
+        if self.spatial_async_mapping:
+            if not self.spatial_enabled or self.spatial_collect_legacy_metrics:
+                raise ValueError('async mapping requires spatial_astar without legacy image processing')
+            from spatial_mapping.ros_pipeline import SpatialObservationRuntime
+            self.spatial_observation_runtime = SpatialObservationRuntime(self)
+            if self.spatial_recorder is not None:
+                self.spatial_recorder.metadata['temporal_policy'] = {
+                    'unique_depth_integrations': True,
+                    'pose_clock': 'ROS /clock reception interpolation; PX4 transport error not measured',
+                    'asynchronous_mapping': True,
+                    'heartbeat_watchdog_s': .25,
+                }
+
     @staticmethod
     def alpha_ajustado_por_dt(alpha_nominal, dt_s, dt_nominal_s):
         """Mantem a mesma constante de tempo quando o intervalo real varia."""
@@ -1087,6 +1116,9 @@ class DroneOffboardNode(Node):
         self.publish_offboard_control_mode()
 
         if self.ciclos == 50:
+            runtime = getattr(self, 'spatial_observation_runtime', None)
+            if runtime is not None and not runtime.preflight_ready():
+                return
             self.arm()
             self.engage_offboard_mode()
             self.voo_iniciado = True
@@ -2417,6 +2449,7 @@ class DroneOffboardNode(Node):
             )
         with self.spatial_lock:
             snapshot_started = time.perf_counter()
+            plan_generation_diagnostics['observation_source_stamp_s'] = getattr(self, 'spatial_last_observation_stamp_s', None)
             estimated_snapshot = (
                 capture_planning_snapshot(planning_navigator)
                 if self.spatial_recorder is not None else None
@@ -2951,7 +2984,11 @@ class DroneOffboardNode(Node):
         msg.yaw = float(yaw_target)
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_publisher.publish(msg)
+        runtime = getattr(self, 'spatial_observation_runtime', None)
+        if runtime is None:
+            self.trajectory_setpoint_publisher.publish(msg)
+        else:
+            runtime.cache_command(msg)
 
     def publicar_setpoint_posicao(self, target_ned_m, yaw_target=None):
         """Publica apenas posicao e yaw, deixando o controle dinamico no PX4."""
@@ -2976,7 +3013,11 @@ class DroneOffboardNode(Node):
         msg.yaw = float(yaw)
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_publisher.publish(msg)
+        runtime = getattr(self, 'spatial_observation_runtime', None)
+        if runtime is None:
+            self.trajectory_setpoint_publisher.publish(msg)
+        else:
+            runtime.cache_command(msg)
 
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
         """ 
@@ -3237,6 +3278,10 @@ class DroneOffboardNode(Node):
                 self.latest_depth_gt_encoding = msg.encoding
                 self.depth_gt_frames += 1
 
+            runtime = getattr(self, 'spatial_observation_runtime', None)
+            if runtime is not None:
+                runtime.receive_reference(depth_stamp_s, depth_m)
+
             if self.depth_gt_frames == 1:
                 valid = depth_m[depth_m > 0.0]
                 if valid.size > 0:
@@ -3269,6 +3314,9 @@ class DroneOffboardNode(Node):
                 self.latest_depth_estimated_stamp_s = timestamp_s
                 self.latest_depth_estimated_sequence += 1
                 self.depth_estimated_frames_received += 1
+            runtime = getattr(self, 'spatial_observation_runtime', None)
+            if runtime is not None:
+                runtime.submit(timestamp_s, depth_m)
         except Exception as error:
             self.get_logger().error(
                 f'Erro ao converter profundidade monocular: {error}'
@@ -3308,6 +3356,7 @@ class DroneOffboardNode(Node):
         rgb_stamp_s,
         image_width,
         image_height,
+        observation=None,
     ):
         """Atualiza mapas estimado e ideal e registra um frame sincronizado."""
 
@@ -3316,15 +3365,15 @@ class DroneOffboardNode(Node):
         if self.spatial_execute_path and not self.spatial_takeoff_complete:
             return
         self.spatial_frames_seen += 1
-        if self.spatial_frames_seen % self.spatial_process_every_n != 0:
+        if observation is None and self.spatial_frames_seen % self.spatial_process_every_n != 0:
             return
         if self.current_x is None or not self.attitude_received:
             return
 
-        estimated_depth, estimated_age_s = self.obter_depth_estimado_sincronizado(
-            rgb_stamp_s,
-            depth_gt,
-        )
+        if observation is None:
+            estimated_depth, estimated_age_s = self.obter_depth_estimado_sincronizado(rgb_stamp_s, depth_gt)
+        else:
+            estimated_depth, estimated_age_s = observation['depth'], observation['age_s']
         if estimated_depth is None:
             if estimated_age_s is None:
                 self.spatial_depth_missing_count += 1
@@ -3362,8 +3411,10 @@ class DroneOffboardNode(Node):
                 )
             return
 
-        position = np.array([self.current_x, self.current_y, self.current_z], dtype=float)
-        attitude = np.asarray(self.current_attitude_q, dtype=float).copy()
+        position = (np.array([self.current_x, self.current_y, self.current_z], dtype=float)
+                    if observation is None else observation['position'])
+        attitude = (np.asarray(self.current_attitude_q, dtype=float).copy()
+                    if observation is None else observation['attitude'])
         camera_to_ned = camera_to_ned_transform(
             position,
             attitude,
@@ -3396,8 +3447,8 @@ class DroneOffboardNode(Node):
                 reference_stats = self.spatial_reference_navigator.integrate_depth(
                     depth_gt,
                     reference_intrinsics,
-                    camera_to_ned,
-                    obstacle_reference_ned_z=position[2],
+                    camera_to_ned if observation is None else observation['reference_transform'],
+                    obstacle_reference_ned_z=(position[2] if observation is None else observation['reference_position'][2]),
                 )
             estimated_stats['integration_time_ms'] = (
                 time.perf_counter() - integration_started
@@ -3406,6 +3457,8 @@ class DroneOffboardNode(Node):
                 'estimated': estimated_stats,
                 'reference': reference_stats,
             }
+            if observation is not None:
+                self.spatial_last_observation_stamp_s = observation['source_stamp_s']
         self.spatial_frames_integrated += 1
 
         frame_depth_metrics = None
@@ -3450,6 +3503,12 @@ class DroneOffboardNode(Node):
                 map_stats={
                     **estimated_stats,
                     'estimated_age_s': estimated_age_s,
+                    'temporal_alignment': (None if observation is None else {
+                        'source_stamp_s': observation['source_stamp_s'],
+                        'reference_stamp_s': observation['reference_stamp_s'],
+                        'reference_camera_to_ned': observation['reference_transform'].tolist(),
+                        'pose_timestamp_policy': observation['pose_timestamp_policy'],
+                    }),
                 },
                 depth_metrics=frame_depth_metrics,
             )
@@ -4602,6 +4661,11 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
         
+        runtime = getattr(self, 'spatial_observation_runtime', None)
+        if runtime is not None:
+            self.rgb_frames_received += 1
+            runtime.receive_rgb(msg)
+            return
         self.rgb_frames_received += 1
         rgb_stamp_s = self.image_timestamp_s(msg)
         with self.sensor_state_lock:
@@ -4763,6 +4827,12 @@ class DroneOffboardNode(Node):
         ==================================================================================
         """
 
+        runtime = getattr(self, 'spatial_observation_runtime', None)
+        if runtime is not None:
+            runtime_summary = runtime.close()
+            if self.spatial_recorder is not None:
+                (self.spatial_recorder.run_dir / 'temporal_runtime.json').write_text(
+                    json.dumps(runtime_summary, indent=2), encoding='utf-8')
         self.flush_ground_truth_memmaps()
         if self.spatial_plan_thread is not None and self.spatial_plan_thread.is_alive():
             self.spatial_plan_thread.join(timeout=2.0)

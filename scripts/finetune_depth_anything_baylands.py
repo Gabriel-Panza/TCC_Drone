@@ -13,6 +13,9 @@ import numpy as np
 import torch
 import torch.nn.functional as functional
 from torch.utils.data import DataLoader, Dataset
+PROJECT_ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(PROJECT_ROOT))
+from spatial_mapping.depth_preprocessing import preprocess_metric_bgr
 
 
 MODEL_WIDTH = 686
@@ -22,7 +25,7 @@ STD = np.asarray([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
 
 
 class SpatialFrameDataset(Dataset):
-    def __init__(self, runs, *, training, extra_frames=()):
+    def __init__(self, runs, *, training, extra_frames=(),aligned_640=False):
         candidates = [
             frame
             for run in runs
@@ -37,10 +40,14 @@ class SpatialFrameDataset(Dataset):
                     sample["rgb_bgr"].size > 0
                     and sample["reference_depth_m"].size > 0
                 )
+                if valid and aligned_640:
+                    gt=sample["reference_depth_m"]
+                    valid=bool(np.any(np.isfinite(gt)&(gt>=.5)&(gt<=30.)))
             (self.frames if valid else self.invalid_frames).append(frame)
         if not self.frames:
             raise FileNotFoundError("nenhum frame espacial valido encontrado")
         self.training = training
+        self.aligned_640=aligned_640
 
     def __len__(self):
         return len(self.frames)
@@ -49,6 +56,22 @@ class SpatialFrameDataset(Dataset):
         with np.load(self.frames[index]) as sample:
             bgr = sample["rgb_bgr"]
             depth = sample["reference_depth_m"].astype(np.float32)
+        if self.aligned_640:
+            if bgr.shape!=(480,640,3) or depth.shape!=(480,640):
+                raise ValueError("aligned training requires matched RGB/GT at 640x480")
+            if self.training:
+                if random.random()<.5:
+                    bgr=bgr[:,::-1].copy();depth=depth[:,::-1].copy()
+                colour=bgr.astype(np.float32)/255.
+                mean=colour.mean(axis=(0,1),keepdims=True)
+                brightness=random.uniform(.85,1.15);contrast=random.uniform(.85,1.15);gamma=random.uniform(.9,1.1)
+                colour=np.clip((colour-mean)*contrast+mean,0.,1.)
+                colour=np.clip(colour*brightness,0.,1.)**gamma
+                bgr=np.rint(colour*255.).astype(np.uint8)
+            image=preprocess_metric_bgr(bgr,MODEL_WIDTH,MODEL_HEIGHT,MEAN,STD)[0]
+            # Sky / absent surfaces remain invalid, but cannot introduce NaN gradients.
+            depth=np.nan_to_num(depth,nan=0.,posinf=10000.,neginf=0.)
+            return torch.from_numpy(image),torch.from_numpy(depth.copy())
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         rgb = cv2.resize(rgb, (MODEL_WIDTH, MODEL_HEIGHT), interpolation=cv2.INTER_CUBIC)
         depth = cv2.resize(
@@ -233,8 +256,16 @@ def masked_loss(
     )
 
 
+def prediction_to_target_grid(prediction,shape,aligned_640=False):
+    if aligned_640:
+        prediction=prediction.clamp(0.,80.)
+        prediction=torch.where(prediction>=.1,prediction,torch.zeros_like(prediction))
+        return functional.interpolate(prediction[:,None],shape,mode="bicubic",align_corners=False)[:,0]
+    return functional.interpolate(prediction[:,None],shape,mode="bilinear",align_corners=True)[:,0]
+
+
 @torch.inference_mode()
-def evaluate(model, loader, device):
+def evaluate(model, loader, device,aligned_640=False):
     totals = {"absolute": 0.0, "square": 0.0, "relative": 0.0, "bias": 0.0}
     near_bias_total = 0.0
     near_positive_errors = []
@@ -250,9 +281,7 @@ def evaluate(model, loader, device):
         image = image.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
         prediction = model(image)
-        prediction = functional.interpolate(
-            prediction[:, None], target.shape[-2:], mode="bilinear", align_corners=True
-        )[:, 0]
+        prediction=prediction_to_target_grid(prediction,target.shape[-2:],aligned_640)
         valid = torch.isfinite(target) & (target >= 0.5) & (target <= 30.0)
         error = prediction[valid] - target[valid]
         ref = target[valid]
@@ -403,6 +432,8 @@ def main():
     parser.add_argument("--edge-gradient-weight", type=float, default=0.10)
     parser.add_argument("--save-each-epoch", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--aligned-640",action="store_true",
+                        help="Shared inference preprocessing, native-aligned 640 GT and matching bicubic output grid.")
     args = parser.parse_args()
 
     if args.focus_repeat < 1:
@@ -488,9 +519,9 @@ def main():
         for _ in range(args.focus_frame_repeat)
     ]
     train_dataset = SpatialFrameDataset(
-        effective_train_runs, training=True, extra_frames=effective_focus_frames
+        effective_train_runs, training=True, extra_frames=effective_focus_frames,aligned_640=args.aligned_640
     )
-    validation_dataset = SpatialFrameDataset(args.validation_run, training=False)
+    validation_dataset = SpatialFrameDataset(args.validation_run, training=False,aligned_640=args.aligned_640)
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -517,12 +548,7 @@ def main():
             target = target.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             prediction = model(image)
-            prediction = functional.interpolate(
-                prediction[:, None],
-                target.shape[-2:],
-                mode="bilinear",
-                align_corners=True,
-            )[:, 0]
+            prediction=prediction_to_target_grid(prediction,target.shape[-2:],args.aligned_640)
             loss = masked_loss(
                 prediction,
                 target,
@@ -543,7 +569,7 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             losses.append(loss.item())
-        metrics = evaluate(model, validation_loader, device)
+        metrics = evaluate(model, validation_loader, device,args.aligned_640)
         metrics.update({"epoch": epoch, "train_loss": float(np.mean(losses))})
         history.append(metrics)
         safety_excess = max(
@@ -616,6 +642,9 @@ def main():
         "edge_gradient_weight": args.edge_gradient_weight,
         "save_each_epoch": args.save_each_epoch,
         "seed": args.seed,
+        "aligned_640": args.aligned_640,
+        "aligned_640_postprocess": ("clip raw 0..80, zero <0.1, bicubic align_corners=False to matched 640 GT"
+                                   if args.aligned_640 else None),
     }
     args.output.with_suffix(".training.json").write_text(
         json.dumps(provenance, indent=2) + "\n",

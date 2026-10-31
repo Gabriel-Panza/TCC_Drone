@@ -45,6 +45,7 @@ def capture_planning_snapshot(navigator):
             (*voxel, count)
             for voxel, count in grid._pending_free_observations.items()
         ], dtype=np.int64).reshape(-1, 4),
+        **grid.interval_hypotheses.snapshot_arrays(),
     }
 
 
@@ -83,6 +84,7 @@ def restore_planning_snapshot(data):
         (x, y, z): int(count) for x, y, z, count in arrays["pending_free"]
     }
     grid._integration_frame = int(data["integration_frame"].item())
+    grid.interval_hypotheses.load_arrays(data,required=grid.config.interval_hypothesis_fusion)
     navigator.frames_integrated = int(data["frames_integrated"].item())
     navigator.grid = grid
     return navigator

@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.stats import t
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,7 @@ LOGS = ROOT / "estudos_e_analises" / "logs"
 OUTPUT_DIRS = (
     ROOT / "Parte_Escrita" / "ModeloTCC_Artigo_CC_Latex" / "figuras",
     ROOT / "Parte_Escrita" / "ModeloTCC_Monografia_CC_Latex" / "figuras",
+    ROOT / "Parte_Escrita" / "Monografia_Metodologia_Professor" / "figuras",
 )
 TARGET_LABELS = {
     "delta_depth_p10_m": "P10 (m)",
@@ -28,6 +30,8 @@ def save_all(figure, filename):
     for output_dir in OUTPUT_DIRS:
         output_dir.mkdir(parents=True, exist_ok=True)
         figure.savefig(output_dir / filename, dpi=220, bbox_inches="tight")
+        figure.savefig((output_dir / filename).with_suffix(".svg"), bbox_inches="tight")
+        figure.savefig((output_dir / filename).with_suffix(".pdf"), bbox_inches="tight")
     plt.close(figure)
 
 
@@ -55,6 +59,7 @@ def learning_curve():
 
 def loss_curves():
     curves = pd.read_csv(LOGS / "curvas_loss_mlp.csv")
+    assert set(curves["marco_runs"]) == {40}, "A curva de perda deve pertencer a coorte historica de 40 runs"
     figure, axis = plt.subplots(figsize=(9, 5))
     for split, group in curves.groupby("split"):
         axis.plot(group["epoca"], group["mse_padronizado"], label=split)
@@ -73,27 +78,37 @@ def loss_curves():
 
 def attribution_and_ablation():
     importance = pd.read_csv(LOGS / "importancia_gradiente_erro_validacao.csv")
-    ablation = pd.read_csv(LOGS / "ablacao_grupos_cinco_sementes_resumo.csv")
+    ablation = pd.read_csv(LOGS / "ablacao_grupos_cinco_sementes_comparacao.csv")
     importance_group = (
-        importance.groupby("grupo", as_index=False)["importancia_pct"].mean()
+        importance.groupby(["alvo_delta", "grupo"], as_index=False)["importancia_pct"].sum()
+        .groupby("grupo", as_index=False)["importancia_pct"].mean()
         .sort_values("importancia_pct", ascending=False)
     )
+    # Primeiro agrega os seis alvos dentro de cada semente. So entao estima
+    # a incerteza do efeito medio; a media dos ICs individuais nao e esse IC.
+    per_seed = (
+        ablation.query("split == 'teste' and grupo_removido != 'Nenhum'")
+        .groupby(["grupo_removido", "semente"], as_index=False)["delta_MAE_pct"].mean()
+    )
     ablation_group = (
-        ablation.groupby("grupo_removido", as_index=False)
+        per_seed.groupby("grupo_removido", as_index=False)
         .agg(
-            media=("delta_MAE_pct_medio", "mean"),
-            desvio=("IC95_delta_MAE_pct", "mean"),
+            media=("delta_MAE_pct", "mean"),
+            desvio=("delta_MAE_pct", "std"),
+            n=("delta_MAE_pct", "size"),
         )
         .fillna({"desvio": 0.0})
         .sort_values("media", ascending=False)
     )
+    ablation_group["IC95"] = t.ppf(.975, ablation_group["n"] - 1) * ablation_group["desvio"] / np.sqrt(ablation_group["n"])
+    ablation_group.to_csv(LOGS / "ablacao_grupos_cinco_sementes_agregado.csv", index=False)
     figure, axes = plt.subplots(1, 2, figsize=(13, 5))
     axes[0].bar(importance_group["grupo"], importance_group["importancia_pct"])
     axes[0].set_title("Sensibilidade média pelo gradiente")
     axes[0].set_ylabel("Importância (%)")
     axes[1].bar(
         ablation_group["grupo_removido"], ablation_group["media"],
-        yerr=ablation_group["desvio"], capsize=4,
+        yerr=ablation_group["IC95"], capsize=4,
     )
     axes[1].axhline(0, color="black", linewidth=0.8)
     axes[1].set_title("Ablação: média e IC95 entre cinco sementes")

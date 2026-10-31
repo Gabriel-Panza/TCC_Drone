@@ -47,6 +47,17 @@ DASHBOARD_INTERVAL_CACHE_META_PATH = ANALYSIS_LOG_DIR / "dashboard_depth_interva
 DASHBOARD_INTERVAL_CACHE_VERSION = 2
 
 
+def final_monocular_note():
+    path = PROJECT_ROOT / "datasets/resultados_finais_monocular/summary.json"
+    if not path.is_file():
+        return "Resultados finais ausentes; execute o pipeline de reprodução."
+    r = json.loads(path.read_text())
+    p = r["planning"]
+    return (f"Monocular final: {p['success_rate']:.2%} ({p['successes']}/{p['attempts']} pedidos); "
+            f"falso espaço livre {r['false_free_rate']:.2%}; {r['frames']} quadros. "
+            "Replay de desenvolvimento, sem qualificação para voo.")
+
+
 def load_validated_csv(path: Path, required_columns: set[str]) -> pd.DataFrame:
     """Carrega um CSV somente quando ele existe e contem o esquema esperado."""
 
@@ -2845,6 +2856,7 @@ def layout(log_paths: list[Path], depth_paths: list[Path]) -> html.Div:
                     html.Div(
                         children=[
                             html.H1("Dashboard de metricas de navegacao"),
+                            html.P(final_monocular_note()),
                             html.P(
                                 "Analise organizada por trajetoria/IMU, evasao, "
                                 "depth ground truth, pipeline espacial A* e diagnostico dos modelos."

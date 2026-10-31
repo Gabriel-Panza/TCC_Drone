@@ -2,6 +2,7 @@
 
 import threading
 import time
+import json
 
 import numpy as np
 import rclpy
@@ -9,6 +10,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 
 from spatial_mapping.depth_model import MetricDepthOnnx
 
@@ -64,6 +66,14 @@ class MonocularMetricDepthNode(Node):
             ),
         )
         self.bridge = CvBridge()
+        self.pre_resize_width = int(self.declare_parameter('rgb_pre_resize_width', 0).value)
+        self.pre_resize_height = int(self.declare_parameter('rgb_pre_resize_height', 0).value)
+        self.post_scale = float(self.declare_parameter('post_depth_scale', 1.).value)
+        self.conservative_shift = float(self.declare_parameter('conservative_depth_shift_m', 0.).value)
+        if self.post_scale <= 0 or self.conservative_shift < 0:
+            raise ValueError('invalid metric depth calibration')
+        if bool(self.pre_resize_width) != bool(self.pre_resize_height) or min(self.pre_resize_width, self.pre_resize_height) < 0:
+            raise ValueError('pre-resize requires two positive dimensions or both zero')
         self.frames = 0
         self.frames_received = 0
         self.frames_replaced = 0
@@ -77,6 +87,7 @@ class MonocularMetricDepthNode(Node):
             output_topic,
             qos_profile_sensor_data,
         )
+        self.timing_publisher = self.create_publisher(String, output_topic + '/timing', qos_profile_sensor_data)
         self.subscription = self.create_subscription(
             Image,
             image_topic,
@@ -122,14 +133,27 @@ class MonocularMetricDepthNode(Node):
     def infer_and_publish(self, msg, received_s):
         try:
             bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            if self.pre_resize_width:
+                import cv2
+                bgr = cv2.resize(bgr, (self.pre_resize_width, self.pre_resize_height), interpolation=cv2.INTER_AREA)
             started = time.perf_counter()
             depth_m = self.inference.predict(bgr)
+            valid_prediction = depth_m > 0
+            depth_m = np.where(valid_prediction, np.maximum(
+                depth_m * self.post_scale - self.conservative_shift, 0.), 0.)
             output = self.bridge.cv2_to_imgmsg(
                 np.asarray(depth_m, dtype=np.float32),
                 encoding='32FC1',
             )
             output.header = msg.header
             self.publisher.publish(output)
+            timing = String()
+            timing.data = json.dumps(dict(
+                source_stamp_s=msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
+                rgb_received_monotonic_s=received_s,
+                inference_started_monotonic_s=started,
+                depth_published_monotonic_s=time.perf_counter()))
+            self.timing_publisher.publish(timing)
             self.frames += 1
             now = time.perf_counter()
             input_age_s = now - received_s

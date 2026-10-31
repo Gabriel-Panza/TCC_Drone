@@ -17,6 +17,9 @@ class _FakeGrid:
     def occupied_voxels(self):
         return set(self.occupied)
 
+    def pending_occupied_voxels(self):
+        return set()
+
     def segment_voxels(self, _start, _end):
         return list(self.ray)
 
@@ -61,7 +64,7 @@ class PathSafetyDiagnosticsTests(unittest.TestCase):
     def test_initial_escape_requires_known_free_exit_and_forbids_reentry(self):
         navigator = object.__new__(SpatialNavigator)
         navigator.grid = _FakeGrid(
-            free={(2, 0, 0), (3, 0, 0)}, occupied={(0, 0, 0)},
+            free={(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)}, occupied=set(),
             ray=[(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)])
         navigator._inflated_obstacles = lambda: {(0, 0, 0), (1, 0, 0)}
         safe = navigator.initial_escape_path_safety_diagnostics(
@@ -82,7 +85,7 @@ class PathSafetyDiagnosticsTests(unittest.TestCase):
     def test_dynamic_escape_only_tolerates_inflated_current_voxel(self):
         navigator = object.__new__(SpatialNavigator)
         navigator.grid = _FakeGrid(
-            free={(2, 0, 0), (3, 0, 0)}, occupied=set(),
+            free={(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)}, occupied=set(),
             ray=[(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)])
         navigator._inflated_obstacles = lambda: {(0, 0, 0), (1, 0, 0)}
         result = navigator.path_safety_allowing_dynamic_initial_escape(

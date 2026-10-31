@@ -33,6 +33,9 @@ monocular_model="${MONOCULAR_MODEL_PATH:-$project_dir/models/depth_anything_v2_m
 monocular_python="${MONOCULAR_PYTHON:-$project_dir/models/runtime_env/bin/python}"
 monocular_validation_report="${MONOCULAR_VALIDATION_REPORT:-$project_dir/models/monocular_validation_v12_independent.json}"
 monocular_mapping_report="${MONOCULAR_MAPPING_REPORT:-$project_dir/models/monocular_mapping_validation_v12.json}"
+monocular_params="${MONOCULAR_PARAMS_FILE:-$project_dir/config/monocular_depth_onnx.yaml}"
+bundle_report="${MONOCULAR_BUNDLE_REPORT:-}"
+speed_commands=""
 spatial_waypoints="${SPATIAL_WAYPOINTS_RELATIVE_M:-}"
 guarded_short_test="${GUARDED_SHORT_TEST:-0}"
 guarded_route_test="${GUARDED_ROUTE_TEST:-0}"
@@ -122,10 +125,33 @@ if [[ ! -f "$config" ]]; then
     echo "Preflight falhou: configuracao ausente em $config" >&2
     exit 3
 fi
+if [[ "$mode" == "monocular_topic" && ! -f "$monocular_params" ]]; then
+    echo "Preflight falhou: configuracao do estimador ausente." >&2
+    exit 3
+fi
+if [[ -n "$bundle_report" ]]; then
+    if [[ -n "$spatial_waypoints" || "$guarded_short_test" == "1" || "$guarded_route_test" == "1" ]]; then
+        echo "Preflight falhou: bundle congelado nao aceita override de rota ou bypass guardado." >&2
+        exit 3
+    fi
+    python3 "$project_dir/scripts/run_monocular_temporal_campaign.py" --verify "$bundle_report" \
+        --model "$monocular_model" --controller "$config" --estimator "$monocular_params"
+    for value in "${SPATIAL_MPC_XY_VEL_MAX:-}" "${SPATIAL_MPC_XY_CRUISE:-}"; do
+        if ! [[ "$value" =~ ^(0\.[0-9]+|1(\.0+)?)$ ]]; then
+            echo "Preflight falhou: velocidade experimental invalida." >&2
+            exit 3
+        fi
+    done
+    speed_commands="'param set MPC_XY_VEL_MAX $SPATIAL_MPC_XY_VEL_MAX' 'param set MPC_XY_CRUISE $SPATIAL_MPC_XY_CRUISE'"
+fi
 
 stamp="$(date +%Y%m%d_%H%M%S)"
 battery_dir="$project_dir/logs/spatial_battery/${stamp}_${mode}"
 mkdir -p "$battery_dir"
+cp "$config" "$battery_dir/controller.snapshot.yaml"
+if [[ "$mode" == "monocular_topic" ]]; then
+    cp "$monocular_params" "$battery_dir/estimator.snapshot.yaml"
+fi
 summary="$battery_dir/summary.tsv"
 printf 'run_index\tmode\texit_code\tmission_complete\toutcome\tabort_reason\tdataset\n' > "$summary"
 
@@ -251,7 +277,7 @@ for ((run_index=1; run_index<=runs; run_index++)); do
         # os overrides conhecidos pela shell PX4 em toda inicializacao para a
         # execucao nao depender de residuos persistentes entre baterias.
         setsid bash -lc \
-            "cd '$px4_dir'; { sleep '$px4_parameter_delay_s'; printf '%s\\n' 'param set EKF2_MAG_CHK_STR 0.25' 'param set NAV_DLL_ACT 0' 'param save' 'echo SPATIAL_PX4_PARAMETERS_APPLIED'; sleep infinity; } | exec env PX4_GZ_WORLD=baylands stdbuf -oL -eL make px4_sitl gz_x500_mono_cam" \
+            "cd '$px4_dir'; { sleep '$px4_parameter_delay_s'; printf '%s\\n' 'param set EKF2_MAG_CHK_STR 0.25' 'param set NAV_DLL_ACT 0' $speed_commands 'param save' 'echo SPATIAL_PX4_PARAMETERS_APPLIED'; sleep infinity; } | exec env PX4_GZ_WORLD=baylands stdbuf -oL -eL make px4_sitl gz_x500_mono_cam" \
             >>"$run_dir/px4_gazebo.log" 2>&1 &
         px4_pid=$!
 
@@ -293,7 +319,7 @@ for ((run_index=1; run_index<=runs; run_index++)); do
     fi
 
     if [[ "$mode" == "monocular_topic" ]]; then
-        setsid env PYTHONNOUSERSITE=1 "$monocular_python" monocular_depth_node.py             --ros-args             --params-file config/monocular_depth_onnx.yaml             -p "model_path:=$monocular_model"             >"$run_dir/monocular.log" 2>&1 &
+        setsid env PYTHONNOUSERSITE=1 "$monocular_python" monocular_depth_node.py             --ros-args             --params-file "$monocular_params"             -p "model_path:=$monocular_model"             >"$run_dir/monocular.log" 2>&1 &
         mono_pid=$!
         depth_ready=false
         for ((second=0; second<startup_timeout_s; second++)); do

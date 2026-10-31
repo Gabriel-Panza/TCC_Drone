@@ -9,7 +9,7 @@ O projeto reúne dois eixos experimentais:
 1. **Análise tabular dos sinais:** fluxo óptico, IMU, atitude, movimento, comandos e diferença de imagem são sincronizados por intervalo visual e avaliados com MLP, modelos de árvores, várias sementes, eventos, gradientes e ablação.
 2. **Validação espacial da profundidade:** profundidade métrica é reprojetada em uma grade 3D de ocupação, usada por um planejador A* e submetida a portões de segurança antes de qualquer voo monocular.
 
-> A profundidade monocular v19 passou pelo critério por pixel, mas não passou pelo portão espacial completo. Por isso, o voo monocular em SITL permaneceu bloqueado. Esse resultado negativo controlado é parte central do trabalho.
+> A profundidade monocular v19 passou pelo critério por pixel, mas não passou pelo portão espacial completo. Por isso, o voo monocular em SITL permaneceu bloqueado. A v21 final chegou a 70,59% de sucesso e 1,00% de falso espaço livre no replay de desenvolvimento, ainda abaixo do portão de voo.
 
 ## Resultados finais
 
@@ -25,7 +25,7 @@ A conclusão principal é que uma métrica de profundidade aceitável por pixel 
 
 ![Mapa de referência e caminhos A* adotados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_mapa_astar.png)
 
-Os números e a proveniência da etapa espacial estão consolidados em [`docs/auditoria_final_espacial.md`](docs/auditoria_final_espacial.md).
+Os resultados monoculares finais estão em datasets/resultados_finais_monocular/results.json.
 
 ## Arquitetura
 
@@ -232,14 +232,43 @@ O relatório inclui o resumo da bateria de referência, a comparação v12-v19, 
 
 Os dados brutos, mapas, pesos e logs não são publicados no GitHub devido ao volume. O repositório mantém código, configurações, notebook com saídas, manifestos e documentação de proveniência. Os caminhos `datasets/depth_ground_truth/old` e `datasets/spatial_mapping` descrevem a organização existente no computador do laboratório.
 
-Documentação complementar:
-
-- [execução detalhada do pipeline espacial](docs/execucao_pipeline_espacial.md);
-- [metodologia da validação 3D](docs/validacao_espacial_3d.md);
-- [auditoria final da etapa espacial](docs/auditoria_final_espacial.md);
-- [reprodutibilidade das figuras](docs/reproducibilidade_figuras_tcc.md);
-- [roteiro de apresentação da etapa espacial](docs/roteiro_apresentacao_espacial.md).
+Documentação de execução: [pipeline espacial](docs/execucao_pipeline_espacial.md) e [validação 3D](docs/validacao_espacial_3d.md).
 
 ## Licença
 
 Consulte o arquivo [`LICENSE`](LICENSE).
+
+
+## Reprodução monocular final
+
+Versão encerrada: v21, revisão temporal e saída curva; 12/17 pedidos (70,59%), 4/401 voxels falsamente livres (1,00%), 77 quadros e zero colisões discretas nos 12 caminhos. São pedidos correlacionados de desenvolvimento, não voos nem teste independente.
+
+### Figuras e análise publicada, após clonar o repositório
+
+    python3.10 -m venv .venv-repro
+    . .venv-repro/bin/activate
+    pip install -r requirements-reproducao.txt
+    python scripts/reproduce_final_results.py
+
+Esse comando valida as métricas armazenadas e regenera PNG/SVG/PDF nos três modelos e o painel exportado em estudos_e_analises/prints. Dois quadros reais de ilustração e resultados estão em datasets/resultados_finais_monocular. O painel exportado não é captura de uma sessão de voo.
+
+O notebook estudo_das_metricas.ipynb possui seção final independente. Suas células históricas ainda exigem os datasets originais. O dashboard lê o resumo versionado; instale também requirements.txt e execute python estudos_e_analises/dashboard_metricas_desvio.py.
+
+### Replay completo
+
+É necessário monocular_final_inputs.tar.gz (258 MB), preparado localmente, AINDA NÃO PUBLICADO em Release do GitHub. Sem esse pacote, o clone reproduz figuras e análise dos resultados armazenados, mas não o replay integral.
+
+    python scripts/replay_final_monocular.py --bundle /caminho/monocular_final_inputs.tar.gz --output logs/minha_reproducao
+
+A saída deve ser nova. O script extrai os arquivos, remapeia caminhos, verifica o SHA do modelo e valida 12/17, 4/401 e zero colisões discretas. Usa as predições em cache do pacote: repete mapeamento e planejamento, não o treinamento ou nova inferência. Para refazer inferência, remova o cache extraído e execute a especificação gerada, verificando equivalência na plataforma.
+
+Para exportar o pacote na máquina original:
+
+    python scripts/replay_final_monocular.py --export-full-bundle logs/monocular_final_inputs.tar.gz
+
+Ainda é necessário publicar as alterações e o pacote no GitHub. Os estudos continuam encerrados. Nenhum PDF foi compilado.
+
+As figuras metodológicas revisadas podem ser regeneradas isoladamente com PYTHONNOUSERSITE=1 python scripts/generate_methodology_figures.py. Os quatro logs históricos de ilustração e os 1.234 intervalos necessários a esses gráficos estão no subconjunto versionado datasets/resultados_finais_monocular/figuras_revisao. Eles não substituem o conjunto bruto de treinamento. PYTHONNOUSERSITE=1 evita misturar Matplotlib local com o ambiente virtual.
+
+
+Os gráficos vetoriais são incorporados pelos três modelos LaTeX. O algoritmo completo de estabilização usa yaw e giroscópio medidos; a coluna de contexto de 40 ms é ilustrativa e não representa um RGB histórico recuperado. A sequência de RGB salva tem intervalo de 0,66 s e respeita o fallback original de atitude. Os parâmetros executáveis do replay estão em config/final_monocular_replay.json.

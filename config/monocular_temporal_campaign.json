@@ -1,0 +1,31 @@
+{
+  "schema": "monocular_temporal_campaign_v1",
+  "controller_config": "config/spatial_monocular_temporal.yaml",
+  "estimator_config": "config/monocular_depth_temporal.yaml",
+  "model": "models/depth_anything_v2_metric_baylands_vits_v19_final_686x518_fp32.onnx",
+  "model_sha256": "b56cbb291b8fade37a0b5f298fdd4bbe5e45de05f92628a1956828b0fc902dc4",
+  "qualification": {
+    "minimum_frames": 100,
+    "minimum_plan_success_rate": 0.8,
+    "maximum_false_free_rate": 0.1,
+    "require_all_successful_plans_collision_free": true
+  },
+  "px4_speed": {
+    "MPC_XY_VEL_MAX": 0.75,
+    "MPC_XY_CRUISE": 0.5
+  },
+  "stages": [
+    1,
+    3,
+    10
+  ],
+  "reference_safety_veto": true,
+  "note": "Development replay does not exercise clock transport or async runtime; new timing and tracking data are mandatory before a safety claim.",
+  "datasets": [
+    "datasets/spatial_mapping/run_20260831_082836_332335",
+    "datasets/spatial_mapping/run_20260831_083521_770086",
+    "datasets/spatial_mapping/run_20260831_084356_708163",
+    "datasets/spatial_mapping/run_20260820_225114_611267",
+    "datasets/spatial_mapping/run_20260819_191346_877996"
+  ]
+}

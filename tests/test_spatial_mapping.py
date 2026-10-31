@@ -1037,7 +1037,8 @@ class VerticalObstacleEnvelopeTest(unittest.TestCase):
     def test_controller_passes_body_altitude_to_both_maps(self):
         path = __import__('pathlib').Path(__file__).resolve().parents[1]
         source = (path / 'drone_controller.py').read_text()
-        self.assertGreaterEqual(source.count('obstacle_reference_ned_z=position[2]'), 2)
+        self.assertIn('obstacle_reference_ned_z=position[2]', source)
+        self.assertIn("observation['reference_position'][2]", source)
 
 
 if __name__ == "__main__":

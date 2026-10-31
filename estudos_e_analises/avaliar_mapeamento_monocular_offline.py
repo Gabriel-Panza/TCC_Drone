@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from spatial_mapping.depth_model import MetricDepthOnnx
-from spatial_mapping.geometry import CameraIntrinsics
+from spatial_mapping.geometry import CameraIntrinsics, body_position_from_camera_transform
 from spatial_mapping.metrics import occupancy_metrics
 from spatial_mapping.navigation import SpatialNavigationConfig, SpatialNavigator
 
@@ -204,10 +204,23 @@ def obstacle_proximity(navigator, position, radius_m=5.0):
     }
 
 
+def frame_geometry(frame):
+    """Read independent reference geometry; preserve legacy files unchanged."""
+    transform=frame["camera_to_ned"].astype(float)
+    intrinsics=CameraIntrinsics(*frame["intrinsics"].astype(float))
+    reference_intrinsics=(CameraIntrinsics(*frame["reference_intrinsics"].astype(float))
+                          if "reference_intrinsics" in frame else intrinsics)
+    reference_transform=(frame["reference_camera_to_ned"].astype(float)
+                         if "reference_camera_to_ned" in frame else transform)
+    return transform,intrinsics,reference_transform,reference_intrinsics
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--model", type=Path, required=True)
+    parser.add_argument("--model", type=Path)
+    parser.add_argument("--diagnostic-reference-depth", action="store_true",
+                        help="Use simulator depth as input; diagnostic only, never qualifies a monocular model.")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--prediction-cache-dir",
@@ -215,8 +228,20 @@ def main():
         help="Reutiliza previsoes .npy do mesmo modelo/run entre configuracoes.",
     )
     parser.add_argument("--replay-stride", type=int, default=9)
+    parser.add_argument("--reference-replay-stride",type=int,
+                        help="Keep GT sampling fixed when varying estimator resolution.")
+    parser.add_argument("--reference-edge-stride",type=int)
     parser.add_argument("--edge-stride", type=int)
     parser.add_argument("--edge-relative-threshold", type=float)
+    parser.add_argument("--body-altitude-envelope", action="store_true",
+                        help="Use saved camera extrinsics to center the obstacle band on the body, as in flight.")
+    parser.add_argument("--protect-pending-obstacles", action="store_true")
+    parser.add_argument("--depth-interval-profile", type=Path)
+    parser.add_argument("--interval-hypothesis-fusion", action="store_true")
+    parser.add_argument("--interval-fusion-baseline-m", type=float, default=.75)
+    parser.add_argument("--interval-fusion-free-views", type=int, default=2)
+    parser.add_argument("--allow-known-free-initial-escape", action="store_true",
+                        help="Match online recovery: only known free clearance shell, never real obstacles.")
     parser.add_argument(
         "--rgb-edge-sampling",
         action="store_true",
@@ -250,8 +275,15 @@ def main():
         action="store_true",
     )
     args = parser.parse_args()
+    if not args.diagnostic_reference_depth and args.model is None:
+        parser.error("--model e obrigatorio fora do diagnostico GT")
+    if args.diagnostic_reference_depth and args.prediction_cache_dir is not None:
+        parser.error("diagnostico GT nao usa cache de previsoes monoculares")
     if args.depth_output_scale <= 0:
         parser.error("--depth-output-scale deve ser positivo")
+    if any(value is not None and value<1 for value in
+           [args.reference_replay_stride,args.reference_edge_stride]):
+        parser.error("reference strides must be positive")
 
     manifest = json.loads(
         (args.run_dir / "manifest.json").read_text(encoding="utf-8")
@@ -300,9 +332,25 @@ def main():
         args.lock_path_altitude_to_goal,
         args.reference_vertical_clearance_m,
     )
+    estimated_config = replace(estimated_config, protect_pending_obstacles=args.protect_pending_obstacles)
+    if args.depth_interval_profile:
+        if args.conservative_depth_shift_m != 0 or args.depth_output_scale != 1:
+            parser.error('interval profile requires raw, unshifted model depth')
+        profile = json.loads(args.depth_interval_profile.read_text())
+        if profile.get('model_sha256') and (args.model is None or
+                hashlib.sha256(args.model.read_bytes()).hexdigest() != profile['model_sha256']):
+            parser.error('interval profile belongs to a different model')
+        estimated_config = replace(estimated_config, depth_interval_profile=profile)
+    estimated_config = replace(estimated_config,interval_hypothesis_fusion=args.interval_hypothesis_fusion,
+        interval_fusion_baseline_m=args.interval_fusion_baseline_m,
+        interval_fusion_free_views=args.interval_fusion_free_views)
+    reference_config = replace(reference_config, depth_interval_profile=None,interval_hypothesis_fusion=False)
+    reference_config = replace(reference_config,
+        depth_stride=args.reference_replay_stride if args.reference_replay_stride is not None else reference_config.depth_stride,
+        depth_edge_stride=args.reference_edge_stride if args.reference_edge_stride is not None else reference_config.depth_edge_stride)
     estimated = SpatialNavigator(estimated_config)
     reference = SpatialNavigator(reference_config)
-    model = MetricDepthOnnx(
+    model = None if args.diagnostic_reference_depth else MetricDepthOnnx(
         args.model,
         input_width=686,
         input_height=518,
@@ -327,17 +375,16 @@ def main():
             with np.load(args.run_dir / event["file"]) as frame:
                 bgr = frame["rgb_bgr"]
                 reference_depth = frame["reference_depth_m"].astype(float)
-                transform = frame["camera_to_ned"].astype(float)
-                intrinsics = CameraIntrinsics(
-                    *frame["intrinsics"].astype(float)
-                )
+                transform,intrinsics,reference_transform,reference_intrinsics=frame_geometry(frame)
             cache_file = None
             if args.prediction_cache_dir is not None:
                 cache_file = (
                     args.prediction_cache_dir
                     / f"{Path(event['file']).stem}.npy"
                 )
-            if cache_file is not None and cache_file.is_file():
+            if args.diagnostic_reference_depth:
+                predicted_depth = reference_depth.copy()
+            elif cache_file is not None and cache_file.is_file():
                 predicted_depth = np.load(cache_file).astype(float)
             else:
                 predicted_depth = model.predict(bgr)
@@ -375,17 +422,29 @@ def main():
             depth_errors_since_plan.append(
                 depth_error_counts(predicted_depth, reference_depth)
             )
+            body_z = None
+            reference_body_z = None
+            if args.body_altitude_envelope:
+                metadata = manifest['metadata']
+                body_z = body_position_from_camera_transform(transform,
+                    metadata['camera_translation_body_m'],
+                    metadata['camera_rotation_body_from_optical'])[2]
+                reference_body_z = body_position_from_camera_transform(reference_transform,
+                    metadata['camera_translation_body_m'],
+                    metadata['camera_rotation_body_from_optical'])[2]
             estimated.integrate_depth(
                 predicted_depth,
                 intrinsics,
                 transform,
                 sampling_edge_mask=predicted_edges,
+                obstacle_reference_ned_z=body_z,
             )
             reference.integrate_depth(
                 reference_depth,
-                intrinsics,
-                transform,
+                reference_intrinsics,
+                reference_transform,
                 sampling_edge_mask=reference_edges,
+                obstacle_reference_ned_z=reference_body_z,
             )
             frames += 1
         elif event.get("event") == "plan" and event.get("map_kind") == "estimated":
@@ -395,7 +454,7 @@ def main():
             goal = saved_plan.get("requested_goal_ned_m")
             if current is None or goal is None or frames < 1:
                 continue
-            plan = estimated.plan(current, goal)
+            plan = estimated.plan(current, goal, allow_initial_escape=args.allow_known_free_initial_escape)
             safe_reference = bool(
                 plan.success
                 and plan.waypoints_ned_m
@@ -515,17 +574,29 @@ def main():
         "collision_free_plans": collision_free == len(successful)
         and bool(successful),
     }
-    digest = hashlib.sha256(args.model.read_bytes()).hexdigest()
+    digest = None if model is None else hashlib.sha256(args.model.read_bytes()).hexdigest()
     result = {
         "run": str(args.run_dir.resolve()),
-        "model": str(args.model.resolve()),
+        "model": None if model is None else str(args.model.resolve()),
         "model_sha256": digest,
+        "input_source": "simulator_reference_diagnostic" if args.diagnostic_reference_depth else "monocular_onnx",
+        "diagnostic_only": args.diagnostic_reference_depth,
+        "protect_pending_obstacles": args.protect_pending_obstacles,
+        "interval_hypothesis_fusion": args.interval_hypothesis_fusion,
+        "interval_fusion_baseline_m": args.interval_fusion_baseline_m,
+        "interval_fusion_free_views": args.interval_fusion_free_views,
+        "interval_free_evidence_rule": ('whole_projected_voxel' if args.interval_hypothesis_fusion else None),
+        "depth_interval_profile_sha256": (None if not args.depth_interval_profile else
+            hashlib.sha256(args.depth_interval_profile.read_bytes()).hexdigest()),
+        "allow_known_free_initial_escape": args.allow_known_free_initial_escape,
         "frames_integrated": frames,
         "depth_output_scale": args.depth_output_scale,
         "free_space_margin_m": args.free_space_margin_m,
         "free_space_margin_ratio": args.free_space_margin_ratio,
         "free_space_margin_max_m": args.free_space_margin_max_m,
         "edge_stride": estimated_config.depth_edge_stride,
+        "reference_replay_stride": reference_config.depth_stride,
+        "reference_edge_stride": reference_config.depth_edge_stride,
         "rgb_edge_sampling": args.rgb_edge_sampling,
         "edge_relative_threshold": estimated_config.depth_edge_relative_threshold,
         "obstacle_vertical_band_m": estimated_config.obstacle_vertical_band_m,
@@ -557,8 +628,11 @@ def main():
             estimated_config.lock_path_altitude_to_goal
         ),
         "occupied_uncertainty_m": estimated_config.depth_occupied_uncertainty_m,
+        "obstacle_altitude_reference": "body_from_saved_extrinsics" if args.body_altitude_envelope else "camera_legacy",
         "map": occupied,
         "estimated_map": {
+            "interval_hypotheses": len(estimated.grid.interval_hypotheses.possible),
+            "interval_cleared_by_multiview": estimated.grid.interval_hypotheses.cleared_by_multiview,
             "free_voxels": len(estimated.grid.free_voxels()),
             "occupied_voxels": len(estimated.grid.occupied_voxels()),
             "pending_occupied_voxels": len(
@@ -566,6 +640,10 @@ def main():
             ),
         },
         "reference_map": {
+            "voxel_state_sha256": hashlib.sha256(json.dumps({
+                "occupied": sorted(tuple(map(int,v)) for v in reference.grid.occupied_voxels()),
+                "free": sorted(tuple(map(int,v)) for v in reference.grid.free_voxels()),
+            }).encode()).hexdigest(),
             "free_voxels": len(reference.grid.free_voxels()),
             "occupied_voxels": len(reference.grid.occupied_voxels()),
             "pending_occupied_voxels": len(
@@ -583,7 +661,7 @@ def main():
             "plans": plans,
         },
         "qualification": {
-            "passed": all(checks.values()),
+            "passed": all(checks.values()) and not args.diagnostic_reference_depth,
             "limits": limits,
             "checks": checks,
         },

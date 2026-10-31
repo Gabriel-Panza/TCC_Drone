@@ -33,6 +33,21 @@ class CameraIntrinsics:
         )
 
 
+def body_position_from_camera_transform(camera_to_ned, translation_body, rotation_body_from_optical):
+    """Invert the saved camera lever arm, including vehicle attitude."""
+    transform = np.asarray(camera_to_ned, dtype=float)
+    translation = np.asarray(translation_body, dtype=float)
+    mount = np.asarray(rotation_body_from_optical, dtype=float)
+    if transform.shape != (4, 4) or translation.shape != (3,) or mount.shape != (3, 3):
+        raise ValueError('invalid camera extrinsic dimensions')
+    if not all(np.isfinite(v).all() for v in (transform, translation, mount)):
+        raise ValueError('nonfinite camera extrinsics')
+    if not np.allclose(mount @ mount.T, np.eye(3), atol=1e-6):
+        raise ValueError('camera mounting must be a rotation')
+    body_rotation = transform[:3, :3] @ mount.T
+    return transform[:3, 3] - body_rotation @ translation
+
+
 def backproject_depth(
     depth_m,
     intrinsics,

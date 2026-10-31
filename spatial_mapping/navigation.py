@@ -15,6 +15,8 @@ import numpy as np
 from .astar import AStar3D, PathNotFoundError, compress_collinear_path
 from .geometry import CameraIntrinsics, backproject_depth, transform_points
 from .occupancy import OccupancyGrid3D, OccupancyGridConfig
+from .depth_intervals import DepthIntervalProfile, clip_vertical_segments
+from .projected_free_evidence import projected_free_voxels
 
 
 def vertical_obstacle_mask(points_ned, reference_ned_z, band_m):
@@ -43,6 +45,10 @@ class SpatialNavigationConfig:
     depth_free_space_margin_ratio: float = 0.0
     depth_free_space_margin_max_m: float | None = None
     depth_occupied_uncertainty_m: float = 0.0
+    depth_interval_profile: dict | None = None
+    interval_hypothesis_fusion: bool = False
+    interval_fusion_baseline_m: float = .75
+    interval_fusion_free_views: int = 2
     free_observations_required: int = 1
     free_viewpoint_sectors_required: int = 1
     free_viewpoint_sector_deg: float = 45.0
@@ -50,6 +56,7 @@ class SpatialNavigationConfig:
     occupied_support_radius_voxels: int = 0
     pending_clear_free_observations_required: int = 3
     occupied_evidence_window_frames: int = 6
+    protect_pending_obstacles: bool = False
     obstacle_vertical_band_m: float = 1.5
     drone_clearance_radius_m: float = 1.25
     drone_vertical_clearance_m: float | None = None
@@ -151,6 +158,17 @@ class SpatialNavigator:
 
     def __init__(self, config=None):
         self.config = config or SpatialNavigationConfig()
+        self.depth_intervals = (None if self.config.depth_interval_profile is None
+                                else DepthIntervalProfile(self.config.depth_interval_profile))
+        if self.config.interval_hypothesis_fusion and self.depth_intervals is None:
+            raise ValueError('hypothesis fusion requires an interval profile')
+        if self.depth_intervals is not None:
+            if (self.config.depth_free_space_margin_m or self.config.depth_free_space_margin_ratio
+                    or self.config.depth_occupied_uncertainty_m):
+                raise ValueError('interval profile replaces legacy error margins; do not combine them')
+            if (self.config.min_depth_m < self.depth_intervals.edges[0]
+                    or self.config.max_depth_m > self.depth_intervals.edges[-1]):
+                raise ValueError('navigation depth range exceeds interval calibration')
         free_decrement = OccupancyGridConfig.free_decrement
         occupied_increment = OccupancyGridConfig.occupied_increment
         occupancy_config = OccupancyGridConfig(
@@ -174,6 +192,10 @@ class SpatialNavigator:
                 self.config.pending_clear_free_observations_required
             ),
             occupied_evidence_window_frames=self.config.occupied_evidence_window_frames,
+            latch_pending_obstacles=self.config.protect_pending_obstacles,
+            interval_hypothesis_fusion=self.config.interval_hypothesis_fusion,
+            interval_fusion_baseline_m=self.config.interval_fusion_baseline_m,
+            interval_fusion_free_views=self.config.interval_fusion_free_views,
             free_viewpoint_sectors_required=self.config.free_viewpoint_sectors_required,
             free_viewpoint_sector_deg=self.config.free_viewpoint_sector_deg,
         )
@@ -213,6 +235,26 @@ class SpatialNavigator:
             points_ned, obstacle_reference_ned_z,
             self.config.obstacle_vertical_band_m,
         )
+        occupied_segments = free_endpoints = narrow_interval_mask = free_validator = None
+        if self.depth_intervals is not None:
+            lower, upper = self.depth_intervals.bounds(points_camera[:,2])
+            directions = points_camera / points_camera[:,2,None]
+            near = transform_points(directions*lower[:,None], camera_to_ned)
+            far = transform_points(directions*upper[:,None], camera_to_ned)
+            obstacle_endpoint_mask, occupied_segments = clip_vertical_segments(
+                near, far, obstacle_reference_ned_z, self.config.obstacle_vertical_band_m)
+            free_endpoints = near
+            narrow_interval_mask = (
+                (np.linalg.norm(far-near,axis=1) <= self.config.voxel_resolution_m)
+                & (np.abs(near[:,2]-obstacle_reference_ned_z) <= self.config.obstacle_vertical_band_m)
+                & (np.abs(far[:,2]-obstacle_reference_ned_z) <= self.config.obstacle_vertical_band_m))
+            if self.config.interval_hypothesis_fusion:
+                image = np.asarray(depth_m,dtype=float)
+                valid = np.isfinite(image)&(image>=self.config.min_depth_m)&(image<=self.config.max_depth_m)
+                lower_image = np.full(image.shape,np.nan,dtype=float)
+                lower_image[valid] = self.depth_intervals.bounds(image[valid])[0]
+                free_validator = lambda voxels: projected_free_voxels(voxels,
+                    self.config.voxel_resolution_m,intrinsics,camera_to_ned,lower_image)
         self.grid.mark_free_sphere(
             camera_origin_ned,
             self.config.known_free_radius_m,
@@ -226,6 +268,10 @@ class SpatialNavigator:
             free_space_margin_ratio=self.config.depth_free_space_margin_ratio,
             free_space_margin_max_m=self.config.depth_free_space_margin_max_m,
             occupied_uncertainty_m=self.config.depth_occupied_uncertainty_m,
+            occupied_segments=occupied_segments,
+            free_endpoints=free_endpoints,
+            narrow_interval_mask=narrow_interval_mask,
+            interval_free_validator=free_validator,
         )
         ego_voxel_cleared_occupied = self.grid.mark_ego_voxel_free(
             camera_origin_ned
@@ -307,6 +353,8 @@ class SpatialNavigator:
                 else self.config.drone_clearance_radius_m
             ),
             "neighbor_states_26": neighbor_states,
+            "interval_hypotheses": len(self.grid.interval_hypotheses.possible),
+            "interval_cleared_by_multiview": self.grid.interval_hypotheses.cleared_by_multiview,
             "blocked_neighbors_26": blocked_neighbors,
         }
         current_layer = current_voxel[2]
@@ -660,6 +708,7 @@ class SpatialNavigator:
             "occupied_threshold": np.asarray(self.grid.config.occupied_threshold),
             "free_threshold": np.asarray(self.grid.config.free_threshold),
             "frames_integrated": np.asarray(self.frames_integrated),
+            **self.grid.interval_hypotheses.snapshot_arrays(),
         }
 
     def path_safety_diagnostics(
@@ -782,6 +831,8 @@ class SpatialNavigator:
         blocked = self._inflated_obstacles()
         free = self.grid.free_voxels()
         start_voxel = self.grid.world_to_voxel(points[0])
+        occupied = self.grid.occupied_voxels()
+        pending = self.grid.pending_occupied_voxels()
         result = {
             'safe': False,
             'failure_reason': 'start_not_inflated',
@@ -802,6 +853,15 @@ class SpatialNavigator:
                     continue
                 previous = voxel
                 result['checked_voxels'] += 1
+                # Escape may cross only the clearance shell. It must never
+                # excuse a real/pending obstacle or unobserved space inside it.
+                if voxel in occupied or voxel in pending or voxel not in free:
+                    result.update(
+                        failure_reason=('occupied' if voxel in occupied else
+                                        'pending' if voxel in pending else 'unknown'),
+                        first_unsafe_voxel=list(voxel), segment_index=segment_index,
+                    )
+                    return result
                 if voxel in blocked:
                     if left_inflation:
                         result.update(
@@ -886,6 +946,8 @@ class SpatialNavigator:
         return self.grid.inflated_occupied_voxels(
             self.config.drone_clearance_radius_m,
             self.config.drone_vertical_clearance_m,
+            include_pending=self.config.protect_pending_obstacles,
+            include_hypotheses=self.config.interval_hypothesis_fusion,
         )
 
     def _arrival_point_in_voxel(self, current, requested_goal, voxel):
