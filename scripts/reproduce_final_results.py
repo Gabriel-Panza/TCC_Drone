@@ -9,7 +9,7 @@ def main():
  d=json.loads((ROOT/"datasets/resultados_finais_monocular/results.json").read_text())
  r=d
  assert r["frames_integrated"]==77 and r["planning"]["successes"]==12 and abs(r["map"]["false_free_rate"]-4/401)<1e-12
- for folder in (ROOT/"Parte_Escrita").iterdir():
+ for folder in [ROOT/"Parte_Escrita/Monografia_TCC"]:
   if not folder.is_dir() or not ((folder/"main.tex").exists() or (folder/"principal.tex").exists()):continue
   out=folder/"figuras";out.mkdir(exist_ok=True)
   f,a=plt.subplots(figsize=(8,4.5),layout="constrained")
@@ -35,7 +35,7 @@ def illustrations():
  with np.load(data/"sample_0.npz") as z:a={k:z[k] for k in z.files}
  with np.load(data/"sample_1.npz") as z:b={k:z[k] for k in z.files}
  def publish(fig,name):
-  for folder in (ROOT/"Parte_Escrita").iterdir():
+  for folder in [ROOT/"Parte_Escrita/Monografia_TCC"]:
    if folder.is_dir() and ((folder/"main.tex").exists() or (folder/"principal.tex").exists()):
     for ext in ["png","svg","pdf"]:fig.savefig(folder/"figuras"/(name+"."+ext),dpi=170)
   plt.close(fig)
@@ -55,12 +55,32 @@ def illustrations():
  q,status,_=cv2.calcOpticalFlowPyrLK(gray,gray2,p,None)
  f,ax=plt.subplots(1,2,figsize=(10,4),layout="constrained")
  ax[0].imshow(cv2.cvtColor(a["rgb_bgr"],cv2.COLOR_BGR2RGB));ax[0].set_title("Fluxo entre quadros reais 1 e 2")
+ reference=a["reference_depth_m"]
+ sampled=[]
+ for point,valid in zip(p[:,0],status[:,0]):
+  u,v=np.rint(point).astype(int)
+  if valid and 0<=v<reference.shape[0] and 0<=u<reference.shape[1]:
+   depth=float(reference[v,u])
+   if np.isfinite(depth) and depth>0:sampled.append(depth)
+ threshold=float(np.median(sampled))
+ counts=[0,0]
  for aa,bb,valid in zip(p[:,0],q[:,0],status[:,0]):
-  if valid:ax[0].arrow(*aa,*(bb-aa),color="yellow",width=.25,head_width=3)
+  if not valid:continue
+  u,v=np.rint(aa).astype(int)
+  if not (0<=v<reference.shape[0] and 0<=u<reference.shape[1]):continue
+  depth=float(reference[v,u])
+  if not np.isfinite(depth) or depth<=0:continue
+  group=int(depth>threshold);counts[group]+=1
+  color=["#00e5ff","#ffe600"][group]
+  ax[0].arrow(*aa,*(bb-aa),color=color,width=.25,head_width=3)
+ assert all(counts),counts
+ from matplotlib.lines import Line2D
+ ax[0].legend(handles=[Line2D([0],[0],color="#00e5ff",label=f"Menor profundidade GT (≤ {threshold:.1f} m)"),
+  Line2D([0],[0],color="#ffe600",label=f"Maior profundidade GT (> {threshold:.1f} m)")],loc="lower left",fontsize=7,facecolor="#444444",labelcolor="white")
  ax[1].axis("off")
  ax[1].text(.02,.85,"Quadro t0 → Quadro t1",fontsize=15)
  ax[1].text(.02,.6,"Sinais inerciais e movimento no intervalo\nΔt = t1 − t0\nAtributos → variações de proximidade",fontsize=12)
- ax[1].text(.02,.2,"Fluxo depende de rotação e translação.\nVetor maior não garante objeto mais próximo.",fontsize=11)
+ ax[1].text(.02,.2,"Cores: grupos relativos de profundidade GT.\nO GT é usado somente nesta ilustração.\nFluxo depende de rotação e translação.\nVetor maior não garante objeto mais próximo.",fontsize=10)
  publish(f,"metodologia_fluxo_intervalo")
  f,ax=plt.subplots(1,2,figsize=(12,4),layout="constrained")
  ax[0].axis("off");ax[0].text(.02,.95,"MLP tabular (não é o estimador denso)",fontsize=13)

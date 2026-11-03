@@ -23,9 +23,9 @@ O projeto reúne dois eixos experimentais:
 
 A conclusão principal é que uma métrica de profundidade aceitável por pixel não garante um mapa seguro ou caminhos executáveis.
 
-![Sensibilidade dos grupos de entradas e ablação](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_explicabilidade_ablacao.png)
+![Sensibilidade dos grupos de entradas e ablação](Parte_Escrita/Monografia_TCC/figuras/resultados_explicabilidade_ablacao.png)
 
-![Mapa de referência e caminhos A* adotados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/resultados_mapa_astar.png)
+![Mapa de referência e caminhos A* adotados](Parte_Escrita/Monografia_TCC/figuras/resultados_mapa_astar.png)
 
 Os resultados monoculares finais estão em datasets/resultados_finais_monocular/results.json.
 
@@ -211,7 +211,7 @@ PYTHONNOUSERSITE=1 python3 main.py --ros-args \
 
 Nesse modo, o fluxo óptico e a lógica de risco produzem comandos de velocidade. Ele está separado do modo `spatial_astar`, no qual os comandos reativos não alteram a navegação.
 
-![Fluxo visual e variação de proximidade sincronizados](Parte_Escrita/ModeloTCC_Artigo_CC_Latex/figuras/metodologia_sincronizacao.png)
+![Fluxo visual e variação de proximidade sincronizados](Parte_Escrita/Monografia_TCC/figuras/metodologia_sincronizacao.png)
 
 ## Testes e relatórios
 
@@ -259,7 +259,7 @@ cd TCC_Drone
     pip install -r requirements-reproducao.txt
     python scripts/reproduce_final_results.py
 
-Esse comando valida as métricas armazenadas e regenera PNG/SVG/PDF nos três modelos e o painel exportado em estudos_e_analises/prints. Dois quadros reais de ilustração e resultados estão em datasets/resultados_finais_monocular. O painel exportado não é captura de uma sessão de voo.
+Esse comando valida as métricas armazenadas e regenera PNG/SVG/PDF na monografia de entrega e o painel exportado em estudos_e_analises/prints. Dois quadros reais de ilustração e resultados estão em datasets/resultados_finais_monocular. O painel exportado não é captura de uma sessão de voo.
 
 O notebook estudo_das_metricas.ipynb possui seção final independente. Suas células históricas ainda exigem os datasets originais. O dashboard lê o resumo versionado; instale também requirements.txt e execute python estudos_e_analises/dashboard_metricas_desvio.py.
 
@@ -292,4 +292,8 @@ A versão de entrega e o pacote estão publicados na Release vinculada acima. O 
 As figuras metodológicas revisadas podem ser regeneradas isoladamente com PYTHONNOUSERSITE=1 python scripts/generate_methodology_figures.py. Os quatro logs históricos de ilustração e os 1.234 intervalos necessários a esses gráficos estão no subconjunto versionado datasets/resultados_finais_monocular/figuras_revisao. Eles não substituem o conjunto bruto de treinamento. PYTHONNOUSERSITE=1 evita misturar Matplotlib local com o ambiente virtual.
 
 
-Os gráficos vetoriais são incorporados pelos três modelos LaTeX. O algoritmo completo de estabilização usa yaw e giroscópio medidos; a coluna de contexto de 40 ms é ilustrativa e não representa um RGB histórico recuperado. A sequência de RGB salva tem intervalo de 0,66 s e respeita o fallback original de atitude. Os parâmetros executáveis do replay estão em config/final_monocular_replay.json.
+Os gráficos vetoriais são incorporados pela monografia LaTeX. O algoritmo completo de estabilização usa yaw e giroscópio medidos; a coluna de contexto de 40 ms é ilustrativa e não representa um RGB histórico recuperado. A sequência de RGB salva tem intervalo de 0,66 s e respeita o fallback original de atitude. Os parâmetros executáveis do replay estão em config/final_monocular_replay.json.
+
+## Texto de entrega
+
+A versão mantida no repositório é [Monografia_TCC](Parte_Escrita/Monografia_TCC/), com ponto de entrada LaTeX em [principal.tex](Parte_Escrita/Monografia_TCC/principal.tex). Os modelos alternativos de artigo e monografia são cópias locais ignoradas pelo Git. Os geradores de figuras usam apenas a pasta da monografia de entrega.

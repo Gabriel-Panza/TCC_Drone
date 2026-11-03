@@ -1,0 +1,30 @@
+% ----------------------------------------------------------
+% RESUMOS
+% ----------------------------------------------------------
+
+\setlength{\absparsep}{18pt}
+
+\begin{resumo}
+A navegação autônoma com câmera monocular depende de transformar imagens em informações sobre a distância dos obstáculos e o espaço disponível para passagem. Uma estimativa de profundidade com baixo erro médio, porém, ainda pode representar incorretamente um obstáculo e comprometer o planejamento. Este trabalho investiga como avaliar os sinais e as consequências espaciais da percepção antes de escolher uma arquitetura mais complexa ou integrar um estimador ao voo. O estudo reúne duas análises complementares. A primeira examina a relação entre sinais visuais, inerciais, de movimento e de comandos e as variações de proximidade, com comparação de modelos, repetição dos treinamentos e retirada de grupos de entradas. A segunda transforma mapas de profundidade em uma representação tridimensional de ocupação e verifica a disponibilidade e a segurança dos caminhos produzidos pelo A*. Os experimentos foram realizados em simulação, com separação dos dados por execução. A profundidade de referência permitiu validar a geometria e completar a rota nas execuções da bateria final. Os estimadores monoculares avaliados apresentaram resultados aceitáveis em parte dos critérios por pixel, mas nenhum atendeu a todos os critérios espaciais. A configuração monocular final, com revisão temporal e busca curva de saída, obteve 70,59\% de pedidos executáveis e 1,00\% de falso espaço livre em validação offline de desenvolvimento. Esse resultado não atingiu os critérios previamente definidos para voo. Nos sinais tabulares, IMU e atitude tiveram a contribuição média mais consistente, embora o efeito variasse entre os alvos. O estudo contribui com uma análise experimental que relaciona a qualidade dos sinais aos erros e ao uso posterior da profundidade. No cenário avaliado, as métricas por pixel foram insuficientes, isoladamente, para justificar a integração do estimador à navegação.
+
+\vspace{\onelineskip}
+
+\noindent
+\textbf{Palavras-chave}: navegação autônoma; visão monocular; profundidade; mapeamento tridimensional; veículo aéreo não tripulado.
+\end{resumo}
+
+% \begin{center}
+% \textbf{Before the Architecture: Evaluation of Monocular and Inertial Perception, 3D Mapping, and Safe Planning for UAVs}
+% \end{center}
+
+\begin{resumo}[Abstract]
+\begin{otherlanguage*}{english}
+Autonomous navigation with a monocular camera requires converting images into information about obstacle distances and the space available for passage. However, a depth estimate with a low average error may still misrepresent an obstacle and compromise planning. This work investigates how to assess the signals and spatial consequences of perception before selecting a more complex architecture or integrating an estimator into flight. The study comprises two complementary analyses. The first examines the relationship between visual, inertial, motion, and command signals and changes in proximity, using model comparisons, repeated training, and feature-group ablation. The second converts depth maps into a three-dimensional occupancy representation and assesses the availability and safety of paths produced by A*. The experiments were conducted in simulation, with data split by complete run. Reference depth supported geometry validation and route completion in the final reference battery. The evaluated monocular estimators achieved acceptable results under some pixel-level criteria, but none met all spatial criteria. The final monocular configuration, using temporal revision and curved initial escape, achieved 70.59\% executable planning requests and 1.00\% false free space in offline development validation. It did not meet the previously defined flight criteria. In the tabular analysis, inertial and attitude inputs made the most consistent average contribution, although their effect varied across targets. The study contributes an experimental analysis linking signal quality to errors and the downstream use of depth. In the evaluated scenario, pixel-level metrics alone were insufficient to justify integrating the estimator into navigation.
+
+\vspace{\onelineskip}
+
+\noindent
+{\raggedright
+\textbf{Keywords}: autonomous navigation; monocular vision; depth estimation; three-dimensional mapping; unmanned aerial vehicle.\par}
+\end{otherlanguage*}
+\end{resumo}

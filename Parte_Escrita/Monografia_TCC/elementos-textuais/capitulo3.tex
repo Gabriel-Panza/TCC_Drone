@@ -1,0 +1,78 @@
+\chapter{Proposta}
+
+A etapa de validação espacial, também chamada de portão, reúne condições mínimas de quantidade de quadros, sucesso de planejamento, falso espaço livre e colisão discreta. Atender a essas condições não equivale a certificação de segurança física.
+\label{cap:proposta}
+
+
+
+Este trabalho propõe uma metodologia para organizar e avaliar dados multimodais de um UAV por intervalos visuais. Os intervalos foram coletados durante a fase anterior de voo reativo, que forneceu as trajetórias e os sinais observados. Essa lógica de desvio, porém, não é avaliada como contribuição deste trabalho. O objeto de estudo é a informação disponível entre duas atualizações consecutivas da câmera e sua relação com mudanças de proximidade no ambiente.
+
+A proposta é avaliar a ocupação e os caminhos antes de integrar ao voo um estimador aprovado por métricas de profundidade. Para isso, o trabalho reúne dois experimentos: a análise dos sinais com MLP, árvores e eventos e a avaliação da profundidade em um mapa usado pelo A*. O primeiro estuda a representação dos sinais. O segundo verifica a utilização espacial da profundidade.
+
+A metodologia foi organizada para responder a cinco perguntas: se o aumento do número de execuções melhora a previsão das mudanças de proximidade. Se os resultados permanecem estáveis entre sementes e modelos de referência. Quais grupos de entradas contribuem para a previsão. Quanto do erro do modelo em duas etapas vem da classificação do evento e quanto permanece na regressão. E se uma estimativa monocular aprovada por métricas de profundidade também permite construir caminhos espaciais seguros. Para isso, cada execução é tratada como uma unidade experimental, os sinais são sincronizados em uma representação comum e os modelos são avaliados com validação e teste fixos. Também são usados modelos de referência, várias sementes, análise de eventos, atribuição por gradientes e ablação de grupos de entradas.
+
+\begin{figure}[htb]
+\centering
+\fbox{\begin{minipage}{0.92\textwidth}
+\centering
+\textbf{Eixo tabular dos sinais}\\
+RGB, fluxo, IMU, atitude, movimento e comandos $\rightarrow$ intervalos sincronizados $\rightarrow$ MLP e árvores $\rightarrow$ sementes, eventos, gradientes e ablação
+
+\vspace{0.35cm}\hrule\vspace{0.35cm}
+
+\textbf{Eixo espacial da profundidade}\\
+RGB $\rightarrow$ profundidade monocular $\rightarrow$ mapa de ocupação 3D $\rightarrow$ A* $\rightarrow$ portão espacial\\
+\small Profundidade do Gazebo: referência por pixel, mapa de comparação e bateria de validação da geometria.
+\end{minipage}}
+\caption{Visão geral dos dois eixos experimentais.}
+\label{fig:fluxo-dois-eixos}
+\legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\section{Unidade de análise}
+
+Uma amostra corresponde ao intervalo entre duas atualizações consecutivas da lógica visual. Em vez de usar posição, atitude ou profundidade absolutas, a representação registra as variações ocorridas no intervalo. Essa escolha preserva a dinâmica temporal do voo e permite comparar sinais que possuem taxas de atualização diferentes.
+
+Cada execução completa permanece em apenas um dos conjuntos de treino, validação ou teste. Assim, intervalos vizinhos de uma mesma trajetória não aparecem em conjuntos diferentes. A separação por execução reduz o risco de medir como generalização aquilo que seria apenas semelhança temporal entre amostras próximas \cite{Kapoor2023}.
+
+\section{Organização dos dados multimodais}
+
+Os dados de cada intervalo são divididos em seis grupos: sincronização; movimento; IMU e atitude; fluxo óptico e risco; diferença de imagem; e comandos reativos. Neste eixo tabular, a câmera de profundidade fornece somente a referência para os alvos e não participa do cálculo das entradas, da decisão de voo nem da geração dos comandos. No eixo espacial monocular, ela também serve de referência para avaliar mapa e caminhos. Já na bateria espacial de referência, sua profundidade alimenta diretamente o mapa e o A*, participando da decisão de alto nível; essa bateria valida geometria e planejamento antes da substituição pela estimativa monocular.
+
+Os alvos representam deltas dos percentis P10, P50 e P90 da profundidade, em metros, e deltas da porcentagem de pixels abaixo de 2, 5 e 10~m, em pontos percentuais. Dessa forma, o modelo tenta estimar como a distribuição de profundidade mudou durante o intervalo, e não reconstruir um mapa de profundidade completo.
+
+O alvo de pixels abaixo de 5~m recebe uma análise adicional. Ele representa a mudança da área próxima no campo visual e permite separar o problema em duas partes: reconhecer quando ocorreu uma mudança relevante e estimar seu sinal e sua magnitude.
+
+\section{Estratégia de avaliação}
+
+A primeira pergunta de pesquisa é avaliada por uma curva de aprendizado. Os conjuntos de validação e teste permanecem fixos, enquanto novas execuções entram somente no treino. Esse desenho permite associar as mudanças de desempenho ao aumento dos dados de treinamento sem trocar os casos usados na avaliação.
+
+A segunda pergunta usa treinamentos com cinco sementes e a comparação da MLP com Random Forest, Extra Trees e uma previsão constante baseada na média do treino. A análise considera MAE, RMSE e correlação nas unidades originais. O objetivo não é escolher um vencedor isolado, mas verificar a estabilidade dos resultados e a dificuldade de cada alvo.
+
+A terceira pergunta combina duas análises. Os gradientes medem a sensibilidade local do erro em relação às entradas. A ablação treina novamente a rede após retirar um grupo de variáveis e mede a mudança do MAE. A primeira técnica ajuda a localizar entradas influentes. A segunda verifica se o grupo realmente contribui para a generalização.
+
+A quarta pergunta usa um modelo em duas etapas para o alvo de pixels abaixo de 5~m. Um classificador identifica eventos e um regressor estima a mudança. Um diagnóstico adicional fornece ao regressor a indicação correta dos eventos. A diferença entre esse diagnóstico e o pipeline completo permite estimar quanto do erro vem da classificação e quanto permanece na regressão.
+
+A quinta pergunta acrescenta uma validação espacial organizada em portões sucessivos. Primeiro, a profundidade do Gazebo valida reprojeção, transformação para o referencial local, ocupação, A* e execução dos pontos. Depois, uma variante métrica do Depth Anything V2 é ajustada com pares RGB--profundidade do cenário. A estimativa densa é reprojetada em três dimensões e acumulada em uma grade esparsa de voxels. O mesmo processo também constrói um mapa de referência com a profundidade do Gazebo.
+
+O mapa registra evidências de espaço livre ao longo de cada raio e de ocupação perto de seu extremo. Observações pendentes, persistência temporal, margem de espaço livre e incerteza do retorno evitam que um único quadro libere uma região de maneira otimista. Antes da busca, os obstáculos recebem uma expansão horizontal e vertical. O A* usa conectividade tridimensional e aceita somente voxels observados como livres. Quando o objetivo não está na região conhecida, o sistema procura subobjetivos alcançáveis em fronteiras de observação, recua o final em relação ao desconhecido e rejeita caminhos que não produzam progresso executável.
+
+A avaliação ocorre primeiro por repetição offline dos quadros e mapas gravados. Cada candidato precisa passar pelo erro de profundidade, pela qualidade do mapa e pela segurança dos caminhos no mapa de referência. Somente uma configuração sem colisões em todas as execuções reservadas poderia iniciar a bateria SITL monocular. Essa regra foi definida antes da decisão final e impede que ajustes sejam escolhidos apenas por uma execução favorável.
+
+\section{Interpretações alternativas e alcance da posição}
+
+Uma alternativa é usar métricas por pixel como principal critério por seu baixo custo e pela associação que podem apresentar com tarefas posteriores, como a detecção 3D \cite{Gurram2023DepthMetrics}. Essa escolha é útil na seleção inicial. A posição deste trabalho acrescenta a verificação espacial quando a decisão pretendida é integrar o estimador ao voo. Ela não afirma que as métricas por pixel sejam inúteis nem que nunca acompanhem a qualidade da tarefa.
+
+Outra interpretação é que uma arquitetura mais adequada, um mapa menos conservador ou uma política integrada resolveriam as falhas observadas. O experimento não elimina essas possibilidades. O MonoNav já apresenta navegação monocular com reconstrução e planejamento \cite{Simon2024MonoNav}, e o MoNA Bench avalia estimadores no uso em navegação \cite{Pan2024MoNA}. O bloqueio obtido aqui caracteriza as configurações examinadas, e não uma impossibilidade da navegação monocular.
+
+A proposta também exige distinguir segurança avaliada e disponibilidade: rejeitar todos os caminhos eliminaria colisões por ausência de movimento, mas não produziria navegação útil. Por isso, o portão combina verificação de colisões, falso espaço livre, disponibilidade de planejamento e cobertura mínima. Seus limites são critérios experimentais internos, sem certificação de segurança. A evidência que sustenta a posição é a divergência entre a seleção por pixel e a decisão espacial neste caso. Generalizá-la exige outros estimadores, cenários e conjuntos independentes.
+
+\section{Reprodutibilidade}
+
+O repositório possui dois pontos centrais. O arquivo \texttt{main.py} executa o nó ROS~2 responsável pelo voo e pela coleta. O notebook \path{estudos_e_analises/estudo_das_metricas.ipynb} lê os dados, aplica os critérios de validade, treina os modelos tabulares e gera as tabelas e figuras. A validação espacial fica em \path{spatial_mapping/}, e os scripts de treino, repetição offline, auditoria de segmentos e consolidação ficam em \path{scripts/}.
+
+O código está disponível no repositório público\footnote{\url{https://github.com/Gabriel-Panza/TCC_Drone}}. A versão final analisada foi consolidada na branch \texttt{main}. Os arquivos brutos das execuções e os pesos não foram publicados devido ao volume ocupado por registros, imagens e mapas de profundidade. As configurações de treino e validação, o código de auditoria e os manifestos de proveniência preservam a associação entre modelo, conjunto e decisão experimental.
+
+\section{Considerações finais}
+
+A proposta separa a previsão tabular de proximidade da estimação densa de profundidade e de seu uso no planejamento. Isso permite examinar os resultados de cada etapa. Para identificar a causa de uma falha, ainda é necessário comparar estimador, sincronização, mapa e planejador sob condições controladas. O capítulo seguinte descreve a implementação.

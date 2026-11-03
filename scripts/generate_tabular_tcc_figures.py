@@ -11,11 +11,8 @@ from scipy.stats import t
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGS = ROOT / "estudos_e_analises" / "logs"
-OUTPUT_DIRS = (
-    ROOT / "Parte_Escrita" / "ModeloTCC_Artigo_CC_Latex" / "figuras",
-    ROOT / "Parte_Escrita" / "ModeloTCC_Monografia_CC_Latex" / "figuras",
-    ROOT / "Parte_Escrita" / "Monografia_Metodologia_Professor" / "figuras",
-)
+OUTPUT_DIRS = (ROOT / "Parte_Escrita" / "Monografia_TCC" / "figuras",)
+
 TARGET_LABELS = {
     "delta_depth_p10_m": "P10 (m)",
     "delta_depth_p50_m": "P50 (m)",

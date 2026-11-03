@@ -1,0 +1,19 @@
+{
+  "frames": 77,
+  "planning": {
+    "attempts": 17,
+    "successes": 12,
+    "safe_successes": 5,
+    "collision_free_successes": 12,
+    "success_rate": 0.7058823529411765
+  },
+  "false_free_rate": 0.00997506234413965,
+  "checks": {
+    "frames": false,
+    "plan_success_rate": false,
+    "false_free_rate": true,
+    "collision_free_plans": true
+  },
+  "map_metrics_unchanged": true,
+  "flight_authorized": false
+}

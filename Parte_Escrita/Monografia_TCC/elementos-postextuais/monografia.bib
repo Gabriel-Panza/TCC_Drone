@@ -1,0 +1,961 @@
+@TechReport{Vyas2022,
+  author   = {Vyas, Pulkit and Saxena, Chirag and Badapanda, Anwesh and Goswami, Anurag},
+  title    = {Outdoor monocular depth estimation: A research review},
+  year     = {2022},
+  abstract = {Depth estimation is an important task, applied in frames of input image data [18] [23]. This happens because various methods and applications of computer vision. While when the subject of the scene is much bigger than the focal the traditional methods of estimating depth are based on depth view size of the camera then the overall change between the cues and require specific equipment such as stereo cameras and configuring input according to the approach being used, the elements captured in a set of frames would be much less focus at the current time is on a single source, or monocular, compared to the same camera being used in an indoor setting. The recent developments in Convolution Neural Classical techniques based on depth cues from motion and Networks along with the integration of classical methods in these texture thus fail because of the lack of dynamic nature [5] [6] deep learning approaches have led to a lot of advancements in [7]. Fig. 1 gives an overview of the evolution of techniques the depth estimation problem. The problem of outdoor depth estimation, or depth estimation in wild, is a very scarcely used for depth estimation. In this paper, we give an overview of the available datasets, depth estimation methods, research work, trends, challenges, and opportunities that exist for open research. To our knowledge, no openly available survey work provides a comprehensive collection of outdoor depth estimation techniques and research scope, making our work an essential contribution for people looking to enter this field of study.},
+  doi      = {10.48550/arXiv.2205.01399},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Outdoor Monocular Depth Estimation - A Research Review.pdf:PDF},
+  groups   = {TCC - Visão},
+  journal  = {Computer Vision and Pattern Recognition},
+  ranking  = {rank3},
+}
+
+@Article{Loquercio2021,
+  author    = {Loquercio, Antonio and Kaufmann, Elia and Ranftl, René and Müller, Matthias and Koltun, Vladlen and Scaramuzza, Davide},
+  journal   = {Science Robotics},
+  title     = {Learning high-speed flight in the wild},
+  year      = {2021},
+  number    = {59},
+  volume    = {6},
+  abstract  = {Quadrotors are agile. Unlike most other machines, they can traverse extremely complex environments at high speeds. To date, only expert human pilots have been able to fully exploit their capabilities. Autonomous operation with onboard sensing and computation has been limited to low speeds. State-of-the-art methods generally separate the navigation problem into subtasks: sensing, mapping, and planning. Although this approach has proven successful at low speeds, the separation it builds upon can be problematic for high-speed navigation in cluttered environments. The subtasks are executed sequentially, leading to increased processing latency and a compounding of errors through the pipeline. Here we propose an end-to-end approach that can autonomously fly quadrotors through complex natural and human-made environments at high speeds, with purely onboard sensing and computation. The key principle is to directly map noisy sensory observations to collision-free trajectories in a receding-horizon fashion. This direct mapping drastically reduces processing latency and increases robustness to noisy and incomplete perception. The sensorimotor mapping is performed by a convolutional network that is trained exclusively in simulation via privileged learning: imitating an expert with access to privileged information. By simulating realistic sensor noise, our approach achieves zero-shot transfer from simulation to challenging real-world environments that were never experienced during training: dense forests, snow-covered terrain, derailed trains, and collapsed buildings. Our work demonstrates that end-to-end policies trained in simulation enable high-speed autonomous flight through challenging environments, outperforming traditional obstacle avoidance pipelines. CODE AND MULTIMEDIA MATERIAL A video demonstrating our approach is available at https://youtu.be/ m89bNn6RFoQ. We publicly release code and training datasets at https://github.com/uzh-rpg/agile_autonomy.},
+  doi       = {10.1126/scirobotics.abg5810},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Learning High-Speed Flight in the Wild.pdf:PDF},
+  groups    = {TCC - Drone},
+  publisher = {American Association for the Advancement of Science (AAAS)},
+  ranking   = {rank5},
+}
+
+@InProceedings{Bhattacharya2024,
+  author    = {Bhattacharya, Anish and Cannici, Marco and Rao, Nishanth and Tao, Yuezhan and Kumar, Vijay and Matni, Nikolai and Scaramuzza, Davide},
+  booktitle = {8th Annual Conference on Robot Learning},
+  title     = {Monocular event-based vision for obstacle avoidance with a quadrotor},
+  year      = {2024},
+  abstract  = {We present the first static-obstacle avoidance method for quadrotors using just an onboard, monocular event camera. Quadrotors are capable of fast and agile flight in cluttered environments when piloted manually, but vision-based autonomous flight in unknown environments is difficult in part due to the sensor limitations of traditional onboard cameras. Event cameras, however, promise nearly zero motion blur and high dynamic range, but produce a very large volume of events under significant ego-motion and further lack a continuous-time sensor model in simulation, making direct sim-to-real transfer not possible. By leveraging depth prediction as a pretext task in our learning framework, we can pre-train a reactive obstacle avoidance events-to-control policy with approximated, simulated events and then fine-tune the perception component with limited events-and-depth real-world data to achieve obstacle avoidance in indoor and outdoor settings. We demonstrate this across two quadrotor-event camera platforms in multiple settings and find, contrary to traditional vision-based works, that low speeds (1m/s) make the task harder and more prone to collisions, while high speeds (5m/s) result in better event-based depth estimation and avoidance. We also find that success rates in outdoor scenes can be significantly higher than in certain indoor scenes.},
+  doi       = {10.48550/arXiv.2411.03303},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Monocular Event-Based Vision for Obstacle Avoidance with a Quadrotor.pdf:PDF},
+  groups    = {TCC - Drone},
+  journal   = {Conference on Robot Learning (CoRL), Munich, Germany, 2024},
+  ranking   = {rank3},
+  url       = {https://openreview.net/forum?id=82bpTugrMt},
+}
+
+@Article{Autotune2021,
+  author   = {Loquercio, Antonio and Saviolo, Alessandro and Scaramuzza, Davide},
+  journal  = {IEEE Robotics and Automation Letters 2022},
+  title    = {Autotune: Controller tuning for high-speed flight},
+  year     = {2022},
+  abstract = {Due to noisy actuation and external disturbances, Tuning controller parameters to fly high-speed maneuvers is
+tuning controllers for high-speed flight is very challenging. In this difficult due to three main challenges: (i) the objective function
+letter, we ask the following questions: How sensitive are controllers (i.e. the relationship between controller parameters and perfor-
+to tuning when tracking high-speed maneuvers? What algorithms mance) is highly non-convex (See Fig. 2); (ii) the tuning process
+can we use to automatically tune them? To answer the first question, only relies on noisy evaluations1 of the objective function at
+we study the relationship between parameters and performance
+and find out that the faster the maneuver, the more sensitive a adaptively chosen parameters, but not to the function itself or},
+  doi      = {10.1109/LRA.2022.3146897},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/AutoTune_Controller_Tuning_for_High-Speed_Flight.pdf:PDF},
+  groups   = {TCC - Drone},
+  ranking  = {rank5},
+}
+
+@Book{BayesianLearning2015,
+  author   = {Richter, Charles and Vega-Brown, William and Roy, Nicholas},
+  title    = {Bayesian learning for safe high-speed navigation in unknown environments},
+  year     = {2015},
+  abstract = {In this work, we develop a planner for high-speed navigation in unknown
+environments, for example reaching a goal in an unknown building in minimum
+time, or flying as fast as possible through a forest. This planning task is challenging
+because the distribution over possible maps, which is needed to estimate the feasibil-
+ity and cost of trajectories, is unknown and extremely hard to model for real-world
+environments. At the same time, the worst-case assumptions that a receding-horizon
+planner might make about the unknown regions of the map may be overly conserva-
+tive, and may limit performance. Therefore, robots must make accurate predictions
+about what will happen beyond the map frontiers to navigate as fast as possible. To
+reason about uncertainty in the map, we model this problem as a POMDP and dis-
+cuss why it is so difficult given that we have no accurate probability distribution over
+real-world environments. We then present a novel method of predicting collision
+probabilities based on training data, which compensates for the missing environ-
+ment distribution and provides an approximate solution to the POMDP. Extending
+our previous work, the principal result of this paper is that by using a Bayesian
+non-parametric learning algorithm that encodes formal safety constraints as a prior
+over collision probabilities, our planner seamlessly reverts to safe behavior when
+it encounters a novel environment for which it has no relevant training data. This
+strategy generalizes our method across all environment types, including those for
+which we have training data as well as those for which we do not. In familiar en-
+vironment types with dense training data, we show an 80% speed improvement
+compared to a planner that is constrained to guarantee safety. In experiments, our
+planner has reached over 8 m/s in unknown cluttered indoor spaces. Video of our ex-
+perimental demonstration is available at http://groups.csail.mit.edu/
+rrg/bayesian_learning_high_speed_nav.},
+  doi      = {10.1007/978-3-319-60916-4_19},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Bayesian_Learning_for_Safe_High-Speed_Navigation_in_Unknown_Environments.pdf:PDF},
+  groups   = {TCC - Drone},
+  journal  = {Springer Proceedings in Advanced Robotics},
+  ranking  = {rank5},
+}
+
+@TechReport{Arampatzakis2024,
+  author    = {Arampatzakis, Vasileios and Pavlidis, George and Mitianoudis, Nikolaos and Papamarkos, Nikos},
+  title     = {Monocular depth estimation: A thorough review},
+  year      = {2024},
+  number    = {to},
+  abstract  = {Estimation of depth in two-dimensional images is and obstacle avoidance [4], robot-assisted surgery [5], detection
+among the challenging topics in Computer Vision. This is a well- of robotic grasps [6], human pose estimation [7], automatic
+studied but also an ill-posed problem, which has long been the film conversion from 2D to 3D [8], synthetically defocusing
+focus of intense research. This paper is an in-depth review of the
+topic, presenting two aspects, one that considers the mechanisms of images [9], and synthetic object insertion into images [10].
+of human depth perception, and another that includes the various Although these applications had a tremendous improvement in
+Deep Learning approaches. The methods are presented in a com- recent years due to the advancements in machine learning and
+pact and structured way that outlines the topic and categorizes the artificial intelligence, the attained visual perception is, yet, far
+approaches according to the line of research followed in the recent from beating the human skill.
+decade. Although there has been significant advancement in the
+topic, it was without any connection with human depth perception Our current understanding of human depth perception is that
+and the potential benefits from this sector. it lies within the exploitation of information drawn from visual},
+  doi       = {10.1109/TPAMI.2023.3330944},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Monocular_Depth_Estimation_A_Thorough_Review.pdf:PDF},
+  groups    = {TCC - Visão},
+  journal   = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  publisher = {IEEE},
+  ranking   = {rank3},
+}
+
+@TechReport{RealTimeMonocular2022,
+  author    = {Dong, Xingshuai and Garratt, Matthew A. and Anavatti, Sreenatha G. and Abbass, Hussein A.},
+  title     = {Towards real-time monocular depth estimation for robotics: A survey},
+  year      = {2022},
+  month     = oct,
+  abstract  = {IEEE Transactions on Intelligent Transportation Systems;2022;23;10;10.1109/TITS.2022.3160741},
+  doi       = {10.1109/TITS.2022.3160741},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Towards_Real-Time_Monocular_Depth_Estimation_for_Robotics_A_Survey.pdf:PDF},
+  groups    = {TCC - Visão},
+  journal   = {IEEE Transactions on Intelligent Transportation Systems},
+  publisher = {IEEE},
+  ranking   = {rank3},
+  volume    = {23},
+}
+
+@InProceedings{Yang2019,
+  author    = {Yang, Gengshan and Hu, Peiyun and Ramanan, Deva},
+  title     = {Inferring distributions over depth from a single image},
+  year      = {2019},
+  abstract  = {2019 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), November 4-8, 2019, Macau, China},
+  booktitle = {2019 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) Macau, China, November 4-8, 2019},
+  doi       = {10.1109/IROS40897.2019.8968065},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Inferring_Distributions_Over_Depth_from_a_Single_Image.pdf:PDF},
+  groups    = {TCC - Visão},
+  ranking   = {rank5},
+}
+
+@TechReport{Saviolo2023,
+  author    = {Saviolo, Alessandro and Loianno, Giuseppe},
+  title     = {Learning quadrotor dynamics for precise, safe, and agile flight control},
+  year      = {2023},
+  abstract  = {Annual Reviews in Control, 55 (2023) 45-60. doi:10.1016/j.arcontrol.2023.03.009},
+  doi       = {10.1016/j.arcontrol.2023.03.009},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Learning quadrotor dynamics for precise, safe, and agile flight control.pdf:PDF},
+  groups    = {TCC - Drone},
+  issn      = {1367-5788},
+  journal   = {Annual Reviews in Control},
+  keywords  = {Aerial vehicles, System identification, Modeling dynamics, Robot learning, Model learning, Neural networks},
+  pages     = {45--60},
+  publisher = {Elsevier BV},
+  ranking   = {rank5},
+  volume    = {55},
+}
+
+@Article{Shaaban2023,
+  author   = {Shaaban, Manal and Merzban, Mohamed and Khalaf, Ashraf and Hamed, Hesham},
+  journal  = {Journal of Advanced Engineering Trends},
+  title    = {Comparison of various control techniques applied to a quadcopter},
+  year     = {2023},
+  abstract = {A quadcopter is considered one of the most well-known examples of unmanned aerial vehicles (UAVS), because it has more advantages than standard helicopter in terms of size, efficiency, and safety. As a result, researchers are quite interested in it. In this paper, practical applications and various control techniques of the quadcopter are presented. This article summarizes an overview of quadcopter popular control strategies such as intelligent PID techniques, feedback linearization techniques, linear quadratic LQR techniques, sliding mode control techniques, and backstepping techniques, followed by analyses, pros, and cons of each control technique. The adaptive/observer-based augmentation of each nonlinear control technique is also discussed. Finally, our research prospects that the most important features of research and development quadcopter's future research will be directed by this focused literature. For each technique, the target and type of test of each research article are stated, making it easier for the researcher to select the research papers that best meet his objectives.},
+  doi      = {10.21608/jaet.2022.122064.1141},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Comparison of Various Control Techniques Applied to a Quadcopter.pdf:PDF},
+  groups   = {TCC - Drone},
+  keywords = {Nonlinear Control, Quadcopter, Regulation, Tracking, Underactuated System},
+  ranking  = {rank3},
+}
+
+@Article{Khalid2023,
+  author    = {Khalid, Adnan and Mushtaq, Zohaib and Arif, Saad and Zeb, Kamran and Khan, Muhammad Attique and Bakshi, Sambit},
+  journal   = {ACM Computing Surveys},
+  title     = {Control schemes for quadrotor uav: Taxonomy and survey},
+  year      = {2023},
+  issn      = {1557-7341},
+  month     = nov,
+  number    = {5},
+  pages     = {1--32},
+  volume    = {56},
+  abstract  = {Quadrotor Unmanned Aerial Vehicle (UAV) is an unstable system, so it needs to be controlled efficiently and intelligently. Moreover, due to its non-linear, coupled, and under-actuated nature, the quadrotor has become an important research platform to study and validate various control theories. Different control approaches have been used to control the quadrotor UAV. In this context, a comprehensive study of different control schemes is presented in this research. First, an overview of the working and different applications of quadrotor UAVs is presented. Second, a mathematical model of the quadrotor is discussed. Later, the experimental results of various existing control techniques are discussed and compared. The various control schemes discussed and described for quadrotors are; Proportional Integral and Derivative (PID), Linear Quadratic Regulator (LQR), H-infinity (H ∞), Sliding Mode Control (SMC), Feedback Linearization (FBL), Model Predictive Control (MPC), Fuzzy Logic Control (FLC), Artificial Neural Network (ANN), Iterative Learning Control (ILC), Reinforcement Learning Control (RLC), Brain Emotional Learning Control (BELC), Memory Based Control (MBC), Nested Saturation Control (NSC), and Hybrid Controllers (HC). Comparison is done among all the control techniques and it is concluded that the hybrid control method gives improved results. This survey presents a broad overview of the state-of-the-art in UAV design, control, and implementation for real-life applications.},
+  date      = {2023-11-28},
+  day       = {28},
+  doi       = {10.1145/3617652},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Control Schemes for Quadrotor UAV - Taxonomy and Survey.pdf:PDF},
+  groups    = {TCC - Drone},
+  publisher = {Association for Computing Machinery (ACM)},
+  ranking   = {rank3},
+}
+
+@Article{Ramachandran2021,
+  author    = {Ramachandran, Anitha and Sangaiah, Arun Kumar},
+  journal   = {International Journal of Cognitive Computing in Engineering},
+  title     = {A review on object detection in unmanned aerial vehicle surveillance},
+  year      = {2021},
+  issn      = {2666-3074},
+  month     = jun,
+  pages     = {215--228},
+  volume    = {2},
+  abstract  = {Purpose: Computer vision in drones has gained a lot of attention from artificial intelligence researchers. Providing intelligence to drones will resolve many real-time problems. Computer vision tasks such as object detection, object tracking, and object counting are significant tasks for monitoring specified environments. However, factors such as altitude, camera angle, occlusion, and motion blur make it a more challenging task. Methodology: In this paper, a detailed literature review has been conducted focusing on object detection and tracking using UAVs concerning different applications. This study summarizes the findings of existing research papers and identifies the research gaps. Contribution: Object detection methods applied in UAV images are classified and elaborated. UAV datasets specific to object detection tasks are listed. Existing research works in different applications are summarized. Finally, a secure onboard processing system on a robust object detection framework in precision agriculture is proposed to mitigate identified research gaps.},
+  doi       = {10.1016/j.ijcce.2021.11.005},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/A review on object detection in unmanned aerial vehicle surveillance.pdf:PDF},
+  groups    = {TCC - Drone},
+  keywords  = {Purpose: Computer vision in drones has gained a lot of attention from artificial intelligence researchers. Providing Object detection intelligence to drones will resolve many real-time problems. Computer vision tasks such as object detection, object UAV tracking, and object counting are significant tasks for monitoring specified environments. However, factors such Drone},
+  publisher = {Elsevier BV},
+  ranking   = {rank3},
+}
+
+@InProceedings{Garcia2016,
+  author    = {Garcia, Sergio and Lopez, M. Elena and Barea, Rafael and Bergasa, Luis M. and Gomez, Alejandro and Molinos, Eduardo J.},
+  title     = {Indoor slam for micro aerial vehicles control using monocular camera and sensor fusion},
+  year      = {2016},
+  month     = may,
+  pages     = {205--210},
+  abstract  = {This paper represents research in progress in Simultaneous Localization and Mapping (SLAM) for Micro Aerial Vehicles (MAVs) in the context of rescue and/or recognition navigation tasks in indoor environments. In this kind of applications, the MAV must rely on its own onboard sensors to autonomously navigate in unknown, hostile and GPS denied environments, such as ruined or semi-demolished buildings. This article aims to investigate a SLAM technique that fuses visual information and measurements from the inertial measurement unit (IMU), to robustly obtain the 6DOF pose estimation of a MAV within a local map of the environment. The monocular visual SLAM algorithm along with the IMU calculate the pose estimation through an Extended Kalman Filter (EKF). The system consists of a lowcost commercial drone and a remote control unit to computationally afford the SLAM algorithms using a distributed node system based on ROS (Robot Operating System). Some experimental results show how sensor fusion improves the position estimation and the obtained map under different test conditions.},
+  booktitle = {International Conference on Autonomous Robot Systems and Competitions (ICARSC)},
+  doi       = {10.1109/icarsc.2016.46},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Indoor_SLAM_for_Micro_Aerial_Vehicles_Control_Using_Monocular_Camera_and_Sensor_Fusion.pdf:PDF},
+  groups    = {TCC - Drone},
+  keywords  = {micro aerial vehicles, indoor navigation, sensor fusion, simultaneous localization and mapping, robot operating system},
+  publisher = {IEEE},
+  ranking   = {rank3},
+}
+
+@InProceedings{Tarrio2015,
+  author    = {Tarrio, Juan Jose and Pedre, Sol},
+  title     = {Realtime edge-based visual odometry for a monocular camera},
+  year      = {2015},
+  month     = dec,
+  pages     = {702--710},
+  abstract  = {In this work we present a novel algorithm for realtime visual odometry for a monocular camera. The main idea is to develop an approach between classical feature-based visual odometry systems and modern direct dense/semi-dense methods, trying to benefit from the best attributes of both. Similar to feature-based systems, we extract information from the images, instead of working with raw image intensities as direct methods. In particular, the information extracted are the edges present in the image, while the rest of the algorithm is designed to take advantage of the structural information provided when pixels are treated as edges. Edge extraction is an efficient and higly parallelizable operation. The edge depth information extracted is dense enough to allow acceptable surface fitting, similar to modern semi-dense methods. This is a valuable attribute that feature-based odometry lacks. Experimental results show that the proposed method has similar drift than state of the art feature-based and direct methods, and is a simple algorithm that runs at realtime and can be parallelized. Finally, we have also developed an inertial aided version that successfully stabilizes an unmanned air vehicle in complex indoor environments using only a frontal camera, while running the complete solution in the embedded hardware on board the vehicle.},
+  booktitle = {IEEE International Conference on Computer Vision (ICCV)},
+  doi       = {10.1109/iccv.2015.87},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Realtime_Edge-Based_Visual_Odometry_for_a_Monocular_Camera.pdf:PDF},
+  groups    = {TCC - Visão},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{Dhanushkodi2025,
+  author    = {Dhanushkodi, Kavitha and Bala, Akila and Chaplot, Neelam},
+  journal   = {IEEE Access},
+  title     = {Single-view depth estimation: advancing 3d scene interpretation with one lens},
+  year      = {2025},
+  issn      = {2169-3536},
+  pages     = {20562--20573},
+  volume    = {13},
+  abstract  = {This paper introduces an advanced technique for monocular 3D scene understanding, utilizing deep learning to estimate depth from a single image. Traditional methods, such as stereo vision systems or hardware-based approaches like LiDAR, require multiple viewpoints or specialized equipment to calculate depth, making them complex and costly. In contrast, this method leverages convolutional neural networks (CNNs) trained on large-scale datasets containing ground truth depth information to predict the relative depth of objects in a scene and visualize it in a 3D perspective. By recognizing visual cues such as perspective, shading, and occlusion, the model effectively captures spatial relationships from a single viewpoint, offering a streamlined solution for depth estimation. The approach is evaluated on benchmark datasets like KITTI and NYU Depth V2, which cover a wide range of environments, including urban streets and indoor settings. The results demonstrate that this single-lens depth estimation method achieves accuracy comparable to traditional stereo systems, without the need for additional hardware. Its versatility makes it particularly valuable for real-world applications like autonomous navigation, where accurate depth perception is essential for tasks such as obstacle avoidance and path planning, and augmented reality, where it enhances the interaction between virtual and physical objects. Furthermore, its computational efficiency allows for real-time depth estimation, making it suitable for time-critical applications in fields such as robotics and drones. Overall, this paper highlights the potential of single-lens depth perception as a scalable, cost-effective alternative to conventional 3D scene understanding techniques, with promising implications for industries relying on depth sensing technology.},
+  doi       = {10.1109/access.2025.3534324},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Single-View_Depth_Estimation_Advancing_3D_Scene_Interpretation_With_One_Lens.pdf:PDF},
+  groups    = {TCC - Visão},
+  keywords  = {Monocular depth estimation, MiDaS, deep learning, PyTorch, NYU depth dataset V2, KITTI dataset, 3D scene understanding},
+  publisher = {Institute of Electrical and Electronics Engineers (IEEE)},
+  ranking   = {rank5},
+}
+
+@InProceedings{Liu2023,
+  author    = {Liu, Ce and Kumar, Suryansh and Gu, Shuhang and Timofte, Radu and Van Gool, Luc},
+  title     = {Single image depth prediction made better: A multivariate gaussian take},
+  year      = {2023},
+  month     = jun,
+  pages     = {17346--17356},
+  abstract  = {Neural-network-based single image depth prediction (SIDP) is a challenging task where the goal is to predict the scene's per-pixel depth at test time. Since the problem, by definition, is ill-posed, the fundamental goal is to come up with an approach that can reliably model the scene depth from a set of training examples. In the pursuit of perfect depth estimation, most existing state-of-the-art learning techniques predict a single scalar depth value per-pixel. Yet, it is well-known that the trained model has accuracy limits and can predict imprecise depth. Therefore, an SIDP approach must be mindful of the expected depth variations in the model's prediction at test time. Accordingly, we introduce an approach that performs continuous modeling of per-pixel depth, where we can predict and reason about the per-pixel depth and its distribution. To this end, we model per-pixel scene depth using a multivariate Gaussian distribution. Moreover, contrary to the existing uncertainty modeling methods-in the same spirit, where per-pixel depth is assumed to be independent, we introduce per-pixel covariance modeling that encodes its depth dependency w.r.t. all the scene points. Unfortunately, per-pixel depth covariance modeling leads to a computationally expensive continuous loss function, which we solve efficiently using the learned low-rank approximation of the overall covariance matrix. Notably, when tested on benchmark datasets such as KITTI, NYU, and SUN-RGB-D, the SIDP model obtained by optimizing our loss function shows state-of-the-art results. Our method's accuracy (named MG) is among the top on the KITTI depth-prediction benchmark leaderboard 1 .},
+  booktitle = {2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  doi       = {10.1109/cvpr52729.2023.01664},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Single_Image_Depth_Prediction_Made_Better_A_Multivariate_Gaussian_Take.pdf:PDF},
+  groups    = {TCC - Visão},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{Fabian2025,
+  author    = {Schilling, Fabian and Schiano, Fabrizio and Floreano, Dario},
+  journal   = {IEEE Robotics and Automation Letters},
+  title     = {Vision-based drone flocking in outdoor environments},
+  year      = {2021},
+  month     = feb,
+  abstract  = {IEEE Robotics and Automation Letters;2021;6;2;10.1109/LRA.2021.3062298},
+  doi       = {10.1109/LRA.2021.3062298},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Vision-Based_Drone_Flocking_in_Outdoor_Environments.pdf:PDF},
+  groups    = {TCC - Drone},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{SimoneGodio2022,
+  author   = {Godio, Simone and Carrio, Adrian and Guglieri, Giorgio and Dovis, Fabio},
+  journal  = {Sensors (Aerial Robotics: Navigation and Path Planning)},
+  title    = {Resolution and frequency effects on uavs semi-direct visual-inertial odometry (svo) for warehouse logistics},
+  year     = {2022},
+  abstract = {For the commercial sector, warehouses are becoming increasingly vital. Constant efforts are in progress to increase the efficiency of these facilities while reducing costs. The inventory part of the goods is a time-consuming task that impacts the company's revenue. This article presents an analysis of the performance of a state-of-the-art, visual-inertial odometry algorithm, SVO Pro Open, when varying the resolution and frequency of video streaming in an industrial environment. To perform efficiently this task, achieving an optimal system in terms of localization accuracy, robustness, and computational cost is necessary. Different resolutions are selected with a constant aspect ratio, and an accurate calibration for each resolution configuration is performed. A stable operating point in terms of robustness, accuracy of localization, and CPU utilization is found and the trends obtained are studied. To keep the system robust against sudden divergence, the feature loss factor extracted from optical sensors is analyzed. Innovative trends and translation errors on the order of a few tens of centimeters are achieved, allowing the system to navigate safely in the warehouse. The best result is obtained at a resolution of 636  600 px, where the localization errors (x, y, and z) are all under 0.25 m. In addition, the CPU (Central Processing Unit) usage of the onboard computer is kept below 60%, remaining usable for other relevant onboard processing tasks.},
+  doi      = {10.3390/s22249911},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Resolution and Frequency Effects on UAVs Semi-Direct Visual-Inertial Odometry (SVO) for Warehouse Logistics.pdf:PDF},
+  groups   = {TCC - Drone},
+  keywords = {visual inertial odometry; autonomous localization; aerial system; SVO; warehouse; ROS; indoor localization; resolution; frequency},
+  ranking  = {rank4},
+}
+
+@InProceedings{Peidong2021,
+  author    = {Liu, Peidong and Zuo, Xingxing and Larsson, Viktor and Pollefeys, Marc},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  title     = {Mba-vo: Motion blur aware visual odometry},
+  year      = {2021},
+  doi       = {10.1109/ICCV48922.2021.00550},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/MBA-VO - Motion Blur Aware Visual Odometry.pdf:PDF},
+  groups    = {TCC - Visão},
+  ranking   = {rank5},
+}
+
+@TechReport{Deng2026,
+  author    = {Deng, Yang and Hu, Yu and Yu, Feng and Zhang, Linzuo and Zou, Danping},
+  title     = {Autonomous fpv flight with translational optical flow and uncertainty mask},
+  year      = {2026},
+  institution = {arXiv},
+  number      = {arXiv:2606.09088},
+  abstract  = {Autonomous FPV quadrotor flight in complex envi- Uncertainty
+T-OF Mask},
+  doi       = {10.48550/arXiv.2606.09088},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Autonomous FPV Flight with Translational Optical Flow and Uncertainty Mask.pdf:PDF},
+  groups    = {TCC - Drone},
+  ranking   = {rank5},
+}
+
+@InProceedings{Meier8092,
+  author   = {Meier, Lorenz and Honegger, Dominik and Pollefeys, Marc},
+  title    = {Px4: a node-based multithreaded open source robotics framework for deeply embedded platforms},
+  year     = {2015},
+  booktitle = {2015 IEEE International Conference on Robotics and Automation (ICRA)},
+  abstract = {We present a novel, deeply embedded robotics successfully utilized in conjunction with Linux companion
+middleware and programming environment. It uses a multi- computers, when more processing power is necessary.
+threaded, publish-subscribe design pattern and provides a Unix- The contributions of this work are as follows: First we first
+like software interface for micro controller applications. We
+improve over the state of the art in deeply embedded open discuss related works concerning existing deeply embedded
+source systems by providing a modular and standards-oriented systems. Second, we introduce the design criteria for such a
+platform. Our system architecture is centered around a publish- system. Third, the general software architecture and imple-
+subscribe object request broker on top of a POSIX application mentation is presented. Last we show performance results
+programming interface. This allows to reuse common Unix and provide some possible applications for the framework.
+knowledge and experience, including a bash-like shell. We
+demonstrate with a vertical takeoff and landing (VTOL) use II. RELATED WORK
+case that the system modularity is well suited for novel and
+experimental vehicle platforms. We also show how the system As robotics research is currently tackling a wide range of
+architecture allows a direct interface to ROS and to run problems from estimation and control to high-level planning,
+individual processes either as native ROS nodes on Linux or communication and middleware systems have emerged to
+nodes on the micro controller, maximizing interoperability. Our
+microcontroller-based execution environment has substantially support the increased complexity. Huang et al. created a
+lower latency and better hardware connectivity than a typical publish-subscripe design pattern object request broker for
+Robotics Linux system and is therefore well suited for fast, high robotics systems [1] which is particularly lightweight and
+rate control tasks. low latency. Quigley et al. designed a complete robotics},
+  doi      = {10.1109/ICRA.2015.7140074},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/PX4 - A Node-Based Multithreaded Open Source Robotics Framework.pdf:PDF},
+  groups   = {TCC - Drone},
+  ranking  = {rank3},
+}
+
+@Article{PixelMotion2025,
+  author    = {Hu, Yu and Zhang, Yuang and Song, Yunlong and Deng, Yang and Yu, Feng and Zhang, Linzuo},
+  title     = {Seeing through pixel motion: Learning obstacle avoidance from optical flow with one camera},
+  year      = {2025},
+  journal   = {IEEE Robotics and Automation Letters},
+  publisher = {IEEE},
+  abstract  = {Optical flow captures the motion of pixels in an im-
+(a) (b)},
+  doi       = {10.1109/LRA.2025.3560842},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Seeing Through Pixel Motion - Learning Obstacle Avoidance from Optical Flow with One Camera.pdf:PDF},
+  groups    = {TCC - Drone},
+  ranking   = {rank5},
+}
+
+@Article{Xiao2021,
+  author    = {Xiao, Feng and Zheng, Peter and di Tria, Julien and Kocer, Basaran Bahadir and Kovac, M.},
+  title     = {Optic flow-based reactive collision prevention for mavs using the fictitious obstacle hypothesis},
+  year      = {2021},
+  journal   = {IEEE Robotics and Automation Letters},
+  publisher = {IEEE},
+  abstract  = {Optical flow sensors and optical flow divergence (OFD) have offered partial solutions for obstacle avoidance, landing, and perching with micro aerial vehicles. Theoretically, OFD can indicate the risk of collision, providing that the sensors’ field of view is bounded within a single flat surface on the obstacle. However, in the real world, directly measuring the risk of collision with OFD generates false alarms due to rapidly changing speeds and irregular surroundings. In this letter, we present a new obstacle detection strategy based on an extended Kalman filter (EKF) combining the OFD with inertial sensing. The introduction of a fictitious obstacle hypothesis and the use of the EKF estimates enable us to differentiate the surrounding-generated OFD from the OFD caused by the actual obstacle. An embedded constant zero-OFD controller is then used for post-detection emergency deceleration. The ultra-light OFD estimation and control system, with a mass of ${20}\text{ g}$ , estimates OFD at ${160}\text{ Hz}$ . The system was validated on a ${158}\text{ g}$ mini quadrotor in both laboratory and field tests. Experimental results illustrate that the presented system can achieve accurate obstacle detection, near-obstacle distance estimation, and controlled deceleration to prevent collisions. 1 1 Video attachment: https://youtu.be/yIyYHYN0jOw .},
+  doi       = {10.1109/LRA.2021.3062317},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Optic Flow-Based Reactive Collision Prevention for MAVs Using the Fictitious Obstacle Hypothesis.pdf:PDF},
+  groups    = {TCC - Drone},
+  keywords  = {25 Feb 2021, International Conference on Robotics and Automation, Obstacle avoidance, Imperial College London},
+  ranking   = {rank5},
+}
+
+@InProceedings{Koenig7803,
+  author    = {Koenig, Nathan and Howard, Andrew},
+  title     = {Design and use paradigms for gazebo, an open-source multi-robot simulator},
+  year      = {2004},
+  booktitle = {2004 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  publisher = {IEEE},
+  abstract  = {Simulators have played a critical role in robotics Following the principles established by Player and Stage,
+research as tools for quick and efficient testing of new Gazebo is completely open source and freely available (a
+concepts, strategies, and algorithms. To date, most simulators major advantage over most commercially available pack-
+have been restricted to 2D worlds, and few have matured
+to the point where they are both highly capable and easily ages). As a result, Gazebo has an active base of contributers},
+  doi       = {10.1109/IROS.2004.1389727},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Design and Use Paradigms for Gazebo - An Open-Source Multi-Robot Simulator.pdf:PDF},
+  groups    = {TCC - Drone},
+  ranking   = {rank5},
+}
+
+@InProceedings{Walker5289,
+  author    = {Walker, Chase and Jha, Sumit and Chen, Kenny and Ewetz, Rickard},
+  booktitle = {The Thirty-Eighth AAAI Conference on Artificial Intelligence (AAAI-24)},
+  title     = {Integrated decision gradients: compute your attributions where the model makes its decision},
+  year      = {2024},
+  abstract  = {Paper accepted at AAAI-2024},
+  doi       = {10.1609/aaai.v38i6.28336},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Integrated Decision Gradients - Compute Your Attributions Where the Model Makes Its Decision.pdf:PDF},
+  groups    = {TCC - Visão},
+  keywords  = {Computer Vision(CV): CV: Interpretability & Explainability & Transparency, Machine Learning (ML): ML: Transparent & Interpretable & Explainable ML, Philosophy and Ethics of AI (PEAI): PEAI: Accountability & Interpretability & Explainability},
+  language  = {EN-US},
+  ranking   = {rank5},
+  rights    = {(c) AAAI 2024},
+}
+
+@Article{Estimation2109,
+  author   = {Ng, Yonhon and Li, Hongdong and Kim, Jonghyuk},
+  title    = {Uncertainty estimation of dense optical flow for robust visual navigation},
+  year     = {2021},
+  journal  = {Sensors},
+  volume   = {21},
+  number   = {22},
+  pages    = {7603},
+  abstract = {This paper presents a novel dense optical-flow al-
+gorithm to solve the monocular simultaneous localization and
+mapping (SLAM) problem for ground or aerial robots. Dense
+optical flow can effectively provide the ego-motion of the vehicle
+while enabling collision avoidance with the potential obstacles.
+Existing work has not fully utilized the uncertainty of the optical
+flow – at most an isotropic Gaussian density model. We estimate
+the full uncertainty of the optical flow and propose a new
+eight-point algorithm based on the statistical Mahalanobis dis- Fig. 1. An illustrative figure showing an image feature pixel x represented as},
+  doi      = {10.3390/s21227603},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Uncertainty Estimation of Dense Optical-Flow for Robust Visual Navigation.pdf:PDF},
+  groups   = {TCC - Visão},
+  ranking  = {rank5},
+}
+
+@InProceedings{OyallonandGaelVaroquaux5220,
+  author  = {Grinsztajn, Leo and Oyallon, Edouard and Varoquaux, Gaël},
+  title   = {Why do tree-based models still outperform deep learning on typical tabular data?},
+  year    = {2022},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {35},
+  doi     = {10.52202/068431-0037},
+  file    = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Why do tree-based models still outperform deep learning on typical tabular data.pdf:PDF},
+  groups  = {TCC - IA},
+  ranking = {rank3},
+}
+
+@InProceedings{Sundararajan2017,
+  author   = {Sundararajan, Mukund and Taly, Ankur and Yan, Qiqi},
+  title    = {Axiomatic attribution for deep networks},
+  year     = {2017},
+  booktitle = {Proceedings of the 34th International Conference on Machine Learning},
+  volume    = {70},
+  pages     = {3319--3328},
+  abstract = {Proceedings of the International Conference on Machine Learning 2017},
+  doi      = {10.48550/arXiv.1703.01365},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Axiomatic Attribution for Deep Networks.pdf:PDF},
+  groups   = {TCC - IA},
+  keywords = {Deep Learning, Explanations, Gradients, Attribution},
+  ranking  = {rank3},
+}
+
+@Article{Axiomatic2025,
+  author   = {Lundstrom, Daniel and Razaviyayn, Meisam},
+  title    = {Four axiomatic characterizations of the integrated gradients attribution method},
+  year     = {2025},
+  journal  = {Journal of Machine Learning Research},
+  volume   = {26},
+  number   = {177},
+  pages    = {1--31},
+  doi      = {10.48550/arXiv.2306.13753},
+  file     = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Four Axiomatic Characterizations of the Integrated.pdf:PDF},
+  groups   = {TCC - Visão},
+  keywords = {Machine Learning Explainability, Attribution Methods, Axiomatic Approach, Integrated Gradients, Path Methods},
+  ranking  = {rank3},
+}
+
+@Article{Kapoor2023,
+  author    = {Kapoor, Sayash and Narayanan, Arvind},
+  journal   = {Patterns},
+  title     = {Leakage and the reproducibility crisis in machine-learning-based science},
+  year      = {2023},
+  issn      = {2666-3899},
+  month     = Sept,
+  number    = {9},
+  pages     = {100804},
+  volume    = {4},
+  abstract  = {Patterns, 4 (2023) 100804. doi:10.1016/j.patter.2023.100804},
+  doi       = {10.1016/j.patter.2023.100804},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Leakage and the reproducibility crisis in machinelearning-based science.pdf:PDF},
+  groups    = {TCC - IA},
+  keywords  = {reproducibility, machine learning, leakage},
+  publisher = {Elsevier BV},
+  ranking   = {rank3},
+}
+
+@InProceedings{Yamauchi1997,
+  author    = {Yamauchi, Brian},
+  booktitle = {Proceedings of the 1997 IEEE International Symposium on Computational Intelligence in Robotics and Automation},
+  title     = {A frontier-based approach for autonomous exploration},
+  year      = {1997},
+  pages     = {146--151},
+  doi       = {10.1109/CIRA.1997.613851},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/A Frontier-Based Approach for Autonomous Exploration.pdf:PDF},
+  groups    = {TCC - Drone},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{Elfes1989,
+  author    = {Elfes, Alberto},
+  journal   = {Computer},
+  title     = {Using occupancy grids for mobile robot perception and navigation},
+  year      = {1989},
+  volume    = {22},
+  number    = {6},
+  pages     = {46--57},
+  doi       = {10.1109/2.30720},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Drone/Using occupancy grids for mobile robot perception and navigation.pdf:PDF},
+  groups    = {TCC - Drone},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{Hart1968,
+  author    = {Hart, Peter E. and Nilsson, Nils J. and Raphael, Bertram},
+  journal   = {IEEE Transactions on Systems Science and Cybernetics},
+  title     = {A formal basis for the heuristic determination of minimum cost paths},
+  year      = {1968},
+  number    = {2},
+  pages     = {100--107},
+  volume    = {4},
+  doi       = {10.1109/TSSC.1968.300136},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/A Formal Basis for the Heuristic Determination of Minimum Cost Paths.pdf:PDF},
+  groups    = {TCC - IA},
+  publisher = {IEEE},
+  ranking   = {rank5},
+}
+
+@Article{Srivastava2014,
+  author  = {Srivastava, Nitish and Hinton, Geoffrey and Krizhevsky, Alex and Sutskever, Ilya and Salakhutdinov, Ruslan},
+  journal = {Journal of Machine Learning Research},
+  title   = {Dropout: A simple way to prevent neural networks from overfitting},
+  year    = {2014},
+  number  = {56},
+  pages   = {1929--1958},
+  volume  = {15},
+  file    = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Dropout A Simple Way to Prevent Neural Networks from Overfitting.pdf:PDF},
+  groups  = {TCC - IA},
+  ranking = {rank5},
+}
+
+@InCollection{Prechelt1998,
+  author    = {Prechelt, Lutz},
+  booktitle = {Neural Networks: Tricks of the Trade},
+  publisher = {Springer},
+  title     = {Early stopping - but when?},
+  year      = {1998},
+  pages     = {55--69},
+  doi       = {10.1007/3-540-49430-8_3},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Early Stopping - but when.pdf:PDF},
+  groups    = {TCC - IA},
+  ranking   = {rank3},
+}
+
+@InProceedings{ShiTomasi1994,
+  author    = {Shi, Jianbo and Tomasi, Carlo},
+  booktitle = {Proceedings of the 1994 IEEE Computer Society Conference on Computer Vision and Pattern Recognition},
+  title     = {Good features to track},
+  year      = {1994},
+  pages     = {593--600},
+  publisher = {IEEE},
+  doi       = {10.1109/CVPR.1994.323794},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/IA/Good Features to Track.pdf:PDF},
+  groups    = {TCC - IA},
+  ranking   = {rank5},
+}
+
+@InProceedings{AmanatidesWoo1987,
+  author    = {Amanatides, John and Woo, Andrew},
+  booktitle = {Eurographics '87},
+  title     = {A fast voxel traversal algorithm for ray tracing},
+  year      = {1987},
+  pages     = {3--10},
+  doi       = {10.2312/egtp.19871000},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/A Fast Voxel Traversal Algorithm for Ray Tracing.pdf:PDF},
+  groups    = {TCC - Visão},
+  publisher = {Eurographics Association},
+  ranking   = {rank5},
+}
+
+@InProceedings{LucasKanade1981,
+  author    = {Lucas, Bruce D. and Kanade, Takeo},
+  booktitle = {Proceedings of the 7th International Joint Conference on Artificial Intelligence},
+  title     = {An iterative image registration technique with an application to stereo vision},
+  year      = {1981},
+  pages     = {674--679},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/An Iterative Image Registration Technique with an Application to Stereo Vision.pdf:PDF},
+  groups    = {TCC - Visão},
+  publisher = {IJCAI},
+  ranking   = {rank5},
+}
+
+@InProceedings{DepthAnythingV2,
+  author    = {Yang, Lihe and Kang, Bingyi and Huang, Zilong and Zhao, Zhen and Xu, Xiaogang and Feng, Jiashi and Zhao, Hengshuang},
+  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS 2024)},
+  title     = {Depth anything v2},
+  year      = {2024},
+  publisher = {NeurIPS},
+  doi       = {10.52202/079017-0688},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/Depth Anything V2.pdf:PDF},
+  groups    = {TCC - Visão},
+  ranking   = {rank5},
+}
+
+@Article{Hornung2013,
+  author    = {Hornung, Armin and Wurm, Kai M. and Bennewitz, Maren and Stachniss, Cyrill and Burgard, Wolfram},
+  journal   = {Autonomous Robots},
+  title     = {Octomap: An efficient probabilistic 3d mapping framework based on octrees},
+  year      = {2013},
+  number    = {3},
+  pages     = {189--206},
+  volume    = {34},
+  doi       = {10.1007/s10514-012-9321-0},
+  file      = {:C\:/Users/Gabriel Panza/Desktop/Artigos Bibliografia/Visão Computacional/OctoMap An Efficient Probabilistic 3D Mapping Framework Based on Octrees.pdf:PDF},
+  groups    = {TCC - Visão},
+  publisher = {Springer},
+  ranking   = {rank5},
+}
+
+@Article{Pan2024MoNA,
+  author  = {Pan, Yongzhou and Liu, Binhong and Liu, Zhen and Shen, Hao and Xu, Jianyu and Fu, Wenxing and Yang, Tao},
+  title   = {{MoNA Bench}: A Benchmark for Monocular Depth Estimation in Navigation of Autonomous Unmanned Aircraft System},
+  journal = {Drones},
+  year    = {2024},
+  volume  = {8},
+  number  = {2},
+  pages   = {66},
+  doi     = {10.3390/drones8020066},
+  url     = {https://www.mdpi.com/2504-446X/8/2/66},
+}
+
+@InProceedings{Simon2024MonoNav,
+  author    = {Simon, Nathaniel and Majumdar, Anirudha},
+  title     = {{MonoNav}: {MAV} Navigation via Monocular Depth Estimation and Reconstruction},
+  booktitle = {Experimental Robotics: The 18th International Symposium},
+  publisher = {Springer},
+  year      = {2024},
+  series    = {Springer Proceedings in Advanced Robotics},
+  volume    = {30},
+  pages     = {415--426},
+  doi       = {10.1007/978-3-031-63596-0_37},
+  url       = {https://arxiv.org/abs/2311.14100},
+}
+
+@TechReport{Wu2025DepthEvaluation,
+  author      = {Wu, Siyang and Nugent, Jack and Yang, Willow and Deng, Jia},
+  title       = {Toward A Better Understanding of Monocular Depth Evaluation},
+  institution = {arXiv},
+  year        = {2025},
+  number      = {2510.19814},
+  doi         = {10.48550/arXiv.2510.19814},
+  url         = {https://arxiv.org/abs/2510.19814},
+  note        = {Versão v3. A versão v1 recebeu o título How to Evaluate Monocular Depth Estimation?},
+}
+
+@TechReport{Gurram2023DepthMetrics,
+  author      = {Gurram, Akhil and L{\'o}pez, Antonio M.},
+  title       = {On the Metrics for Evaluating Monocular Depth Estimation},
+  institution = {arXiv},
+  year        = {2023},
+  number      = {2302.10007},
+  doi         = {10.48550/arXiv.2302.10007},
+  url         = {https://arxiv.org/abs/2302.10007},
+}
+
+@Comment{jabref-meta: databaseType:bibtex;}
+
+@Comment{jabref-meta: grouping:
+0 AllEntriesGroup:;
+1 StaticGroup:TCC - Drone\;0\;1\;\;\;Trabalhos sobre Drone\;;
+1 StaticGroup:TCC - IA\;0\;1\;\;\;Trabalhos sobre Inteligência Artificial & Machine Learning\;;
+1 StaticGroup:TCC - Visão\;0\;0\;\;\;Trabalhos sobre Estimação de Profundidade e Match de Features\;;
+}
+
+% Referencias normativas e documentacao do modelo ABNT/LaTeX.
+
+@book{ibge1993,
+	Address = {Rio de Janeiro},
+	Author = {IBGE},
+	Date-Added = {2013-08-21 13:56:10 +0000},
+	Date-Modified = {2013-08-21 13:56:10 +0000},
+	Edition = {3},
+	Organization = {http://biblioteca.ibge.gov.br/visualizacao/livros/liv23907.pdf},
+	Publisher = {Centro de Documenta{\c c}{\~a}o e Dissemina{\c c}{\~a}o de Informa{\c c}{\~o}es. Funda{\c c}{\~a}o Intituto Brasileiro de Geografia e Estat{\'\i}stica},
+	Title = {Normas de apresenta{\c c}{\~a}o tabular},
+	Urlaccessdate = {21 ago 2013},
+	Year = {1993}}
+
+@manual{abntex2cite,
+	Annote = {Este documento {\'e} derivado do \cite{abnt-bibtex-doc}},
+	Author = {abnTeX2 and Lauro C{\'e}sar Araujo},
+	Date-Added = {2013-01-09 10:37:45 +0000},
+	Date-Modified = {2013-04-05 10:47:36 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {O pacote abntex2cite: Estilos bibliogr{\'a}ficos compat{\'\i}veis com a ABNT NBR 6023},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{abntex2cite-alf,
+	Annote = {Este documento {\'e} derivado do \cite{abnt-bibtex-alf-doc}},
+	Author = {abnTeX2 and Lauro C{\'e}sar Araujo},
+	Date-Added = {2013-01-09 10:37:45 +0000},
+	Date-Modified = {2013-04-05 11:03:05 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {O pacote abntex2cite: t{\'o}picos espec{\'\i}ficos da ABNT NBR 10520:2002 e o estilo bibliogr{\'a}fico alfab{\'e}tico (sistema autor-data)},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{abntex2classe,
+	Author = {abnTeX2 and Lauro C{\'e}sar Araujo},
+	Date-Added = {2013-01-09 10:37:38 +0000},
+	Date-Modified = {2013-04-05 11:03:48 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {A classe abntex2: Modelo can{\^o}nico de trabalhos acad{\^e}micos brasileiros compat{\'\i}vel com as normas ABNT NBR 14724:2011, ABNT NBR 6024:2012 e outras},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{abntex2modelo,
+	Annote = {Este documento {\'e} derivado do \cite{abnt-bibtex-doc}},
+	Author = {abnTeX2},
+	Date-Added = {2013-01-12 22:55:32 +0000},
+	Date-Modified = {2013-02-04 12:05:54 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {Modelo Can{\^o}nico de Trabalho Acad{\^e}mico com abnTeX2},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{abntex2modelo-artigo,
+	Annote = {Este documento {\'e} derivado do \cite{abnt-bibtex-doc}},
+	Author = {abnTeX2},
+	Date-Added = {2013-01-15 00:10:35 +0000},
+	Date-Modified = {2013-02-04 12:05:47 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {Modelo Can{\^o}nico de Artigo Cient{\'\i}fico com abnTeX2},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{abntex2modelo-relatorio,
+	Annote = {Este documento {\'e} derivado do \cite{abnt-bibtex-doc}},
+	Author = {abnTeX2},
+	Date-Added = {2013-01-15 00:05:34 +0000},
+	Date-Modified = {2013-02-04 12:05:50 +0000},
+	Organization = {Equipe abnTeX2},
+	Title = {Modelo Can{\^o}nico de Relat{\'o}rio T{\'e}cnico e/ou Cient{\'\i}fico com abnTeX2},
+	Url = {http://abntex2.googlecode.com/},
+	Year = {2013},
+	Bdsk-Url-1 = {http://code.google.com/p/abntex2/}}
+
+@manual{babel,
+	Author = {Johannes Braams},
+	Date-Added = {2013-02-17 13:37:14 +0000},
+	Date-Modified = {2013-02-17 13:38:38 +0000},
+	Month = {Apr.},
+	Title = {Babel, a multilingual package for use with LATEX's standard document classes},
+	Url = {http://mirrors.ctan.org/info/babel/babel.pdf},
+	Urlaccessdate = {17 fev. 2013},
+	Year = {2008},
+	Bdsk-Url-1 = {http://mirrors.ctan.org/info/babel/babel.pdf}}
+
+@manual{memoir,
+	Address = {Normandy Park, WA},
+	Author = {Peter Wilson and Lars Madsen},
+	Date-Added = {2013-01-09 10:37:50 +0000},
+	Date-Modified = {2013-03-21 13:23:25 +0000},
+	Organization = {The Herries Press},
+	Title = {The Memoir Class for Configurable Typesetting - User Guide},
+	Url = {http://mirrors.ctan.org/macros/latex/contrib/memoir/memman.pdf},
+	Urlaccessdate = {19 dez. 2012},
+	Year = {2010},
+	Bdsk-Url-1 = {http://ctan.tche.br/macros/latex/contrib/memoir/memman.pdf}}
+
+@manual{NBR10520:2002,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 21:43:38 +0000},
+	Date-Modified = {2013-01-12 22:17:20 +0000},
+	Month = {ago.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 7,
+	Subtitle = {Informa{\c c}\~ao e documenta{\c c}\~ao --- Apresenta{\c c}\~ao de cita{\c c}\~oes em documentos},
+	Title = {{NBR} 10520},
+	Year = 2002}
+
+@manual{NBR14724:2001,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 20:34:08 +0000},
+	Date-Modified = {2012-12-15 20:34:08 +0000},
+	Month = {jul.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 6,
+	Subtitle = {Informa{\c c}\~ao e documenta{\c c}\~ao --- trabalhos acad\^emicos --- apresenta{\c c}\~ao},
+	Title = {{NBR} 14724},
+	Year = 2001}
+
+@manual{NBR14724:2002,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 20:34:17 +0000},
+	Date-Modified = {2012-12-15 20:34:17 +0000},
+	Month = {ago.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 6,
+	Subtitle = {Informa{\c c}\~ao e documenta{\c c}\~ao --- trabalhos acad\^emicos --- apresenta{\c c}\~ao},
+	Title = {{NBR} 14724},
+	Year = 2002}
+
+@manual{NBR14724:2005,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 20:34:08 +0000},
+	Date-Modified = {2012-12-15 20:35:25 +0000},
+	Month = {dez.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 9,
+	Subtitle = {Informa{\c c}\~ao e documenta{\c c}\~ao --- trabalhos acad\^emicos --- apresenta{\c c}\~ao},
+	Title = {{NBR} 14724},
+	Year = 2005}
+
+@manual{NBR14724:2011,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 20:34:08 +0000},
+	Date-Modified = {2012-12-15 20:35:25 +0000},
+	Month = {mar.},
+	Note = {Substitui a Ref.~\citeonline{NBR14724:2005}},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 15,
+	Subtitle = {Informa{\c c}\~ao e documenta{\c c}\~ao --- trabalhos acad\^emicos --- apresenta{\c c}\~ao},
+	Title = {{NBR} 14724},
+	Year = 2011}
+
+@manual{NBR6024:2012,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 21:24:06 +0000},
+	Date-Modified = {2012-12-15 21:24:28 +0000},
+	Month = {fev.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 4,
+	Subtitle = {Numera{\c c}\~ao progressiva das se{\c c}\~oes de um documento},
+	Title = {{NBR} 6024},
+	Year = 2012}
+
+@manual{NBR6028:2003,
+	Address = {Rio de Janeiro},
+	Date-Added = {2012-12-15 21:02:12 +0000},
+	Date-Modified = {2012-12-15 21:02:50 +0000},
+	Month = {nov.},
+	Org-Short = {ABNT},
+	Organization = {Associa{\c c}\~ao Brasileira de Normas T\'ecnicas},
+	Pages = 2,
+	Subtitle = {Resumo - Apresenta{\c c}{\~a}o},
+	Title = {{NBR} 6028},
+	Year = 2003}
+
+@manual{talbot2012,
+	Author = {Nicola L.C. Talbot},
+	Date-Added = {2013-03-11 12:06:04 +0000},
+	Date-Modified = {2013-03-11 12:06:56 +0000},
+	Month = {Nov.},
+	Title = {User Manual for glossaries.sty},
+	Url = {http://mirrors.ctan.org/macros/latex/contrib/glossaries/glossaries-user.pdf},
+	Urlaccessdate = {11 mar. 2013},
+	Year = {2012},
+	Bdsk-Url-1 = {http://mirrors.ctan.org/macros/latex/contrib/glossaries/glossaries-user.pdf}}
+
+@misc{abntex2-wiki-como-customizar,
+	Author = {abnTeX2},
+	Date-Added = {2013-03-23 21:39:21 +0000},
+	Date-Modified = {2013-03-23 21:44:20 +0000},
+	Howpublished = {Wiki do abnTeX2},
+	Keywords = {wiki},
+	Title = {Como customizar o abnTeX2},
+	Url = {https://code.google.com/p/abntex2/wiki/ComoCustomizar},
+	Urlaccessdate = {23 mar. 2013},
+	Year = {2013},
+	Bdsk-Url-1 = {https://code.google.com/p/abntex2/wiki/ComoCustomizar}}
+
+@techreport{bibliografica6023,
+  title={10520/2002, NBR 6023:2002: Informação e Documentação - Referências - Elaboração},
+  author={{ABNT}},
+  year={2002}
+}
+
+@article{Breiman2001,
+ author={Breiman, Leo},
+ title={Random Forests},
+ year={2001},
+ journal={Machine Learning}, volume={45}, pages={5--32}, doi={10.1023/A:1010933404324}
+}
+
+@article{Geurts2006,
+ author={Geurts, Pierre and Ernst, Damien and Wehenkel, Louis},
+ title={Extremely randomized trees},
+ year={2006},
+ journal={Machine Learning}, volume={63}, pages={3--42}, doi={10.1007/s10994-006-6226-1}
+}
+
+@article{Lakens2013,
+ author={Lakens, Daniël},
+ title={Calculating and reporting effect sizes to facilitate cumulative science: a practical primer for t-tests and ANOVAs},
+ year={2013},
+ journal={Frontiers in Psychology}, volume={4}, pages={863}, doi={10.3389/fpsyg.2013.00863}
+}
+
+@article{Rumelhart1986,
+ author={Rumelhart, David E. and Hinton, Geoffrey E. and Williams, Ronald J.},
+ title={Learning representations by back-propagating errors},
+ year={1986},
+ journal={Nature}, volume={323}, pages={533--536}, doi={10.1038/323533a0}
+}
+
+@inproceedings{Selvaraju2017,
+ author={Selvaraju, Ramprasaath R. and Cogswell, Michael and Das, Abhishek and Vedantam, Ramakrishna and Parikh, Devi and Batra, Dhruv},
+ title={Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization},
+ year={2017},
+ booktitle={Proceedings of the IEEE International Conference on Computer Vision}, doi={10.1109/ICCV.2017.74}
+}
+
+@article{Macenski2022,
+ author={Macenski, Steven and Foote, Tully and Gerkey, Brian and Lalancette, Chris and Woodall, William},
+ title={Robot Operating System 2: Design, architecture, and uses in the wild},
+ year={2022},
+ journal={Science Robotics}, doi={10.1126/scirobotics.abm6074}
+}
+
+
+@Misc{ONUAgenda2030,
+  author = {{Organização das Nações Unidas}},
+  title = {Transformando Nosso Mundo: a Agenda 2030 para o Desenvolvimento Sustentável},
+  year = {2015},
+  note = {Tradução do Centro de Informação das Nações Unidas para o Brasil (UNIC Rio), edição de 13 de outubro de 2015},
+  url = {https://brasil.un.org/sites/default/files/2020-09/agenda2030-pt-br.pdf},
+  urlaccessdate = {3 nov. 2026}
+}

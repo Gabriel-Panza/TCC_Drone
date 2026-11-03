@@ -58,7 +58,7 @@ def main():
     saved_sequence_source=source,saved_sequence_pan_rad=pan,mixed_example_source=mixedsource,mixed_example_pan_rad=mixedpan,
     mixed_example_dt_s=row["timestamp_s"]-row["sensor_context_timestamp_s"]))
  fig.suptitle("Algoritmo completo do controlador; o contexto de 40 ms não é um intervalo RGB histórico recuperado",fontsize=12)
- for name in ["Monografia_Metodologia_Professor","ModeloTCC_Monografia_CC_Latex","ModeloTCC_Artigo_CC_Latex"]:
+ for name in ["Monografia_TCC"]:
   out=ROOT/"Parte_Escrita"/name/"figuras"
   for ext in ["png","svg","pdf"]:fig.savefig(out/("metodologia_compensacao_rotacao."+ext),dpi=200,bbox_inches="tight")
  plt.close(fig)

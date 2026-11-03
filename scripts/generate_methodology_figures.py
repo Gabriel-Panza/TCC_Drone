@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"datasets/resultados_finais_monocular"
-OUT=[ROOT/"Parte_Escrita"/n/"figuras" for n in ["Monografia_Metodologia_Professor","ModeloTCC_Monografia_CC_Latex","ModeloTCC_Artigo_CC_Latex"]]
+OUT=[ROOT/"Parte_Escrita"/n/"figuras" for n in ["Monografia_TCC"]]
 provenance={}
 def save(fig,name):
  for out in OUT:
@@ -85,8 +85,16 @@ def main():
  save(fig,"metodologia_grupos_sinais")
  with np.load(DATA/"figuras_revisao/cenas_rgb.npz") as z:scenes={k:z[k] for k in z.files}
  fig,axes=plt.subplots(2,2,figsize=(10,7),layout="constrained")
+ from matplotlib.patches import Rectangle
  for ax,(name,img) in zip(axes.flat,scenes.items()):
   ax.imshow(cv2.cvtColor(img,cv2.COLOR_BGR2RGB));ax.set_title(name.replace("rgb_","Quadro "));ax.axis("off")
+  height,width=img.shape[:2]
+  if name=="rgb_1":
+   ax.add_patch(Rectangle((.32*width,.71*height),.32*width,.25*height,fill=False,ec="#00e5ff",lw=2))
+   ax.text(.32*width,.68*height,"Trecho visualmente aberto",color="#00e5ff",fontsize=9,bbox=dict(fc="black",alpha=.6,pad=2))
+  if name=="rgb_46":
+   ax.add_patch(Rectangle((.32*width,.28*height),.12*width,.50*height,fill=False,ec="#ffe600",lw=2))
+   ax.text(.32*width,.23*height,"Tronco: obstáculo",color="#ffe600",fontsize=9,bbox=dict(fc="black",alpha=.6,pad=2))
  fig.suptitle("Baylands: variação visual ao longo do registro de desenvolvimento")
  save(fig,"metodologia_cenas_contexto")
  fig,ax=plt.subplots(figsize=(10,3),layout="constrained");ax.axis("off")

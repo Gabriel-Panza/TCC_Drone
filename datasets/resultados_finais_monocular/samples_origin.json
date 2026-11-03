@@ -1,0 +1,8 @@
+{
+  "run": "/home/prograf4080/TCC_Drone/logs/monocular_v21_native/20261029_220839/data/validation/run_20260831_082836_332335/aligned640",
+  "frames": [
+    "frame_000001.npz",
+    "frame_000002.npz"
+  ],
+  "purpose": "Illustration only; not a substitute for the 77-frame replay"
+}

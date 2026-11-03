@@ -1,0 +1,1738 @@
+{
+  "run": "/home/prograf4080/TCC_Drone/logs/monocular_v21_native/20261029_220839/data/validation/run_20260831_082836_332335/aligned640",
+  "model": "/home/prograf4080/TCC_Drone/logs/monocular_v21_native/20261029_220839/epochs/epoch03.onnx",
+  "model_sha256": "b11b5ae85910e9650b0b3d97bf3d857e3a097b1230948738cd69a4e0b83066a6",
+  "input_source": "monocular_onnx",
+  "diagnostic_only": false,
+  "protect_pending_obstacles": true,
+  "interval_hypothesis_fusion": false,
+  "interval_fusion_baseline_m": 0.75,
+  "interval_fusion_free_views": 2,
+  "interval_free_evidence_rule": null,
+  "depth_interval_profile_sha256": null,
+  "allow_known_free_initial_escape": true,
+  "frames_integrated": 77,
+  "depth_output_scale": 1.0,
+  "free_space_margin_m": 3.0,
+  "free_space_margin_ratio": 0.12,
+  "free_space_margin_max_m": 6.0,
+  "edge_stride": 2,
+  "reference_replay_stride": 5,
+  "reference_edge_stride": 2,
+  "rgb_edge_sampling": false,
+  "edge_relative_threshold": 0.1,
+  "obstacle_vertical_band_m": 0.2,
+  "vertical_clearance_m": 0.1,
+  "reference_obstacle_vertical_band_m": 0.2,
+  "reference_vertical_clearance_m": 0.2,
+  "free_observations_required": 1,
+  "free_viewpoint_sectors_required": 1,
+  "free_viewpoint_sector_deg": 45.0,
+  "occupied_observations_required": 2,
+  "occupied_support_radius_voxels": 0,
+  "pending_clear_free_observations_required": 3,
+  "occupied_evidence_window_frames": 6,
+  "lock_path_altitude_to_goal": true,
+  "occupied_uncertainty_m": 1.5,
+  "obstacle_altitude_reference": "body_from_saved_extrinsics",
+  "map": {
+    "true_positive": 146,
+    "false_positive": 2200,
+    "false_negative": 255,
+    "precision": 0.06223358908780904,
+    "recall": 0.3640897755610973,
+    "iou": 0.05613225682429835,
+    "false_free_rate": 0.00997506234413965
+  },
+  "estimated_map": {
+    "interval_hypotheses": 0,
+    "interval_cleared_by_multiview": 0,
+    "free_voxels": 32092,
+    "occupied_voxels": 2346,
+    "pending_occupied_voxels": 5693
+  },
+  "reference_map": {
+    "voxel_state_sha256": "65faa644fd5745cfbe5a2fadf036baf583ba60a87559f66f119de7eb2e1966d9",
+    "free_voxels": 63191,
+    "occupied_voxels": 401,
+    "pending_occupied_voxels": 0
+  },
+  "planning": {
+    "attempts": 17,
+    "successes": 12,
+    "safe_successes": 5,
+    "collision_free_successes": 12,
+    "success_rate": 0.7058823529411765,
+    "plans": [
+      {
+        "frames_integrated": 4,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 22.109784553308693,
+        "current_position_ned_m": [
+          0.15248529613018036,
+          -0.026115426793694496,
+          -1.6071128845214844
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            0.375,
+            -0.375,
+            -1.5193328857421875
+          ],
+          [
+            -2.0250000000000004,
+            3.825,
+            -1.5193328857421875
+          ],
+          [
+            -4.425000000000001,
+            8.025,
+            -1.5193328857421875
+          ],
+          [
+            -6.824999999999999,
+            12.225,
+            -1.5193328857421875
+          ],
+          [
+            -9.225000000000001,
+            16.425,
+            -1.5193328857421875
+          ],
+          [
+            -10.384652654107917,
+            18.454392144688853,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 336,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 8,
+          "occupied": 0,
+          "unknown": 18
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 22.91524631004907,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 27.55071246883705,
+          "nearest_voxel": [
+            -37,
+            -2,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -27.375,
+            -1.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": null
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 4,
+          "valid_pixels": 788277,
+          "mae_m": 11.98388230392934,
+          "mean_signed_error_m": -11.962662056397084,
+          "dangerous_far_rate_1m": 0.0010503921844732245,
+          "dangerous_far_edge_rate_1m": 0.0030660499922049575
+        }
+      },
+      {
+        "frames_integrated": 4,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 19.201606495969948,
+        "current_position_ned_m": [
+          -0.9676309823989868,
+          1.7353029251098633,
+          -1.5432472229003906
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -1.125,
+            1.875,
+            -1.5193328857421875
+          ],
+          [
+            -3.75,
+            6.5625,
+            -1.5193328857421875
+          ],
+          [
+            -6.375,
+            11.25,
+            -1.5193328857421875
+          ],
+          [
+            -9.0,
+            15.9375,
+            -1.5193328857421875
+          ],
+          [
+            -10.40349157767039,
+            18.4437349601257,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 336,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 26,
+          "occupied": 0,
+          "unknown": 0
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 20.79691026456389,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 26.0627342868017,
+          "nearest_voxel": [
+            -19,
+            32,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -13.875,
+            24.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": null
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 0,
+          "valid_pixels": 0,
+          "mae_m": null,
+          "mean_signed_error_m": null,
+          "dangerous_far_rate_1m": null,
+          "dangerous_far_edge_rate_1m": null
+        }
+      },
+      {
+        "frames_integrated": 4,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 18.279018353607025,
+        "current_position_ned_m": [
+          -2.0837738513946533,
+          2.400195598602295,
+          -1.54656982421875
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -1.875,
+            2.625,
+            -1.5193328857421875
+          ],
+          [
+            -4.3125,
+            7.125,
+            -1.5193328857421875
+          ],
+          [
+            -6.75,
+            11.625,
+            -1.5193328857421875
+          ],
+          [
+            -9.1875,
+            16.125,
+            -1.5193328857421875
+          ],
+          [
+            -10.434292128648119,
+            18.426770083658067,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 336,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 26,
+          "occupied": 0,
+          "unknown": 0
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 19.591611365924713,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 24.94058758224445,
+          "nearest_voxel": [
+            -19,
+            32,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -13.875,
+            24.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": null
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 0,
+          "valid_pixels": 0,
+          "mae_m": null,
+          "mean_signed_error_m": null,
+          "dangerous_far_rate_1m": null,
+          "dangerous_far_edge_rate_1m": null
+        }
+      },
+      {
+        "frames_integrated": 6,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 19.39129334670313,
+        "current_position_ned_m": [
+          -1.9285118579864502,
+          2.0002706050872803,
+          -1.5568504333496094
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -1.875,
+            1.875,
+            -1.5193328857421875
+          ],
+          [
+            -5.8125,
+            5.625,
+            -1.5193328857421875
+          ],
+          [
+            -9.75,
+            9.375,
+            -1.5193328857421875
+          ],
+          [
+            -13.6875,
+            13.125,
+            -1.5193328857421875
+          ],
+          [
+            -15.814655172413794,
+            15.150862068965518,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 586,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 26,
+          "occupied": 0,
+          "unknown": 0
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 21.61748401795316,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 25.366283006573934,
+          "nearest_voxel": [
+            -19,
+            32,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -13.875,
+            24.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 29.73454187759596,
+          "nearest_voxel": [
+            -22,
+            37,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -16.125,
+            28.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 2,
+          "valid_pixels": 392105,
+          "mae_m": 10.525156150695581,
+          "mean_signed_error_m": -10.463998041544416,
+          "dangerous_far_rate_1m": 0.004684969587227911,
+          "dangerous_far_edge_rate_1m": 0.0051579626047711154
+        }
+      },
+      {
+        "frames_integrated": 8,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 17.809213983609766,
+        "current_position_ned_m": [
+          -6.095951557159424,
+          7.664258003234863,
+          -1.5297584533691406
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -6.375,
+            7.875,
+            -1.5193328857421875
+          ],
+          [
+            -9.375,
+            11.625,
+            -1.5193328857421875
+          ],
+          [
+            -12.375,
+            15.375,
+            -1.5193328857421875
+          ],
+          [
+            -15.375,
+            19.125,
+            -1.5193328857421875
+          ],
+          [
+            -17.28178366677976,
+            21.508479583474696,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 955,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 26,
+          "occupied": 0,
+          "unknown": 0
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 20.345356455141555,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 18.43588035554664,
+          "nearest_voxel": [
+            -19,
+            32,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -13.875,
+            24.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 22.789097556782533,
+          "nearest_voxel": [
+            -22,
+            37,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -16.125,
+            28.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 2,
+          "valid_pixels": 474073,
+          "mae_m": 10.021462269198768,
+          "mean_signed_error_m": -9.929171809586922,
+          "dangerous_far_rate_1m": 0.011610026303965845,
+          "dangerous_far_edge_rate_1m": 0.014882336526834712
+        }
+      },
+      {
+        "frames_integrated": 14,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 9.741946304391572,
+        "current_position_ned_m": [
+          -11.944998741149902,
+          21.53595733642578,
+          -1.4557838439941406
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -11.625,
+            21.375,
+            -1.5193328857421875
+          ],
+          [
+            -16.5,
+            22.875,
+            -1.5193328857421875
+          ],
+          [
+            -20.588442604422358,
+            24.132982339822263,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": true,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": false,
+        "reachable_voxels": 1252,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 26,
+          "occupied": 0,
+          "unknown": 0
+        },
+        "blocked_neighbors_26": 0,
+        "max_reachable_progress_m": 13.086128675160829,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 3,
+          "nearest_distance_m": 3.4584404419064216,
+          "nearest_voxel": [
+            -19,
+            32,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -13.875,
+            24.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 3,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 7.8100775730998455,
+          "nearest_voxel": [
+            -22,
+            37,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -16.125,
+            28.125,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 6,
+          "valid_pixels": 1577178,
+          "mae_m": 8.418439329883396,
+          "mean_signed_error_m": -8.013224124854027,
+          "dangerous_far_rate_1m": 0.057044290498599395,
+          "dangerous_far_edge_rate_1m": 0.06849040466135671
+        }
+      },
+      {
+        "frames_integrated": 19,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 17.36560827095257,
+        "current_position_ned_m": [
+          -24.71567153930664,
+          25.060916900634766,
+          -1.5587310791015625
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -23.625,
+            25.125,
+            -1.5193328857421875
+          ],
+          [
+            -23.625,
+            28.125,
+            -1.5193328857421875
+          ],
+          [
+            -25.875,
+            30.75,
+            -1.5193328857421875
+          ],
+          [
+            -28.125,
+            33.375,
+            -1.5193328857421875
+          ],
+          [
+            -29.625,
+            33.375,
+            -1.5193328857421875
+          ],
+          [
+            -32.73481560033552,
+            37.10677872040262,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 1520,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 24,
+          "occupied": 0,
+          "unknown": 2
+        },
+        "blocked_neighbors_26": 7,
+        "max_reachable_progress_m": 16.720902512526564,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 16,
+          "nearest_distance_m": 1.4514819333260756,
+          "nearest_voxel": [
+            -35,
+            34,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -25.875,
+            25.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 9,
+            "below_more_than_0_4m": 7
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 5.175774774280244,
+          "nearest_voxel": [
+            -39,
+            37,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -28.875,
+            28.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 5,
+          "valid_pixels": 1407917,
+          "mae_m": 7.30916490732005,
+          "mean_signed_error_m": -6.815177380093783,
+          "dangerous_far_rate_1m": 0.08048414785814789,
+          "dangerous_far_edge_rate_1m": 0.06765979787373672
+        }
+      },
+      {
+        "frames_integrated": 25,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "curved_initial_escape",
+        "path_length_m": 5.664783665372796,
+        "current_position_ned_m": [
+          -28.522476196289062,
+          38.56559371948242,
+          -1.5184135437011719
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -29.625,
+            38.625,
+            -1.5193328857421875
+          ],
+          [
+            -30.375,
+            38.625,
+            -1.5193328857421875
+          ],
+          [
+            -30.375,
+            37.875,
+            -1.5193328857421875
+          ],
+          [
+            -31.125,
+            37.125,
+            -1.5193328857421875
+          ],
+          [
+            -33.125,
+            37.125,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": true,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 22,
+          "occupied": 0,
+          "unknown": 4
+        },
+        "blocked_neighbors_26": 16,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 9,
+          "nearest_distance_m": 1.6482988731264256,
+          "nearest_voxel": [
+            -38,
+            53,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -28.125,
+            40.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 9,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 6.668007708245407,
+          "nearest_voxel": [
+            -45,
+            57,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -33.375,
+            43.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 6,
+          "valid_pixels": 1816945,
+          "mae_m": 5.239145757154681,
+          "mean_signed_error_m": -4.826849773443613,
+          "dangerous_far_rate_1m": 0.06191436724832067,
+          "dangerous_far_edge_rate_1m": 0.07744214843173117
+        }
+      },
+      {
+        "frames_integrated": 30,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 9.798046220158444,
+        "current_position_ned_m": [
+          -32.34760665893555,
+          46.071346282958984,
+          -1.496124267578125
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -29.625,
+            47.625,
+            -1.5193328857421875
+          ],
+          [
+            -30.0,
+            51.0,
+            -1.5193328857421875
+          ],
+          [
+            -30.360832545726474,
+            54.24749291153828,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": true,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 81,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 20,
+          "occupied": 4,
+          "unknown": 2
+        },
+        "blocked_neighbors_26": 15,
+        "max_reachable_progress_m": 7.927180309415631,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 57,
+          "nearest_distance_m": 0.8398762004461766,
+          "nearest_voxel": [
+            -44,
+            60,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -32.625,
+            45.375,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 57,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 8,
+          "nearest_distance_m": 2.4529996522455373,
+          "nearest_voxel": [
+            -45,
+            58,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -33.375,
+            43.875,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 8,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 5,
+          "valid_pixels": 1516520,
+          "mae_m": 5.0576505006813886,
+          "mean_signed_error_m": -4.527483605427287,
+          "dangerous_far_rate_1m": 0.09093978318782475,
+          "dangerous_far_edge_rate_1m": 0.09723301509769094
+        }
+      },
+      {
+        "frames_integrated": 35,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 14.302907586427304,
+        "current_position_ned_m": [
+          -36.424076080322266,
+          54.84393310546875,
+          -1.5147171020507812
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -35.625,
+            55.875,
+            -1.5193328857421875
+          ],
+          [
+            -36.0,
+            58.875,
+            -1.5193328857421875
+          ],
+          [
+            -36.375,
+            61.875,
+            -1.5193328857421875
+          ],
+          [
+            -36.375,
+            64.875,
+            -1.5193328857421875
+          ],
+          [
+            -38.25,
+            67.5,
+            -1.5193328857421875
+          ],
+          [
+            -38.67190451570226,
+            68.09066632198316,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": false,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 212,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 18,
+          "occupied": 2,
+          "unknown": 6
+        },
+        "blocked_neighbors_26": 16,
+        "max_reachable_progress_m": 15.530801174975037,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 51,
+          "nearest_distance_m": 0.8498072487386177,
+          "nearest_voxel": [
+            -50,
+            73,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -37.125,
+            55.125,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 51,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 3,
+          "nearest_distance_m": 1.9289328404211947,
+          "nearest_voxel": [
+            -51,
+            71,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -37.875,
+            53.625,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 3,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 5,
+          "valid_pixels": 1518587,
+          "mae_m": 5.45994482301916,
+          "mean_signed_error_m": -5.272814366029579,
+          "dangerous_far_rate_1m": 0.025082527375777614,
+          "dangerous_far_edge_rate_1m": 0.056808308163349745
+        }
+      },
+      {
+        "frames_integrated": 39,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": false,
+        "executable": false,
+        "reason": "sem espaco livre ao redor do drone",
+        "path_length_m": 0.0,
+        "current_position_ned_m": [
+          -40.61767578125,
+          59.66300582885742,
+          -1.5275344848632812
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [],
+        "safe_in_reference": false,
+        "collision_free_in_reference": false,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 15,
+          "occupied": 3,
+          "unknown": 8
+        },
+        "blocked_neighbors_26": 17,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 73,
+          "nearest_distance_m": 0.8988332571048957,
+          "nearest_voxel": [
+            -55,
+            78,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -40.875,
+            58.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 45,
+            "below_more_than_0_4m": 28
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 5.1299901564671515,
+          "nearest_voxel": [
+            -58,
+            85,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -43.125,
+            64.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 4,
+          "valid_pixels": 1216740,
+          "mae_m": 5.3763313445466165,
+          "mean_signed_error_m": -5.161058371677075,
+          "dangerous_far_rate_1m": 0.03296760195275901,
+          "dangerous_far_edge_rate_1m": 0.0570689530424716
+        }
+      },
+      {
+        "frames_integrated": 40,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": false,
+        "executable": false,
+        "reason": "sem espaco livre ao redor do drone",
+        "path_length_m": 0.0,
+        "current_position_ned_m": [
+          -42.01282501220703,
+          61.226409912109375,
+          -1.5042800903320312
+        ],
+        "requested_goal_ned_m": [
+          -50.00284909456968,
+          70.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [],
+        "safe_in_reference": false,
+        "collision_free_in_reference": false,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 14,
+          "occupied": 5,
+          "unknown": 7
+        },
+        "blocked_neighbors_26": 17,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 75,
+          "nearest_distance_m": 0.8417307132495401,
+          "nearest_voxel": [
+            -56,
+            82,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -41.625,
+            61.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 75,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 5,
+          "nearest_distance_m": 3.1266900953747077,
+          "nearest_voxel": [
+            -58,
+            85,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -43.125,
+            64.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 5,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 1,
+          "valid_pixels": 303914,
+          "mae_m": 5.731832783099519,
+          "mean_signed_error_m": -5.378390922392751,
+          "dangerous_far_rate_1m": 0.05560454602288806,
+          "dangerous_far_edge_rate_1m": 0.0678859601936525
+        }
+      },
+      {
+        "frames_integrated": 46,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "curved_initial_escape",
+        "path_length_m": 2.706307949818308,
+        "current_position_ned_m": [
+          -49.755897521972656,
+          70.11190795898438,
+          -1.4004364013671875
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -50.625,
+            69.375,
+            -1.5193328857421875
+          ],
+          [
+            -51.375,
+            68.625,
+            -1.5193328857421875
+          ],
+          [
+            -51.375,
+            68.125,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": true,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 16,
+          "occupied": 8,
+          "unknown": 2
+        },
+        "blocked_neighbors_26": 16,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 82,
+          "nearest_distance_m": 0.48945624008437555,
+          "nearest_voxel": [
+            -67,
+            93,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -49.875,
+            70.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 49,
+            "flight_band_abs_0_4m": 33,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 7.88893980481315,
+          "nearest_voxel": [
+            -59,
+            86,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -43.875,
+            64.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 6,
+          "valid_pixels": 1792442,
+          "mae_m": 6.099953380479784,
+          "mean_signed_error_m": -5.855991222100224,
+          "dangerous_far_rate_1m": 0.04605895197724668,
+          "dangerous_far_edge_rate_1m": 0.041196461462630035
+        }
+      },
+      {
+        "frames_integrated": 47,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": false,
+        "executable": false,
+        "reason": "sem espaco livre ao redor do drone",
+        "path_length_m": 0.0,
+        "current_position_ned_m": [
+          -46.5710334777832,
+          65.42864990234375,
+          -1.5352783203125
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [],
+        "safe_in_reference": false,
+        "collision_free_in_reference": false,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 18,
+          "occupied": 2,
+          "unknown": 6
+        },
+        "blocked_neighbors_26": 17,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 97,
+          "nearest_distance_m": 0.787962497406012,
+          "nearest_voxel": [
+            -62,
+            86,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -46.125,
+            64.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 58,
+            "below_more_than_0_4m": 39
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 6,
+          "nearest_distance_m": 2.773181484746848,
+          "nearest_voxel": [
+            -59,
+            86,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -43.875,
+            64.875,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 3,
+            "below_more_than_0_4m": 3
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 1,
+          "valid_pixels": 301639,
+          "mae_m": 4.58586429770356,
+          "mean_signed_error_m": -4.1791572043936975,
+          "dangerous_far_rate_1m": 0.08377895431293698,
+          "dangerous_far_edge_rate_1m": 0.052541794609348345
+        }
+      },
+      {
+        "frames_integrated": 49,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": false,
+        "executable": false,
+        "reason": "sem espaco livre ao redor do drone",
+        "path_length_m": 0.0,
+        "current_position_ned_m": [
+          -45.49372100830078,
+          62.939327239990234,
+          -1.5072555541992188
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [],
+        "safe_in_reference": false,
+        "collision_free_in_reference": false,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 17,
+          "occupied": 5,
+          "unknown": 4
+        },
+        "blocked_neighbors_26": 17,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 92,
+          "nearest_distance_m": 0.802143433481078,
+          "nearest_voxel": [
+            -62,
+            83,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -46.125,
+            62.625,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 92,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 6,
+          "nearest_distance_m": 2.039929796331432,
+          "nearest_voxel": [
+            -59,
+            85,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -43.875,
+            64.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 6,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 2,
+          "valid_pixels": 602339,
+          "mae_m": 4.613158419735626,
+          "mean_signed_error_m": -4.247221578426005,
+          "dangerous_far_rate_1m": 0.0661404956345181,
+          "dangerous_far_edge_rate_1m": 0.06782346006483937
+        }
+      },
+      {
+        "frames_integrated": 54,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": true,
+        "executable": true,
+        "reason": "local_subgoal",
+        "path_length_m": 6.202041075837583,
+        "current_position_ned_m": [
+          -34.25563430786133,
+          52.9431266784668,
+          -1.4928207397460938
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [
+          [
+            -34.125,
+            52.875,
+            -1.5193328857421875
+          ],
+          [
+            -30.375,
+            52.875,
+            -1.5193328857421875
+          ],
+          [
+            -28.93673761888606,
+            51.077172023607574,
+            -1.5193328857421875
+          ]
+        ],
+        "safe_in_reference": true,
+        "collision_free_in_reference": true,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 91,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 20,
+          "occupied": 0,
+          "unknown": 6
+        },
+        "blocked_neighbors_26": 9,
+        "max_reachable_progress_m": 5.7885893338467405,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 44,
+          "nearest_distance_m": 2.114113472619929,
+          "nearest_voxel": [
+            -48,
+            68,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -35.625,
+            51.375,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 44,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 4,
+          "nearest_distance_m": 3.7013580395088144,
+          "nearest_voxel": [
+            -51,
+            71,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -37.875,
+            53.625,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 4,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 5,
+          "valid_pixels": 1508969,
+          "mae_m": 5.361400132264284,
+          "mean_signed_error_m": -5.0808934740473495,
+          "dangerous_far_rate_1m": 0.03970591841184279,
+          "dangerous_far_edge_rate_1m": 0.08537168734253915
+        }
+      },
+      {
+        "frames_integrated": 67,
+        "free_space_margin_m": 3.0,
+        "free_space_margin_ratio": 0.12,
+        "free_space_margin_max_m": 6.0,
+        "conservative_depth_shift_m": 0.0,
+        "success": false,
+        "executable": false,
+        "reason": "sem espaco livre ao redor do drone",
+        "path_length_m": 0.0,
+        "current_position_ned_m": [
+          -23.10400390625,
+          27.146799087524414,
+          -1.5004386901855469
+        ],
+        "requested_goal_ned_m": [
+          -25.002849094569683,
+          25.013672105968,
+          -1.5193328857421875
+        ],
+        "waypoints_ned_m": [],
+        "safe_in_reference": false,
+        "collision_free_in_reference": false,
+        "first_collision_voxel": null,
+        "first_collision_world_ned_m": null,
+        "estimated_state_at_collision": null,
+        "current_voxel_inflated": true,
+        "reachable_voxels": 0,
+        "current_voxel_state": "free",
+        "neighbor_states_26": {
+          "free": 16,
+          "occupied": 0,
+          "unknown": 10
+        },
+        "blocked_neighbors_26": 16,
+        "max_reachable_progress_m": null,
+        "estimated_obstacle_proximity": {
+          "occupied_within_radius": 21,
+          "nearest_distance_m": 1.4243102078400298,
+          "nearest_voxel": [
+            -33,
+            35,
+            -2
+          ],
+          "nearest_world_ned_m": [
+            -24.375,
+            26.625,
+            -1.125
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 21,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "reference_obstacle_proximity": {
+          "occupied_within_radius": 0,
+          "nearest_distance_m": 5.865285083783715,
+          "nearest_voxel": [
+            -39,
+            37,
+            -3
+          ],
+          "nearest_world_ned_m": [
+            -28.875,
+            28.125,
+            -1.875
+          ],
+          "vertical_counts_within_radius": {
+            "above_more_than_0_4m": 0,
+            "flight_band_abs_0_4m": 0,
+            "below_more_than_0_4m": 0
+          }
+        },
+        "depth_error_since_previous_plan": {
+          "frames": 13,
+          "valid_pixels": 3555993,
+          "mae_m": 6.748515040894053,
+          "mean_signed_error_m": -6.39770262580577,
+          "dangerous_far_rate_1m": 0.06747876050374678,
+          "dangerous_far_edge_rate_1m": 0.08092334828789448
+        }
+      }
+    ]
+  },
+  "qualification": {
+    "passed": false,
+    "limits": {
+      "minimum_frames": 100,
+      "minimum_executable_path_m": 1.5,
+      "minimum_plan_success_rate": 0.8,
+      "maximum_false_free_rate": 0.1,
+      "require_all_successful_plans_collision_free": true
+    },
+    "checks": {
+      "frames": false,
+      "plan_success_rate": false,
+      "false_free_rate": true,
+      "collision_free_plans": true
+    }
+  }
+}

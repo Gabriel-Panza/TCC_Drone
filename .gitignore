@@ -200,3 +200,24 @@ models/train_env/
 logs
 datasets
 Parte_Escrita
+
+
+# Apenas a monografia de entrega fica visível no repositório.
+!Parte_Escrita/
+Parte_Escrita/*
+!Parte_Escrita/Monografia_TCC/
+Parte_Escrita/Monografia_TCC/**
+!Parte_Escrita/Monografia_TCC/**/
+!Parte_Escrita/Monografia_TCC/**/*.tex
+!Parte_Escrita/Monografia_TCC/**/*.bib
+!Parte_Escrita/Monografia_TCC/**/*.sty
+!Parte_Escrita/Monografia_TCC/**/*.cls
+!Parte_Escrita/Monografia_TCC/**/figuras/*.png
+!Parte_Escrita/Monografia_TCC/**/figuras/*.svg
+!Parte_Escrita/Monografia_TCC/**/figuras/*.pdf
+
+# Apenas o subconjunto portátil de evidências usado no pipeline final.
+!datasets/
+datasets/*
+!datasets/resultados_finais_monocular/
+!datasets/resultados_finais_monocular/**

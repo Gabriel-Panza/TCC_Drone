@@ -1,0 +1,67 @@
+{
+  "ulog": "/home/prograf4080/PX4-Autopilot/build/px4_sitl_default/rootfs/log/2026-08-31/11_28_33.ulg",
+  "ulog_sha256": "a3fbdded1474c5efd5cbc4633dc19400fed35b065bc851d68d3ec9e07628b0d8",
+  "run": "datasets/spatial_mapping/run_20260831_082836_332335",
+  "samples": [
+    {
+      "timestamp_s": 25.148,
+      "q_wxyz": [
+        0.34729620814323425,
+        -0.014787216670811176,
+        0.04923289641737938,
+        0.9363454580307007
+      ],
+      "gyro_rad_s": [
+        0.07196211069822311,
+        -0.09450169652700424,
+        -2.0487804412841797
+      ],
+      "attitude_timestamp_s": 25.148,
+      "gyro_timestamp_s": 25.148,
+      "sensor_context_timestamp_s": 25.108,
+      "sensor_context_q_wxyz": [
+        0.3067269027233124,
+        -0.014949201606214046,
+        0.04884238541126251,
+        0.9504260420799255
+      ],
+      "frame": "frames/frame_000001.npz"
+    },
+    {
+      "timestamp_s": 25.808,
+      "q_wxyz": [
+        0.48353198170661926,
+        -0.01937594823539257,
+        0.021972650662064552,
+        0.8748363852500916
+      ],
+      "gyro_rad_s": [
+        -0.10189510881900787,
+        0.03009124845266342,
+        0.7223997116088867
+      ],
+      "attitude_timestamp_s": 25.808,
+      "gyro_timestamp_s": 25.808,
+      "sensor_context_timestamp_s": 25.768,
+      "sensor_context_q_wxyz": [
+        0.49562662839889526,
+        -0.018213020637631416,
+        0.02316356636583805,
+        0.8680357336997986
+      ],
+      "frame": "frames/frame_000002.npz"
+    }
+  ],
+  "parameters": {
+    "pan_gyro_weight": 0.35,
+    "pan_yaw_gain": 1.0,
+    "pan_max_delta_rad": 0.20943951023931956,
+    "stabilization_zoom": 1.25
+  },
+  "limits": [
+    "RGB saved at 320x240, upscaled for legacy camera geometry",
+    "ULog sampled at event timestamp; ROS callback ordering unavailable",
+    "historical RGB intervals exceed 250ms, so gyro branch is disabled by original code",
+    "40ms sensor context is a separate illustration, not recovered previous image timestamp"
+  ]
+}

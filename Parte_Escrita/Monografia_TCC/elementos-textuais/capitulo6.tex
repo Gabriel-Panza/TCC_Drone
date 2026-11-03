@@ -1,0 +1,39 @@
+\chapter{Conclusão}\label{cap:conclusoes}
+
+
+
+Este trabalho avaliou sinais monoculares e inerciais em duas escalas: a previsão de mudanças de proximidade por intervalos visuais e o uso da profundidade em mapas de ocupação e caminhos A*. A organização em dois eixos permitiu examinar a informação disponível nos registros e as consequências espaciais dos erros, mantendo uma distinção entre análise dos dados, percepção e execução do voo.
+
+O eixo tabular reuniu 40 execuções e 1.234 intervalos válidos. A separação por execução, os conjuntos fixos de validação e teste e as repetições entre sementes permitiram comparar o crescimento dos dados e diferentes modelos sob condições comuns. O eixo espacial reuniu etapas documentadas de desenvolvimento e avaliação dentro de um acervo de 103 execuções heterogêneas. Nesse eixo, a profundidade do Gazebo validou a geometria e o planejamento, enquanto os estimadores monoculares passaram por avaliações por pixel e por repetição offline dos registros.
+
+\section{Respostas às perguntas de pesquisa}
+
+Entre o primeiro e o último marco, o erro diminuiu em cinco dos seis alvos, mas os ganhos foram modestos e irregulares. A ampliação do conjunto não produziu uma melhora contínua. A diversidade das situações também precisa ser considerada.
+
+A MLP apresentou baixa variação de erro entre as cinco sementes no teste fixo. Nenhum modelo superou todas as referências em todos os alvos, e a média do treinamento permaneceu competitiva em parte deles. A estabilidade observada descreve a variação entre treinamentos nos mesmos dados. A generalização para outras cenas ou rotas não foi avaliada.
+
+Entre os grupos de entradas, IMU e atitude tiveram a maior contribuição média agregada. O grupo reuniu 42,63\% da sensibilidade média por gradientes, e sua retirada elevou o erro absoluto médio (MAE) em 5,45\% na média dos seis alvos. O efeito variou entre os alvos. Esse resultado indica a utilidade do grupo na representação avaliada, sem estabelecer uma relação causal geral.
+
+No modelo em duas etapas, fornecer a indicação correta de evento ao regressor reduziu o MAE de 1,779 para 1,744 ponto percentual no alvo de pixels abaixo de 5~m. A melhora pequena sugere dificuldade remanescente na estimação do sinal e da magnitude. O diagnóstico não constitui uma decomposição exata do erro.
+
+Na etapa espacial, a bateria com profundidade do Gazebo completou dez de dez execuções, alcançou 30 objetivos e adotou 132 caminhos sem violações no critério de segurança avaliado. Sete das oito versões monoculares atenderam aos critérios por pixel, mas nenhuma passou pelo portão espacial completo. Na v19, o conjunto primário apresentou 41,2\% de sucesso de planejamento e 18,4\% de falso espaço livre, além de integrar menos quadros que o mínimo exigido. Nenhum caminho executável dessa configuração colidiu no replay primário, mas a disponibilidade de planos e o mapa ainda foram insuficientes para autorizar o voo monocular.
+
+\section{Limitações e continuidade}
+
+As conclusões estão restritas ao cenário simulado, ao veículo, às rotas e aos obstáculos estáticos avaliados. As métricas tabulares usam poucos conjuntos de execuções reservadas, e cinco sementes oferecem uma medida limitada da variabilidade. As comparações entre vários alvos são exploratórias. A representação por atributos resumidos também perde parte da estrutura espacial e temporal das imagens.
+
+Na etapa monocular, o conjunto primário participou da validação durante o treinamento e não constitui um teste independente. Os quatro conjuntos secundários foram avaliados após o congelamento da configuração, mas pertencem ao mesmo cenário. A reprovação offline impediu a avaliação do estimador monocular integrado ao voo. O tempo médio de inferência de 286,7~ms descreve somente a produção da profundidade. Não houve medição da latência total entre a chegada da imagem e a publicação do caminho. Os dados brutos também dependem do acervo do laboratório, pois não foram publicados devido ao volume.
+
+A continuidade deve priorizar diversidade de cenas, alturas e condições visuais, com conjuntos independentes reservados desde o início. Outra direção é representar a incerteza da profundidade por região e estudar seu efeito na atualização da ocupação. A comparação com representações temporais e espaciais mais completas pode partir dos modelos e das referências estabelecidos neste trabalho. Para um estudo futuro de controle reativo, os fluxos separados permitem reutilizar a coleta e a percepção, acrescentando critérios próprios de acompanhamento, reação e estabilidade. A integração monocular ao voo depende da aprovação espacial e de uma medição da latência completa.
+
+Os limiares de 100 quadros, 80\% de sucesso e 10\% de falso espaço livre pertencem ao protocolo interno e não constituem um padrão certificado. As versões v12--v19 usam uma mesma família e não foram todas comparadas no mesmo conjunto. Sincronização, densidade de amostragem, margens e ocupação também afetam o resultado. O replay mantém a trajetória observada e não simula a aquisição de novas imagens após um caminho alternativo. Por isso, a reprovação é um diagnóstico da configuração, sem isolamento causal completo.
+
+\section{Recomendações e contribuição para a literatura}
+
+Para avaliar uma nova configuração, é importante registrar os erros de profundidade, testar o mapa e os caminhos em sequências reservadas e declarar os critérios usados para autorizar a integração. Colisões e disponibilidade de caminhos precisam aparecer juntas: uma configuração que não avança pode evitar colisões e ainda falhar na tarefa. Disponibilizar uma amostra dos dados e os registros das decisões facilitaria o uso do protocolo por outros pesquisadores. Os dados brutos deste estudo permanecem no laboratório.
+
+O trabalho produziu uma base de 1.234 intervalos sincronizados e comparou diferentes modelos, sementes e grupos de entradas. A análise identificou a contribuição de IMU e atitude nessa representação. A etapa espacial também validou a integração de geometria e A* em dez voos com profundidade do Gazebo. O código e os registros permitem continuar esses estudos e retomar o fluxo reativo, que foi mantido separadamente.
+
+O MoNA Bench e o MonoNav já avaliam profundidade pelo uso em navegação \cite{Pan2024MoNA,Simon2024MonoNav}. Este estudo acrescenta um caso em que a aprovação por pixel não levou à aprovação espacial. Os registros mostram essa diferença e permitem conferir os motivos para bloquear a integração. A contribuição de \textit{Antes da Arquitetura} está nessa análise dos dados e dos erros: ela ajuda a escolher o que investigar a seguir, com base no que cada etapa já demonstrou e no que ainda precisa melhorar.
+
+A etapa final monocular alcançou 70,59\% de disponibilidade e 1,00\% de falso espaço livre na validação de desenvolvimento. Esse ganho permanece abaixo do portão previamente definido e não demonstra voo integrado. O encerramento preserva esse resultado e trata novos cenários e confirmação independente como continuidade futura.
