@@ -1,5 +1,7 @@
 # Antes da Arquitetura
 
+**Versão de entrega:** [tcc-entrega-v1.0](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0). O [pacote de reprodução monocular](https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz) está disponível nos anexos dessa Release.
+
 **Avaliação Experimental de Sinais Monoculares e Inerciais para Percepção de Proximidade em VANTs**
 
 Este repositório contém o código e os documentos de um Trabalho de Conclusão de Curso sobre como avaliar informação visual e inercial antes de escolher uma arquitetura mais complexa para navegação autônoma. O estudo não propõe um novo controlador. Seu foco é verificar se os dados representam mudanças de proximidade de forma estável e se a profundidade monocular produz informação espacial útil para planejamento.
@@ -230,7 +232,7 @@ O relatório inclui o resumo da bateria de referência, a comparação v12-v19, 
 
 ## Dados e reprodutibilidade
 
-Os dados brutos, mapas, pesos e logs não são publicados no GitHub devido ao volume. O repositório mantém código, configurações, notebook com saídas, manifestos e documentação de proveniência. Os caminhos `datasets/depth_ground_truth/old` e `datasets/spatial_mapping` descrevem a organização existente no computador do laboratório.
+O repositório mantém código, configurações, notebook e resultados selecionados. A [Release de entrega](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0) disponibiliza os quadros, pesos, perfil e predições necessários ao replay monocular final. O acervo bruto completo das coletas e treinamentos não está incluído no pacote.
 
 Documentação de execução: [pipeline espacial](docs/execucao_pipeline_espacial.md) e [validação 3D](docs/validacao_espacial_3d.md).
 
@@ -245,6 +247,13 @@ Versão encerrada: v21, revisão temporal e saída curva; 12/17 pedidos (70,59%)
 
 ### Figuras e análise publicada, após clonar o repositório
 
+Para obter o código congelado da entrega:
+
+~~~bash
+git clone --branch tcc-entrega-v1.0 --single-branch https://github.com/Gabriel-Panza/TCC_Drone.git
+cd TCC_Drone
+~~~
+
     python3.10 -m venv .venv-repro
     . .venv-repro/bin/activate
     pip install -r requirements-reproducao.txt
@@ -256,9 +265,21 @@ O notebook estudo_das_metricas.ipynb possui seção final independente. Suas cé
 
 ### Replay completo
 
-É necessário monocular_final_inputs.tar.gz (258 MB), preparado localmente, AINDA NÃO PUBLICADO em Release do GitHub. Sem esse pacote, o clone reproduz figuras e análise dos resultados armazenados, mas não o replay integral.
+Baixe o [pacote monocular_final_inputs.tar.gz](https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz) na [Release tcc-entrega-v1.0](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0). O arquivo tem 269.963.095 bytes (aproximadamente 257,46 MiB). Com o ambiente de reprodução ativado, execute na raiz do projeto:
 
-    python scripts/replay_final_monocular.py --bundle /caminho/monocular_final_inputs.tar.gz --output logs/minha_reproducao
+~~~bash
+mkdir -p downloads
+curl --fail --location --output downloads/monocular_final_inputs.tar.gz \
+  https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz
+
+printf '%s\n' '0b276bd01d62e8cea928bc4b9f2839911a0a7ff49e3c058807621067e64697a6  downloads/monocular_final_inputs.tar.gz' | sha256sum --check
+
+python scripts/replay_final_monocular.py \
+  --bundle downloads/monocular_final_inputs.tar.gz \
+  --output logs/minha_reproducao
+~~~
+
+O SHA-256 acima corresponde ao asset publicado na Release.
 
 A saída deve ser nova. O script extrai os arquivos, remapeia caminhos, verifica o SHA do modelo e valida 12/17, 4/401 e zero colisões discretas. Usa as predições em cache do pacote: repete mapeamento e planejamento, não o treinamento ou nova inferência. Para refazer inferência, remova o cache extraído e execute a especificação gerada, verificando equivalência na plataforma.
 
@@ -266,7 +287,7 @@ Para exportar o pacote na máquina original:
 
     python scripts/replay_final_monocular.py --export-full-bundle logs/monocular_final_inputs.tar.gz
 
-Ainda é necessário publicar as alterações e o pacote no GitHub. Os estudos continuam encerrados. Nenhum PDF foi compilado.
+A versão de entrega e o pacote estão publicados na Release vinculada acima. O estudo permanece encerrado; esse pipeline reproduz o resultado congelado.
 
 As figuras metodológicas revisadas podem ser regeneradas isoladamente com PYTHONNOUSERSITE=1 python scripts/generate_methodology_figures.py. Os quatro logs históricos de ilustração e os 1.234 intervalos necessários a esses gráficos estão no subconjunto versionado datasets/resultados_finais_monocular/figuras_revisao. Eles não substituem o conjunto bruto de treinamento. PYTHONNOUSERSITE=1 evita misturar Matplotlib local com o ambiente virtual.
 
