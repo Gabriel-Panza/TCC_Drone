@@ -16,6 +16,39 @@ except ImportError:
 
 @unittest.skipUnless(ROS_AVAILABLE, 'requires sourced ROS and PX4 overlay')
 class RosTemporalSmokeTest(unittest.TestCase):
+    def test_v21_uses_source_pose_and_accepts_missing_reference(self):
+        rclpy.init(args=['--ros-args', '--params-file', 'config/spatial_monocular_v21.yaml',
+                         '-p', 'spatial_save_dataset:=false'])
+        node = DroneOffboardNode()
+        try:
+            source_rgb = object()
+            node.spatial_v21_rgb.append((10.0, source_rgb))
+            node.spatial_v21_capture_poses.add(10.0, [0.0, 0.0, -1.5], [1.0, 0.0, 0.0, 0.0])
+            node.spatial_v21_capture_poses.add(10.5, [2.0, 0.0, -1.5], [1.0, 0.0, 0.0, 0.0])
+            node.latest_depth_estimated = np.ones((2, 2), dtype=np.float32)
+            node.latest_depth_estimated_stamp_s = 10.0
+
+            observation, age = node.obter_observacao_v21(10.5, None)
+            np.testing.assert_array_equal(observation['position'], [0.0, 0.0, -1.5])
+            self.assertEqual(age, 0.5)
+            self.assertIs(observation['source_rgb'], source_rgb)
+            self.assertIsNone(observation['reference_transform'])
+
+            observation, _ = node.obter_observacao_v21(10.5, 10.5)
+            np.testing.assert_array_equal(observation['reference_position'], [2.0, 0.0, -1.5])
+            observation, age = node.obter_observacao_v21(11.2, None)
+            self.assertAlmostEqual(age, 1.2)
+            np.testing.assert_array_equal(observation['position'], [0.0, 0.0, -1.5])
+            observation, age = node.obter_observacao_v21(11.4, None)
+            self.assertIsNone(observation)
+            self.assertAlmostEqual(age, 1.4)
+            self.assertEqual(node.spatial_v21_reference_max_age_s, 0.60)
+            node.spatial_last_integrated_depth_stamp_s = 10.0
+            self.assertEqual(node.obter_observacao_v21(10.5, None), (None, None))
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
+
     def test_delayed_unique_depth_uses_capture_pose_without_arming(self):
         rclpy.init(args=['--ros-args', '--params-file', 'config/spatial_monocular_temporal.yaml',
                          '-p', 'spatial_save_dataset:=false',

@@ -1,6 +1,7 @@
 """Exercise the real heartbeat method without starting ROS or a simulator."""
 import ast
 import copy
+from copy import deepcopy
 from pathlib import Path
 import threading
 import time
@@ -58,3 +59,31 @@ class HeartbeatWatchdogTest(unittest.TestCase):
         self.runtime.node.spatial_execute_path = False
         self.runtime.heartbeat()
         self.assertEqual(self.published, [])
+
+
+class V21HeartbeatTest(unittest.TestCase):
+    def test_stalled_planner_brakes_without_dropping_offboard_signal(self):
+        source = Path('drone_controller.py').read_text()
+        controller = next(node for node in ast.parse(source).body if isinstance(node, ast.ClassDef))
+        method = next(node for node in controller.body if getattr(node, 'name', '') == 'publicar_heartbeat_v21')
+        namespace = dict(deepcopy=deepcopy, np=np, time=SimpleNamespace(perf_counter=lambda: 10.0))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'heartbeat', 'exec'), namespace)
+
+        modes, published = [], []
+        motion = SimpleNamespace(position=[2., 3., -1.5], velocity=[float('nan')] * 3)
+        node = SimpleNamespace(
+            current_z=-1.5, missao_concluida=False, encerrando=False,
+            spatial_v21_command=(motion, 10.0),
+            publish_offboard_control_mode=lambda: modes.append(True),
+            trajectory_setpoint_publisher=SimpleNamespace(publish=published.append),
+            get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(nanoseconds=10_000_000_000)),
+        )
+        heartbeat = namespace['publicar_heartbeat_v21']
+        heartbeat(node)
+        self.assertEqual(published[-1].position, [2., 3., -1.5])
+        node.spatial_v21_command = motion, 9.0
+        heartbeat(node)
+        self.assertEqual(len(modes), 2)
+        self.assertTrue(np.isnan(published[-1].position[0]))
+        self.assertEqual(published[-1].velocity[:2], [0., 0.])
+        self.assertEqual(motion.position, [2., 3., -1.5])

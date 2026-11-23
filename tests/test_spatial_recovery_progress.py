@@ -97,6 +97,29 @@ class RecoveryProgressTest(unittest.TestCase):
         self.assertFalse(guard.actual_progress_reached((-2., 0., 0.), 1., 1.5))
         self.assertTrue(guard.actual_progress_reached((1.1, 0., 0.), 1., 1.5))
 
+    def test_recovery_candidate_with_unknown_reference_space_is_skipped(self):
+        navigator = Mock()
+        navigator.path_is_safe.return_value = True
+        reference = Mock()
+        reference.path_avoids_obstacles_allowing_initial_escape.return_value = True
+        reference.path_safety_allowing_dynamic_initial_escape.side_effect = [
+            {'safe': False, 'failure_reason': 'unknown'},
+            {'safe': True, 'failure_reason': None},
+        ]
+        policy = RecoveryCandidatePolicy(
+            self.guard(), .75, 1.5, 1., 1.5,
+            reference_required=True, reference_known_free_required=True,
+        )
+        current = (-2., 2., 0.)
+        first = SpatialPlan(True, 'local_subgoal', (10., 0., 0.), waypoints_ned_m=[(2., 2., 0.)])
+        second = SpatialPlan(True, 'local_subgoal', (10., 0., 0.), waypoints_ned_m=[(3., 2., 0.)])
+
+        rejected = policy.evaluate(navigator, current, first, reference)
+        self.assertFalse(rejected['accepted'])
+        self.assertEqual(rejected['reason'], 'reference_execution_veto')
+        self.assertEqual(rejected['observation_target_ned_m'], first.waypoints_ned_m[0])
+        self.assertTrue(policy.evaluate(navigator, current, second, reference)['accepted'])
+
 
 class ControllerProgressTest(unittest.TestCase):
     @classmethod

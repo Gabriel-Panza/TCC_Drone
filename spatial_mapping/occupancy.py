@@ -103,6 +103,7 @@ class OccupancyGrid3D:
         free_endpoints=None,
         narrow_interval_mask=None,
         interval_free_validator=None,
+        occupied_vertical_bounds=None,
     ):
         """Integra espaco livre observado e ocupa apenas extremos selecionados.
 
@@ -159,7 +160,6 @@ class OccupancyGrid3D:
             distance = float(np.linalg.norm(point - origin))
             if not np.isfinite(distance) or distance == 0 or distance > max_range_m:
                 continue
-            ray = self._ray_voxels(origin, point)
             effective_free_margin_m = (
                 free_space_margin_m + free_space_margin_ratio * distance
             )
@@ -179,7 +179,7 @@ class OccupancyGrid3D:
                 )
                 free_voxels = self._ray_voxels(origin, free_endpoint)
             else:
-                free_voxels = ray[:-1]
+                free_voxels = self._ray_voxels(origin, point)[:-1]
             free_observed_this_frame.update(free_voxels)
             if mark_endpoint_occupied:
                 if occupied_segments is not None:
@@ -193,15 +193,10 @@ class OccupancyGrid3D:
                                 self.interval_hypotheses.record_narrow(voxel,origin,self._integration_frame,
                                     self.config.occupied_evidence_window_frames)
                     continue
-                occupied_start_distance = max(
-                    0.0,
-                    distance - occupied_uncertainty_m,
-                )
-                occupied_start = origin + (point - origin) * (
-                    occupied_start_distance / distance
-                )
                 occupied_observed_this_frame.update(
-                    self._ray_voxels(occupied_start, point)
+                    self._occupied_ray_voxels(
+                        origin, point, distance, occupied_uncertainty_m, occupied_vertical_bounds,
+                    )
                 )
 
         if self.config.interval_hypothesis_fusion:
@@ -445,25 +440,28 @@ class OccupancyGrid3D:
 
     def _update(self, voxel, delta):
         current = self._log_odds.get(voxel, 0.0)
-        self._log_odds[voxel] = float(
-            np.clip(
-                current + delta,
-                self.config.min_log_odds,
-                self.config.max_log_odds,
-            )
-        )
+        self._log_odds[voxel] = float(min(
+            max(current + delta, self.config.min_log_odds),
+            self.config.max_log_odds,
+        ))
+
+    def _occupied_ray_voxels(self, origin, point, distance, uncertainty_m, vertical_bounds):
+        start = origin + (point - origin) * (max(0.0, distance - uncertainty_m) / distance)
+        if vertical_bounds is not None:
+            clipped_z = np.clip(start[2], *vertical_bounds)
+            if clipped_z != start[2]:
+                start += (point - start) * ((clipped_z - start[2]) / (point[2] - start[2]))
+                start[2] = clipped_z
+        return self._ray_voxels(start, point)
 
     def _ray_voxels(self, start, end):
         """Amostragem legada para integrar profundidade; nao usar para seguranca."""
         distance = float(np.linalg.norm(end - start))
         steps = max(1, int(np.ceil(distance / (self.config.resolution_m * 0.5))))
         samples = np.linspace(start, end, steps + 1)
-        voxels = []
-        for sample in samples:
-            voxel = self.world_to_voxel(sample)
-            if not voxels or voxel != voxels[-1]:
-                voxels.append(voxel)
-        return voxels
+        voxels = np.floor(samples / self.config.resolution_m).astype(int)
+        distinct = np.r_[True, np.any(voxels[1:] != voxels[:-1], axis=1)]
+        return [tuple(voxel) for voxel in voxels[distinct].tolist()]
 
     def segment_voxels(self, start, end):
         """Travessia conservadora completa para validacao de caminhos."""

@@ -29,11 +29,18 @@ mission_timeout_s="${MISSION_TIMEOUT_S:-180}"
 startup_timeout_s="${STARTUP_TIMEOUT_S:-45}"
 startup_attempts="${STARTUP_ATTEMPTS:-3}"
 px4_parameter_delay_s="${PX4_PARAMETER_DELAY_S:-8}"
-monocular_model="${MONOCULAR_MODEL_PATH:-$project_dir/models/depth_anything_v2_metric_baylands_vits_v12_686x518_fp32.onnx}"
+v21_model="$project_dir/models/depth_anything_v2_metric_baylands_vits_v21_native640_686x518_fp32.onnx"
+monocular_model="${MONOCULAR_MODEL_PATH:-$v21_model}"
 monocular_python="${MONOCULAR_PYTHON:-$project_dir/models/runtime_env/bin/python}"
-monocular_validation_report="${MONOCULAR_VALIDATION_REPORT:-$project_dir/models/monocular_validation_v12_independent.json}"
-monocular_mapping_report="${MONOCULAR_MAPPING_REPORT:-$project_dir/models/monocular_mapping_validation_v12.json}"
-monocular_params="${MONOCULAR_PARAMS_FILE:-$project_dir/config/monocular_depth_onnx.yaml}"
+monocular_validation_report="${MONOCULAR_VALIDATION_REPORT:-}"
+monocular_mapping_report="${MONOCULAR_MAPPING_REPORT:-}"
+monocular_controller="$project_dir/config/spatial_monocular.yaml"
+default_monocular_params="$project_dir/config/monocular_depth_onnx.yaml"
+if [[ "$monocular_model" == "$v21_model" ]]; then
+    monocular_controller="$project_dir/config/spatial_monocular_v21.yaml"
+    default_monocular_params="$project_dir/config/monocular_depth_v21.yaml"
+fi
+monocular_params="${MONOCULAR_PARAMS_FILE:-$default_monocular_params}"
 bundle_report="${MONOCULAR_BUNDLE_REPORT:-}"
 speed_commands=""
 spatial_waypoints="${SPATIAL_WAYPOINTS_RELATIVE_M:-}"
@@ -66,6 +73,21 @@ if [[ "$mode" == "monocular_topic" ]]; then
         echo "Preflight falhou: runtime monocular ausente em $monocular_python." >&2
         exit 3
     fi
+    monocular_sha256="$(sha256sum "$monocular_model" | cut -d' ' -f1)"
+    if [[ "$monocular_model" == "$v21_model" ]]; then
+        if ! python3 - "$project_dir/config/v21_interval_profile.json" "$monocular_sha256" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+profile = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+raise SystemExit(0 if profile["model_sha256"] == sys.argv[2] else 1)
+PY
+        then
+            echo "Preflight falhou: o ONNX v21 e o perfil publicado têm SHA-256 diferentes." >&2
+            exit 3
+        fi
+    fi
     if [[ "$guarded_short_test" == "1" ]]; then
         if [[ "$runs" != "1" || -z "$spatial_waypoints" ]]; then
             echo "Preflight falhou: GUARDED_SHORT_TEST exige uma run e waypoints curtos." >&2
@@ -77,7 +99,7 @@ if [[ "$mode" == "monocular_topic" ]]; then
             echo "Preflight falhou: GUARDED_ROUTE_TEST exige exatamente uma run." >&2
             exit 3
         fi
-        echo "AVISO: teste guardado da rota antiga; mapa GT pode apenas vetar caminhos." >&2
+        echo "AVISO: teste guardado da rota configurada; mapa GT pode apenas vetar caminhos." >&2
     else
         if [[ ! -f "$monocular_validation_report" ]]; then
             echo "Preflight falhou: relatorio offline ausente em $monocular_validation_report." >&2
@@ -119,7 +141,7 @@ fi
 
 config="${SPATIAL_CONFIG:-$project_dir/config/spatial_debug.yaml}"
 if [[ -z "${SPATIAL_CONFIG:-}" && "$mode" == "monocular_topic" ]]; then
-    config="$project_dir/config/spatial_monocular.yaml"
+    config="$monocular_controller"
 fi
 if [[ ! -f "$config" ]]; then
     echo "Preflight falhou: configuracao ausente em $config" >&2
@@ -165,7 +187,7 @@ if [[ -n "$spatial_waypoints" ]]; then
 fi
 if [[ "$mode" == "monocular_topic" ]]; then
     echo "  model=$monocular_model"
-    echo "  model_sha256=$(sha256sum "$monocular_model" | cut -d' ' -f1)"
+    echo "  model_sha256=$monocular_sha256"
     echo "  python=$monocular_python"
     echo "  validation_report=$monocular_validation_report"
     echo "  mapping_report=$monocular_mapping_report"
@@ -355,7 +377,9 @@ for ((run_index=1; run_index<=runs; run_index++)); do
         )
     fi
     set +e
-    setsid timeout --signal=TERM --kill-after=15s "$mission_timeout_s"         env PYTHONNOUSERSITE=1 python3 main.py "${controller_args[@]}"         >"$run_dir/controller.log" 2>&1 &
+    LC_ALL=C setsid timeout --verbose --signal=TERM --kill-after=30s "$mission_timeout_s" \
+        env PYTHONNOUSERSITE=1 python3 main.py "${controller_args[@]}" \
+        >"$run_dir/controller.log" 2>&1 &
     controller_pid=$!
     wait "$controller_pid"
     controller_exit=$?
@@ -394,7 +418,19 @@ PY
         if [[ "$outcome" == "completed" ]]; then
             mission_complete=true
         fi
-        python3 estudos_e_analises/analisar_mapeamento_espacial.py "$dataset"             >"$run_dir/analysis.json" 2>"$run_dir/analysis.err" || true
+        if [[ -f "$dataset/estimated_map.npz" && -f "$dataset/reference_map.npz" ]]; then
+            python3 estudos_e_analises/analisar_mapeamento_espacial.py "$dataset" \
+                >"$run_dir/analysis.json" 2>"$run_dir/analysis.err" || true
+        fi
+    fi
+    controller_timed_out=false
+    if [[ "$controller_exit" -eq 124 ]] || grep -q '^timeout: sending signal TERM to command' "$run_dir/controller.log"; then
+        controller_timed_out=true
+    fi
+    if [[ "$controller_timed_out" == true && "$mission_complete" != true
+          && "$outcome" != safe_abort && "$outcome" != unsafe_abort ]]; then
+        outcome=timeout
+        abort_reason=mission_time_limit
     fi
 
     printf '%s	%s	%s	%s	%s	%s	%s
@@ -405,8 +441,11 @@ PY
         echo "Processo residual detectado apos a run $run_index; abortando." >&2
         exit 6
     fi
-    if [[ "$mission_complete" == true && "$controller_exit" -eq 124 ]]; then
+    if [[ "$mission_complete" == true && "$controller_timed_out" == true ]]; then
         echo "Run $run_index concluida antes do limite; timeout encerrou somente a espera de pouso."
+    elif [[ "$outcome" == timeout ]]; then
+        echo "Run $run_index excedeu ${mission_timeout_s}s (codigo $controller_exit). Veja $run_dir/controller.log." >&2
+        exit 7
     elif [[ "$controller_exit" -ne 0 ]]; then
         echo "Run $run_index falhou: controlador terminou com codigo $controller_exit." >&2
         exit 7

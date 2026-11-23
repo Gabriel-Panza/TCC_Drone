@@ -5,6 +5,76 @@ from dataclasses import dataclass, asdict, field, replace
 import numpy as np
 
 
+def short_observation_path(current, goal, waypoints, estimated, reference, *,
+                           min_length_m, max_length_m, arrival_radius_m):
+    """Validate a short forward leg all the way to its observation stop."""
+    points = np.asarray([current, *waypoints], dtype=float)
+    if len(points) < 2 or not np.isfinite(points).all():
+        return {'accepted': False, 'reason': 'empty_or_invalid_path'}
+    length = float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum())
+    progress = float(np.linalg.norm(points[0] - goal) - np.linalg.norm(points[-1] - goal))
+    result = {'accepted': False, 'length_m': length, 'progress_m': progress}
+    if not min_length_m <= length < max_length_m:
+        return {**result, 'reason': 'outside_short_path_length'}
+    if progress <= arrival_radius_m:
+        return {**result, 'reason': 'insufficient_forward_progress'}
+    for name, navigator in (('estimated', estimated), ('reference', reference)):
+        safety = navigator.path_safety_diagnostics(current, waypoints)
+        if not safety['safe']:
+            return {**result, 'reason': f'{name}_veto', 'path_safety': safety}
+    return {**result, 'accepted': True, 'reason': 'known_free_in_both_maps'}
+
+
+def validated_path_prefix(current, waypoints, is_safe, *, standoff_m, min_length_m):
+    """Find a checked prefix and leave space between its endpoint and the boundary."""
+    points = np.asarray([current, *waypoints], dtype=float)
+    if len(points) < 2 or not np.isfinite(points).all():
+        return None
+    lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    boundaries = np.r_[0., np.cumsum(lengths)]
+
+    def prefix_at(distance):
+        index = np.searchsorted(boundaries, distance, side='left')
+        fraction = (distance - boundaries[index - 1]) / lengths[index - 1]
+        endpoint = points[index - 1] + fraction * (points[index] - points[index - 1])
+        return [tuple(point) for point in [*points[1:index], endpoint]]
+
+    low, high = 0., float(boundaries[-1])
+    if high < standoff_m + min_length_m:
+        return None
+    # A valid prefix never enters unknown space. Search along the polyline,
+    # not along a straight-line shortcut to the endpoint.
+    while high - low > .05:
+        middle = (low + high) / 2.
+        if is_safe(prefix_at(middle)):
+            low = middle
+        else:
+            high = middle
+    distance = low - standoff_m
+    if distance < min_length_m:
+        return None
+    prefix = prefix_at(distance)
+    if not is_safe(prefix):
+        return None
+    return prefix, distance
+
+
+def active_path_prefix_before_veto(current, waypoints, estimated, reference, *,
+                                   estimated_safety, reference_safety, standoff_m,
+                                   min_length_m):
+    """Keep a checked approach when every veto is beyond the active segment."""
+    veto_segments = [check.get('segment_index') for check in (estimated_safety, reference_safety)
+                     if not check['safe']]
+    if not veto_segments or any(index is None or index <= 0 for index in veto_segments):
+        return None
+    return validated_path_prefix(
+        current, waypoints,
+        lambda points: (estimated.path_is_safe(current, points)
+                        and reference.path_is_safe(current, points)),
+        standoff_m=standoff_m, min_length_m=min_length_m,
+    )
+
+
 def _distance_to_polyline(point, points):
     if len(points) == 1:
         return float(np.linalg.norm(point - points[0]))
@@ -365,6 +435,7 @@ class RecoveryCandidatePolicy:
     reference_required: bool = False
     max_candidates: int = 16
     explore_frontiers: bool = False  # Legacy snapshots retain their original policy.
+    reference_known_free_required: bool = False
 
     def as_dict(self):
         return asdict(self)
@@ -433,6 +504,21 @@ class RecoveryCandidatePolicy:
             if not reference_safe:
                 result["reason"] = "reference_veto"
                 return result
+            if self.reference_known_free_required:
+                check_reference = (
+                    reference_navigator.initial_escape_path_safety_diagnostics
+                    if strict_entry or plan.diagnostics.get('initial_escape_required')
+                    else reference_navigator.path_safety_allowing_dynamic_initial_escape
+                )
+                reference_safety = check_reference(current, waypoints)
+                result['reference_execution_safety'] = reference_safety
+                if not reference_safety['safe']:
+                    result['reason'] = 'reference_execution_veto'
+                    if reference_safety['failure_reason'] == 'unknown':
+                        # Observe a direction proposed by the monocular planner.
+                        # The veto map provides no waypoint or setpoint.
+                        result['observation_target_ned_m'] = tuple(waypoints[0])
+                    return result
         result.update(accepted=True, reason=check["reason"])
         return result
 

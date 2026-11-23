@@ -1,299 +1,181 @@
 # Antes da Arquitetura
 
-**Versão de entrega:** [tcc-entrega-v1.0](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0). O [pacote de reprodução monocular](https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz) está disponível nos anexos dessa Release.
-
 **Avaliação Experimental de Sinais Monoculares e Inerciais para Percepção de Proximidade em VANTs**
 
-Este repositório contém o código e os documentos de um Trabalho de Conclusão de Curso sobre como avaliar informação visual e inercial antes de escolher uma arquitetura mais complexa para navegação autônoma. O estudo não propõe um novo controlador. Seu foco é verificar se os dados representam mudanças de proximidade de forma estável e se a profundidade monocular produz informação espacial útil para planejamento.
+Este TCC avalia sinais visuais e inerciais para estimar proximidade e investiga o uso de profundidade monocular no mapeamento 3D e no planejamento A*. A [versão de entrega](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0) reúne o código congelado e o pacote de reprodução.
 
-O projeto reúne dois eixos experimentais:
+## Qual experimento rodar?
 
-1. **Análise tabular dos sinais:** fluxo óptico, IMU, atitude, movimento, comandos e diferença de imagem são sincronizados por intervalo visual e avaliados com MLP, modelos de árvores, várias sementes, eventos, gradientes e ablação.
-2. **Validação espacial da profundidade:** profundidade métrica é reprojetada em uma grade 3D de ocupação, usada por um planejador A* e submetida a portões de segurança antes de qualquer voo monocular.
-
-> A profundidade monocular v19 passou pelo critério por pixel, mas não passou pelo portão espacial completo. Por isso, o voo monocular em SITL permaneceu bloqueado. A v21 final chegou a 70,59% de sucesso e 1,00% de falso espaço livre no replay de desenvolvimento, ainda abaixo do portão de voo.
-
-## Resultados finais
-
-| Eixo | Evidência | Resultado |
+| Objetivo | Onde rodar | Roteiro |
 |---|---|---|
-| Sinais tabulares | 40 execuções e 1.234 intervalos válidos | Ganhos modestos com mais dados; resultados estáveis entre sementes; IMU e atitude foram o grupo mais consistente |
-| Profundidade de referência + mapa + A* | Bateria fixa com 10 execuções | 10/10 missões completas, 30 objetivos, 147/156 planos e nenhum caminho inseguro adotado |
-| Profundidade monocular v19 + mapa + A* | Avaliação por pixel e replay espacial | Critério por pixel aprovado; portão espacial reprovado; SITL monocular não autorizado |
+| Voar no Baylands com profundidade de referência do Gazebo | Ubuntu/WSL com PX4, Gazebo e ROS 2 | [Run ground truth](#1-run-ground-truth) |
+| Testar a mesma rota usando profundidade monocular | Ubuntu/WSL com PX4, Gazebo e ROS 2 | [Run monocular na mesma rota](#2-run-monocular-na-mesma-rota) |
+| Ver a profundidade monocular no mapa | Mesmo simulador, com o drone parado | [Mapa monocular com o drone parado](#mapa-monocular-com-o-drone-parado) |
+| Reproduzir os resultados finais da v21 | Terminal Linux com Python, sem simulador | [Replay monocular offline](#3-replay-monocular-offline) |
+| Examinar as métricas dos sinais visuais e inerciais | Jupyter, na raiz do projeto | [Análise tabular](#4-análise-tabular) |
 
-A conclusão principal é que uma métrica de profundidade aceitável por pixel não garante um mapa seguro ou caminhos executáveis.
+## Preparar a simulação
 
-![Sensibilidade dos grupos de entradas e ablação](Parte_Escrita/Monografia_TCC/figuras/resultados_explicabilidade_ablacao.png)
+Use **dois terminais Ubuntu/WSL**. O ambiente de referência tem Ubuntu 22.04, Python 3.10, ROS 2 Humble, Gazebo Harmonic 8.10.0 e PX4 no commit `e2708705a8ca625854f1129fd9dde2ae8ae16d59`. Os comandos assumem o projeto em `~/TCC_Drone`, o PX4 em `~/PX4-Autopilot` e o workspace ROS 2 do projeto já compilado. As dependências Python do simulador e da análise estão em [requirements.txt](requirements.txt).
 
-![Mapa de referência e caminhos A* adotados](Parte_Escrita/Monografia_TCC/figuras/resultados_mapa_astar.png)
+Em uma instalação nova, prepare primeiro o sensor de referência do Gazebo, as interfaces ROS e, para o monocular, o ONNX v21. [Guia de instalação e registro dos voos ao vivo](docs/reproducao_ao_vivo.md)
 
-Os resultados monoculares finais estão em datasets/resultados_finais_monocular/results.json.
-
-## Arquitetura
-
-```mermaid
-flowchart LR
-    PX4[PX4 SITL] --> ROS[ROS 2 / Micro XRCE-DDS]
-    GZ[Gazebo Baylands] --> RGB[Câmera RGB]
-    GZ --> GT[Profundidade de referência]
-    PX4 --> STATE[Pose, atitude e IMU]
-
-    RGB --> LEGACY[Fluxo legado]
-    STATE --> LEGACY
-    GT --> LABELS[Alvos de proximidade]
-    LEGACY --> DATA[Intervalos sincronizados]
-    LABELS --> DATA
-    DATA --> NOTEBOOK[Notebook de métricas]
-    NOTEBOOK --> TABULAR[MLP, árvores, sementes, eventos, gradientes e ablação]
-
-    RGB --> MONO[Depth Anything V2 métrico]
-    MONO --> MAP[Mapa de ocupação 3D]
-    GT --> REFMAP[Mapa de referência]
-    MAP --> ASTAR[A* em espaço observado e livre]
-    REFMAP --> GATE[Guardião e portão espacial]
-    ASTAR --> GATE
-    GATE --> SETPOINTS[Pontos de posição NED]
-    SETPOINTS --> PX4
-```
-
-No modo espacial, “sem controle reativo” não significa ausência de controle físico. O A* produz pontos de posição, enquanto o PX4 estabiliza o veículo e executa o controle de baixo nível.
-
-### Componentes principais
-
-| Caminho | Responsabilidade |
-|---|---|
-| [`main.py`](main.py) | Ponto de entrada dos nós ROS 2 e seleção do modo de navegação |
-| [`drone_controller.py`](drone_controller.py) | Comunicação Offboard, coleta, fluxo legado e execução dos caminhos espaciais |
-| [`monocular_depth_node.py`](monocular_depth_node.py) | Inferência ONNX e publicação da profundidade monocular métrica |
-| [`spatial_mapping/`](spatial_mapping) | Geometria, grade de ocupação, fronteiras, A*, verificação e recuperação |
-| [`estudos_e_analises/estudo_das_metricas.ipynb`](estudos_e_analises/estudo_das_metricas.ipynb) | Análise tabular, modelos, explicabilidade e figuras do estudo |
-| [`scripts/run_spatial_battery.sh`](scripts/run_spatial_battery.sh) | Execução automatizada das baterias espaciais |
-| [`scripts/build_spatial_final_report.py`](scripts/build_spatial_final_report.py) | Consolidação dos resultados e hashes dos artefatos |
-
-## Modos de execução
-
-| Modo | Profundidade usada pelo mapa | Decisão de alto nível | Estado final |
-|---|---|---|---|
-| `legacy_reactive` | Não usa mapa 3D para navegar | Lógica reativa baseada em fluxo óptico | Preservado para reprodução e trabalhos futuros |
-| `ground_truth_debug` | Profundidade do Gazebo | A* e pontos de posição | Validado na bateria final |
-| `monocular_topic` | Saída do estimador monocular | A* e pontos de posição | Bloqueado pelo portão espacial |
-
-## Ambiente de referência
-
-- Ubuntu 22.04.5 LTS em WSL 2;
-- ROS 2 Humble;
-- Gazebo Harmonic 8.10.0;
-- PX4 no commit `e2708705a8ca625854f1129fd9dde2ae8ae16d59`;
-- Python 3.10.12;
-- veículo `x500_mono_cam` no mundo `baylands`.
-
-Os pacotes Python usados na análise estão em [`requirements.txt`](requirements.txt). PX4, Gazebo, ROS 2, Micro XRCE-DDS Agent e o workspace ROS 2 precisam ser instalados separadamente.
-
-```bash
-cd ~/TCC_Drone
-python3 -m pip install -r requirements.txt
-source /opt/ros/humble/setup.bash
-source ~/TCC_Drone/ws_ros2/install/setup.bash
-```
-
-## Execução da bateria espacial
-
-A bateria automatizada usa dois terminais. Ajuste `PROJECT_DIR`, `PX4_DIR` e `ROS_OVERLAY` se o projeto não estiver nos caminhos usados no laboratório.
-
-### Terminal 1: comunicação e imagens
+**Terminal 1 · Agente e pontes de imagem.** Pode rodar de qualquer pasta. Mantenha esse terminal aberto e reutilize os três processos entre as execuções.
 
 ```bash
 source /opt/ros/humble/setup.bash
 
 MicroXRCEAgent udp4 -p 8888 &
-
 ros2 run ros_gz_bridge parameter_bridge \
-  /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image &
-
+  '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image' &
 ros2 run ros_gz_bridge parameter_bridge \
-  /sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image &
-
+  '/sim_depth_ground_truth@sensor_msgs/msg/Image[gz.msgs.Image' &
 wait
 ```
 
-Mantenha esse terminal aberto. O executor reinicia PX4 e Gazebo entre as execuções, mas preserva o agente e as pontes.
+**Terminal 2 · Antes de rodar.** Encerre o PX4/Gazebo manual e qualquer estimador monocular iniciado à parte. Mantenha o Terminal 1 aberto. Em ambos os modos, o executor carrega o ROS 2, inicia o `x500_mono_cam` no Baylands e encerra os processos que iniciou. As janelas do Gazebo e do mapa exigem uma sessão gráfica ativa no WSL.
 
-### Terminal 2: validação e bateria de referência
+## Rota publicada da bateria espacial
+
+Execute um modo por vez no **Terminal 2**. Ambos usam PX4/Gazebo no Baylands e os três objetivos relativos publicados na monografia, em metros NED: `(-25, 25, -1.5)`, `(-50, 70, -1.5)` e `(-25, 25, -1.5)`. O alvo da decolagem inicial é 1,6 m e os três objetivos de navegação ficam a 1,5 m de altura. [Metodologia da monografia](Parte_Escrita/Monografia_TCC/elementos-textuais/capitulo4.tex)
+
+### 1. Run ground truth
+
+```bash
+cd ~/TCC_Drone
+env -u HEADLESS PROJECT_DIR="$PWD" PX4_DIR="$HOME/PX4-Autopilot" \
+  SPATIAL_WAYPOINTS_RELATIVE_M='[-25.0,25.0,-1.5,-50.0,70.0,-1.5,-25.0,25.0,-1.5]' \
+  MISSION_TIMEOUT_S=270 BATTERY_CONTINUE_SAFE_ABORTS=0 \
+  ./scripts/run_spatial_battery.sh ground_truth_debug 1
+```
+
+Troque `1` por `10` para uma bateria com dez missões na rota publicada.
+
+### 2. Run monocular na mesma rota
+
+```bash
+cd ~/TCC_Drone
+bash scripts/run_monocular_v21_route.sh
+```
+
+Para repetir a mesma configuração até a primeira missão completa ou até cinco tentativas, use `bash scripts/run_monocular_v21_route.sh 5`. Cada tentativa tem limite operacional de 600 s, com opção de ajuste por `MISSION_TIMEOUT_S`. O roteiro encerra no primeiro `completed` e repete apenas falhas registradas da missão. Erros de inicialização ou de limpeza interrompem a sequência.
+
+O executor usa a **v21 por padrão**, com o mesmo ONNX e perfil de profundidade do replay final. O perfil SITL usa amostragem 5 e bordas 2 a 640 × 480, margem de espaço livre de 3 m mais 12% da distância limitada a 6 m, incerteza de ocupação de 0,75 m, duas observações para marcar espaço livre ou ocupado, revisão de obstáculos após três observações separadas por 0,75 m e busca de saída inicial reta e curva. O mapa de referência pode vetar trajetos.
+
+Em SITL, o estimador infere sobre novas imagens do Gazebo e usa seis threads de CPU. O guardião atualiza seu mapa enquanto aguarda a inferência. Se vetar o plano principal, o executor pode testar outros subobjetivos gerados pelo planejador monocular. Os três objetivos globais são os mesmos em todas as tentativas.
+
+A recepção do RGB guarda o quadro e sua pose enquanto o mapa é integrado em outro callback. A profundidade monocular pode chegar até 1,30 s depois do seu quadro de origem. Cada previsão entra uma vez e requer o RGB e a pose correspondentes. O limite de 0,60 s do mapa de referência continua valendo.
+
+Enquanto o mapa está ocupado, a v21 pode continuar no waypoint atual por até 2 s desde a última validação, se a pose estiver a até 0,35 m do segmento validado. O controlador freia se essas condições expirarem e revalida o caminho ao receber uma revisão do mapa. O resumo do dataset registra quantos ciclos mantiveram o waypoint ou pediram frenagem durante a espera.
+
+O heartbeat Offboard da v21 é enviado a 25 Hz em uma thread própria. Se o comando de posição ficar mais de 0,25 s sem atualização, o heartbeat continua enviando um comando de espera. O resumo do dataset registra a contagem de envios e o maior intervalo entre eles no controlador.
+
+Se a referência vetar o plano principal por espaço desconhecido e a busca de alternativas falhar, o executor pode seguir um trecho livre nos dois mapas. O trecho termina com um recuo de 2,5 m ao longo do caminho. O drone para nesse ponto e aguarda a integração de uma imagem mais recente que a chegada antes de replanejar para o mesmo objetivo. Procure `A*: v21_validated_prefix` no `controller.log` para identificar quando o executor adotou esse recurso.
+
+Se o comprimento impedir a adoção de um plano local, a v21 pode usar um trecho de 0,50 m até o limite normal de 1,50 m. O trecho precisa aproximar o drone do objetivo em mais de 0,20 m e estar completamente livre nos dois mapas. Ao chegar, o drone para para observar antes de replanejar. Procure `A*: v21_short_observation` no `controller.log`.
+
+Durante a execução, um veto em um segmento adiante pode encurtar o caminho ativo. O drone segue apenas o trecho confirmado nos dois mapas, para com margem de 2,5 m antes do veto e aguarda uma nova observação. Um veto no segmento que está sendo voado ainda aciona a frenagem. Procure `A* trecho ativo mantido` no `controller.log`.
+
+Os **70,59%** do artigo medem pedidos de planejamento no replay de quadros gravados. A reprodução exata dessa métrica está no [replay monocular offline](#3-replay-monocular-offline). A bateria de qualificação exige relatórios aprovados de profundidade e mapeamento para o mesmo SHA-256 do ONNX. [Perfil SITL](config/spatial_monocular_v21.yaml) · [Configuração do replay](config/final_monocular_replay.json)
+
+O mapa NED projeta os voxels ocupados em uma faixa de ±1,5 m ao redor do drone. Vermelho indica a camada atual do drone e cinza indica outras alturas. O controlador verifica os segmentos do caminho em 3D. Na v21 ao vivo, cada previsão usa o RGB de origem e a pose associada ao recebimento daquele quadro. A sincronização reduz deslocamentos artificiais dos obstáculos enquanto o drone anda ou gira. [Visualização NED](spatial_mapping/visualization.py) · [Controlador](drone_controller.py)
+
+Na rota ao vivo da v21, os mapas só marcam ocupação em uma faixa de ±0,10 m em torno da altitude comandada de 1,5 m. A pose e a atitude do quadro continuam orientando a projeção da câmera em NED. A incerteza de ocupação termina na borda dessa faixa. Esse ajuste é da execução ao vivo. O replay publicado conserva o perfil original.
+
+Na v21 ao vivo, uma detecção pendente bloqueia a própria célula. Obstáculos confirmados têm margem horizontal de 1,00 m no monocular e 1,25 m no mapa de referência. O planejamento e a execução verificam o caminho com a mesma regra.
+
+Na janela da v21, o tempo no topo indica há quanto tempo terminou a última integração que a janela está mostrando. A projeção acompanha a pose atual mesmo entre integrações. [Visualização NED](spatial_mapping/visualization.py)
+
+### Onde conferir as runs
+
+Abra `logs/spatial_battery/<data>_<modo>/summary.tsv`. Uma missão completa tem `outcome=completed`. A coluna `dataset` aponta para a pasta com `spatial_map_3d.html`, quando gerado. Dentro de `run_01/` ficam `controller.log`, `px4_gazebo.log` e, no monocular, `monocular.log`.
+
+Se o executor indicar processos residuais, encerre o simulador manual no terminal de origem. Se ainda restarem processos do PX4 ou Gazebo, rode `./scripts/cleanup_spatial_sim.sh` na raiz do projeto. Se um estimador manual ficou em segundo plano, encerre-o no terminal em que foi iniciado para evitar sobrecarga durante a bateria.
+
+### Mapa monocular com o drone parado
+
+Mantenha o agente e as pontes no Terminal 1. No **Terminal 2**, inicie o simulador manualmente com a bateria encerrada:
+
+```bash
+cd ~/PX4-Autopilot
+env -u HEADLESS PX4_GZ_WORLD=baylands make px4_sitl gz_x500_mono_cam
+```
+
+**Terminal 3 · Estimador e mapa.** Quando o Baylands carregar, rode o bloco na raiz do projeto. Ele usa o mesmo arquivo ONNX v21 da bateria e o ambiente em `models/runtime_env`.
 
 ```bash
 cd ~/TCC_Drone
 source /opt/ros/humble/setup.bash
-source ~/TCC_Drone/ws_ros2/install/setup.bash
+source ws_ros2/install/setup.bash
 
-# Confere caminhos, configuração e processos sem iniciar a missão.
-./scripts/run_spatial_battery.sh ground_truth_debug 1 --dry-run
+(
+  PYTHONNOUSERSITE=1 models/runtime_env/bin/python monocular_depth_node.py \
+    --ros-args --params-file config/monocular_depth_v21.yaml &
+  estimador_pid=$!
+  trap 'kill -TERM "$estimador_pid" 2>/dev/null || true; wait "$estimador_pid" 2>/dev/null || true' EXIT
 
-# Executa a bateria com dez missões.
-./scripts/run_spatial_battery.sh ground_truth_debug 10
+  PYTHONNOUSERSITE=1 python3 main.py \
+    --ros-args --params-file config/spatial_monocular_v21.yaml \
+    -p spatial_execute_path:=false -p monocular_depth_max_age_s:=4.0
+)
 ```
 
-O script abre PX4 e Gazebo, aplica os parâmetros necessários, executa `main.py` com `spatial_execute_path=true`, encerra a missão e prepara a próxima. As saídas ficam em:
+A tolerância de 4 s vale apenas para visualizar o mapa com o veículo parado. O estimador publica `/monocular_depth` e o controlador mostra a projeção superior. Encerre o mapa com `Ctrl+C` no Terminal 3. Para gerar o HTML a partir de um ensaio manual salvo, passe o diretório da execução em `datasets/spatial_mapping/` ao [analisador espacial](estudos_e_analises/analisar_mapeamento_espacial.py).
 
-- `logs/spatial_battery/AAAAmmdd_HHMMSS_ground_truth_debug/`;
-- `datasets/spatial_mapping/run_AAAAMMDD_HHMMSS/`.
+## 3. Replay monocular offline
 
-Antes de uma bateria real, confirme que os tópicos estão ativos:
+Rode em **um terminal Linux**, na raiz do projeto. Use o [código da versão de entrega](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0) e salve o [pacote de reprodução](https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz) como `downloads/monocular_final_inputs.tar.gz` dentro do repositório. Na máquina do laboratório, o pacote já existe em `logs/monocular_final_inputs.tar.gz`. Nesse caso, use esse caminho em `--bundle`.
 
-```bash
-ros2 topic hz /world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image
-ros2 topic hz /sim_depth_ground_truth
-```
-
-## Inspeção manual sem voo
-
-Este modo constrói o mapa com a profundidade do Gazebo, mas mantém o armamento desabilitado:
+Prepare o ambiente Python uma vez:
 
 ```bash
 cd ~/TCC_Drone
-source /opt/ros/humble/setup.bash
-source ~/TCC_Drone/ws_ros2/install/setup.bash
-
-PYTHONNOUSERSITE=1 python3 main.py --ros-args \
-  --params-file config/spatial_debug.yaml
+python3.10 -m venv .venv-repro
+source .venv-repro/bin/activate
+python -m pip install -r requirements-reproducao.txt
 ```
 
-Para analisar a execução salva:
+No mesmo terminal, execute o replay com um diretório de saída novo:
 
 ```bash
-python3 estudos_e_analises/analisar_mapeamento_espacial.py \
-  ~/TCC_Drone/datasets/spatial_mapping/run_AAAAMMDD_HHMMSS
-```
-
-O analisador gera `spatial_summary.json` e `spatial_map_3d.html` dentro do diretório da execução.
-
-## Pipeline monocular
-
-O nó monocular exige um modelo ONNX métrico ou uma saída inversa calibrada de forma independente:
-
-```bash
-PYTHONNOUSERSITE=1 python3 monocular_depth_node.py --ros-args \
-  --params-file config/monocular_depth_onnx.yaml \
-  -p model_path:=/CAMINHO/ABSOLUTO/modelo_metrico.onnx
-```
-
-O mapa pode ser avaliado sem voo com:
-
-```bash
-PYTHONNOUSERSITE=1 python3 main.py --ros-args \
-  --params-file config/spatial_monocular.yaml
-```
-
-A bateria automatizada verifica o arquivo ONNX, seu SHA-256 e os relatórios de qualificação:
-
-```bash
-MONOCULAR_MODEL_PATH=/CAMINHO/ABSOLUTO/modelo.onnx \
-MONOCULAR_VALIDATION_REPORT=/CAMINHO/validacao.json \
-MONOCULAR_MAPPING_REPORT=/CAMINHO/mapeamento.json \
-  ./scripts/run_spatial_battery.sh monocular_topic 1 --dry-run
-```
-
-**O modelo v19 final não está autorizado para voo monocular.** A execução em SITL só deve ocorrer depois que os critérios por pixel e espaciais forem aprovados com relatórios ligados ao mesmo hash do modelo.
-
-## Pipeline legado reativo
-
-O fluxo usado nas coletas tabulares permanece disponível. Com PX4, Gazebo, agente e ponte RGB ativos:
-
-```bash
-cd ~/TCC_Drone
-source /opt/ros/humble/setup.bash
-source ~/TCC_Drone/ws_ros2/install/setup.bash
-
-PYTHONNOUSERSITE=1 python3 main.py --ros-args \
-  -p navigation_mode:=legacy_reactive \
-  -p ground_truth_depth_topic:=/sim_depth_ground_truth \
-  -p save_ground_truth_dataset:=true
-```
-
-Nesse modo, o fluxo óptico e a lógica de risco produzem comandos de velocidade. Ele está separado do modo `spatial_astar`, no qual os comandos reativos não alteram a navegação.
-
-![Fluxo visual e variação de proximidade sincronizados](Parte_Escrita/Monografia_TCC/figuras/metodologia_sincronizacao.png)
-
-## Testes e relatórios
-
-Execute a suíte espacial antes de alterar geometria, ocupação ou planejamento:
-
-```bash
-cd ~/TCC_Drone
-python3 -m unittest discover -s tests -p "test_*.py" -v
-```
-
-No computador que contém os dados e modelos finais, gere novamente o pacote de evidências com:
-
-```bash
-python3 scripts/build_spatial_final_report.py
-```
-
-O relatório inclui o resumo da bateria de referência, a comparação v12-v19, a decisão dos portões e hashes dos artefatos.
-
-## Dados e reprodutibilidade
-
-O repositório mantém código, configurações, notebook e resultados selecionados. A [Release de entrega](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0) disponibiliza os quadros, pesos, perfil e predições necessários ao replay monocular final. O acervo bruto completo das coletas e treinamentos não está incluído no pacote.
-
-Documentação de execução: [pipeline espacial](docs/execucao_pipeline_espacial.md) e [validação 3D](docs/validacao_espacial_3d.md).
-
-## Licença
-
-Consulte o arquivo [`LICENSE`](LICENSE).
-
-
-## Reprodução monocular final
-
-Versão encerrada: v21, revisão temporal e saída curva; 12/17 pedidos (70,59%), 4/401 voxels falsamente livres (1,00%), 77 quadros e zero colisões discretas nos 12 caminhos. São pedidos correlacionados de desenvolvimento, não voos nem teste independente.
-
-### Figuras e análise publicada, após clonar o repositório
-
-Para obter o código congelado da entrega:
-
-~~~bash
-git clone --branch tcc-entrega-v1.0 --single-branch https://github.com/Gabriel-Panza/TCC_Drone.git
-cd TCC_Drone
-~~~
-
-    python3.10 -m venv .venv-repro
-    . .venv-repro/bin/activate
-    pip install -r requirements-reproducao.txt
-    python scripts/reproduce_final_results.py
-
-Esse comando valida as métricas armazenadas e regenera PNG/SVG/PDF na monografia de entrega e o painel exportado em estudos_e_analises/prints. Dois quadros reais de ilustração e resultados estão em datasets/resultados_finais_monocular. O painel exportado não é captura de uma sessão de voo.
-
-O notebook estudo_das_metricas.ipynb possui seção final independente. Suas células históricas ainda exigem os datasets originais. O dashboard lê o resumo versionado; instale também requirements.txt e execute python estudos_e_analises/dashboard_metricas_desvio.py.
-
-### Replay completo
-
-Baixe o [pacote monocular_final_inputs.tar.gz](https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz) na [Release tcc-entrega-v1.0](https://github.com/Gabriel-Panza/TCC_Drone/releases/tag/tcc-entrega-v1.0). O arquivo tem 269.963.095 bytes (aproximadamente 257,46 MiB). Com o ambiente de reprodução ativado, execute na raiz do projeto:
-
-~~~bash
-mkdir -p downloads
-curl --fail --location --output downloads/monocular_final_inputs.tar.gz \
-  https://github.com/Gabriel-Panza/TCC_Drone/releases/download/tcc-entrega-v1.0/monocular_final_inputs.tar.gz
-
-printf '%s\n' '0b276bd01d62e8cea928bc4b9f2839911a0a7ff49e3c058807621067e64697a6  downloads/monocular_final_inputs.tar.gz' | sha256sum --check
-
 python scripts/replay_final_monocular.py \
   --bundle downloads/monocular_final_inputs.tar.gz \
   --output logs/minha_reproducao
-~~~
+```
 
-O SHA-256 acima corresponde ao asset publicado na Release.
+O replay usa as predições salvas da v21 e repete o mapeamento e o planejamento em 77 quadros. O resultado esperado é **12 de 17 pedidos executáveis**, **4 de 401 voxels falsamente livres** e **zero colisões discretas nos 12 caminhos**. A checagem de caminho seguro no mapa de referência aprovou **5 dos 17 pedidos**. Os 70,59% correspondem a pedidos de planejamento com caminho executável em sequências gravadas. Veja `validation.json` e `replay.log` no diretório de saída.
 
-A saída deve ser nova. O script extrai os arquivos, remapeia caminhos, verifica o SHA do modelo e valida 12/17, 4/401 e zero colisões discretas. Usa as predições em cache do pacote: repete mapeamento e planejamento, não o treinamento ou nova inferência. Para refazer inferência, remova o cache extraído e execute a especificação gerada, verificando equivalência na plataforma.
+Para exibir o replay no **Gazebo e no mapa NED** na máquina do laboratório, rode no Ubuntu/WSL:
 
-Para exportar o pacote na máquina original:
+```bash
+cd ~/TCC_Drone
+/usr/bin/python3 scripts/replay_v21_visual.py
+```
 
-    python scripts/replay_final_monocular.py --export-full-bundle logs/monocular_final_inputs.tar.gz
+O script usa o replay salvo em `logs/reproducao_portavel_final_20261031`. Quando as janelas abrirem, enquadre `x500_replay_v21` no Gazebo e pressione **Espaço** com o mapa NED em foco. As poses vieram de uma execução com ground truth. O mapa e os caminhos exibidos vêm do replay monocular v21. O Gazebo interpola as poses gravadas para a exibição, sem iniciar PX4.
 
-A versão de entrega e o pacote estão publicados na Release vinculada acima. O estudo permanece encerrado; esse pipeline reproduz o resultado congelado.
+Para regenerar apenas as figuras e o painel publicados, use `python scripts/reproduce_final_results.py` no mesmo ambiente. Essa opção usa os [resultados versionados](datasets/resultados_finais_monocular/results.json) e dispensa o pacote de replay.
 
-As figuras metodológicas revisadas podem ser regeneradas isoladamente com PYTHONNOUSERSITE=1 python scripts/generate_methodology_figures.py. Os quatro logs históricos de ilustração e os 1.234 intervalos necessários a esses gráficos estão no subconjunto versionado datasets/resultados_finais_monocular/figuras_revisao. Eles não substituem o conjunto bruto de treinamento. PYTHONNOUSERSITE=1 evita misturar Matplotlib local com o ambiente virtual.
+## 4. Análise tabular
 
+Abra o [notebook do estudo](estudos_e_analises/estudo_das_metricas.ipynb) no Jupyter, com o projeto aberto em `~/TCC_Drone` e um kernel com as dependências de [requirements.txt](requirements.txt). Comece pela seção final independente. As células históricas dependem dos dados originais de coleta, que não estão integralmente no repositório. Para novas coletas com o controlador reativo, consulte o [roteiro do pipeline legado](docs/execucao_pipeline_espacial.md#pipeline-legado-reativo).
 
-Os gráficos vetoriais são incorporados pela monografia LaTeX. O algoritmo completo de estabilização usa yaw e giroscópio medidos; a coluna de contexto de 40 ms é ilustrativa e não representa um RGB histórico recuperado. A sequência de RGB salva tem intervalo de 0,66 s e respeita o fallback original de atitude. Os parâmetros executáveis do replay estão em config/final_monocular_replay.json.
+## Resultados da entrega
 
-## Texto de entrega
+| Eixo | Resultado |
+|---|---|
+| Sinais tabulares | 40 execuções e 1.234 intervalos válidos. Ganhos modestos com mais dados, estabilidade entre sementes e melhor consistência no grupo de IMU e atitude. |
+| Ground truth ao vivo | 10/10 missões completas na bateria de referência, 30 objetivos, 147/156 planos e nenhum caminho inseguro adotado. |
+| Monocular v21 ao vivo | Uma missão completa registrada no Baylands, com os três objetivos e pouso, em 23/11/2026. A profundidade de referência atuou como veto. [Registro da execução](docs/reproducao_ao_vivo.md#monocular-v21) |
+| Monocular v21 em replay offline | 12 de 17 pedidos de planejamento executáveis (70,59%), cinco aprovados na checagem estrita da referência e 1,00% de falso espaço livre. |
 
-A versão mantida no repositório é [Monografia_TCC](Parte_Escrita/Monografia_TCC/), com ponto de entrada LaTeX em [principal.tex](Parte_Escrita/Monografia_TCC/principal.tex). Os modelos alternativos de artigo e monografia são cópias locais ignoradas pelo Git. Os geradores de figuras usam apenas a pasta da monografia de entrega.
+![Mapa de referência e caminhos A* adotados](Parte_Escrita/Monografia_TCC/figuras/resultados_mapa_astar.png)
+
+## Código e documentação
+
+O [controlador ROS 2](drone_controller.py) integra pose e profundidade, e o [módulo espacial](spatial_mapping/) atualiza a grade 3D e calcula os caminhos A*. O planejador fornece pontos de posição em NED e o PX4 executa o controle de baixo nível. O [estimador monocular](monocular_depth_node.py) publica profundidade métrica a partir das imagens RGB.
+
+- [Execução e diagnóstico do pipeline espacial](docs/execucao_pipeline_espacial.md)
+- [Metodologia e critérios de validação 3D](docs/validacao_espacial_3d.md)
+- [Monografia](Parte_Escrita/Monografia_TCC/) e [roteiro de apresentação](docs/roteiro_apresentacao_espacial.md)
+- [Licença](LICENSE)

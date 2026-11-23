@@ -1,0 +1,88 @@
+{
+  "schema": "depth_interval_v1",
+  "model_sha256": "b11b5ae85910e9650b0b3d97bf3d857e3a097b1230948738cd69a4e0b83066a6",
+  "calibration_run": "/home/prograf4080/TCC_Drone/logs/monocular_resolution_640/20261029_200646/calibration/aligned640",
+  "sampled_frames": 32,
+  "pixel_stride": 4,
+  "quantiles": [
+    0.025,
+    0.975
+  ],
+  "predicted_bin_edges_m": [
+    0.5,
+    5.0,
+    10.0,
+    20.0,
+    30.0
+  ],
+  "residual_bounds_m": [
+    [
+      -0.8488184213638306,
+      4.163311123847961
+    ],
+    [
+      -1.5854764699935913,
+      6.178475618362423
+    ],
+    [
+      -3.7297472953796387,
+      9.938251495361328
+    ],
+    [
+      -2.675739288330078,
+      7.204658699035641
+    ]
+  ],
+  "bins": [
+    {
+      "predicted_range_m": [
+        0.5,
+        5.0
+      ],
+      "pixels": 260236,
+      "pooled_fallback": false,
+      "raw_residual_quantiles_m": [
+        -0.8488184213638306,
+        4.163311123847961
+      ]
+    },
+    {
+      "predicted_range_m": [
+        5.0,
+        10.0
+      ],
+      "pixels": 142975,
+      "pooled_fallback": false,
+      "raw_residual_quantiles_m": [
+        -1.5854764699935913,
+        6.178475618362423
+      ]
+    },
+    {
+      "predicted_range_m": [
+        10.0,
+        20.0
+      ],
+      "pixels": 78401,
+      "pooled_fallback": false,
+      "raw_residual_quantiles_m": [
+        -3.7297472953796387,
+        9.938251495361328
+      ]
+    },
+    {
+      "predicted_range_m": [
+        20.0,
+        30.0
+      ],
+      "pixels": 11469,
+      "pooled_fallback": false,
+      "raw_residual_quantiles_m": [
+        -2.675739288330078,
+        7.204658699035641
+      ]
+    }
+  ],
+  "note": "Descriptive empirical pixel intervals; not a probabilistic safety guarantee.",
+  "calibration_coverage": 0.9499960452745086
+}

@@ -17,6 +17,8 @@ from .geometry import CameraIntrinsics, backproject_depth, transform_points
 from .occupancy import OccupancyGrid3D, OccupancyGridConfig
 from .depth_intervals import DepthIntervalProfile, clip_vertical_segments
 from .projected_free_evidence import projected_free_voxels
+from .temporal_revision import TemporalVoxelRevision, conservative_lower_bound, revise_after_rays
+from .v21_entry import try_curved_entry, try_straight_entry
 
 
 def vertical_obstacle_mask(points_ned, reference_ned_z, band_m):
@@ -57,6 +59,7 @@ class SpatialNavigationConfig:
     pending_clear_free_observations_required: int = 3
     occupied_evidence_window_frames: int = 6
     protect_pending_obstacles: bool = False
+    inflate_pending_obstacles: bool = True
     obstacle_vertical_band_m: float = 1.5
     drone_clearance_radius_m: float = 1.25
     drone_vertical_clearance_m: float | None = None
@@ -156,8 +159,15 @@ class SpatialPlan:
 class SpatialNavigator:
     """Constroi uma grade de ocupacao e planeja subcaminhos no espaco observado."""
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, *, temporal_revision_profile=None):
         self.config = config or SpatialNavigationConfig()
+        self.temporal_revision_profile = (
+            DepthIntervalProfile(temporal_revision_profile)
+            if temporal_revision_profile is not None else None
+        )
+        self.temporal_revision = (
+            TemporalVoxelRevision(3, .75) if self.temporal_revision_profile is not None else None
+        )
         self.depth_intervals = (None if self.config.depth_interval_profile is None
                                 else DepthIntervalProfile(self.config.depth_interval_profile))
         if self.config.interval_hypothesis_fusion and self.depth_intervals is None:
@@ -209,6 +219,7 @@ class SpatialNavigator:
         camera_to_ned,
         sampling_edge_mask=None,
         obstacle_reference_ned_z=None,
+        confine_occupied_rays_to_band=False,
     ):
         """Reprojeta e integra um frame, retornando estatisticas da atualizacao."""
 
@@ -235,6 +246,10 @@ class SpatialNavigator:
             points_ned, obstacle_reference_ned_z,
             self.config.obstacle_vertical_band_m,
         )
+        occupied_vertical_bounds = None
+        if confine_occupied_rays_to_band:
+            band = self.config.obstacle_vertical_band_m
+            occupied_vertical_bounds = (obstacle_reference_ned_z - band, obstacle_reference_ned_z + band)
         occupied_segments = free_endpoints = narrow_interval_mask = free_validator = None
         if self.depth_intervals is not None:
             lower, upper = self.depth_intervals.bounds(points_camera[:,2])
@@ -272,7 +287,19 @@ class SpatialNavigator:
             free_endpoints=free_endpoints,
             narrow_interval_mask=narrow_interval_mask,
             interval_free_validator=free_validator,
+            occupied_vertical_bounds=occupied_vertical_bounds,
         )
+        if self.temporal_revision is not None:
+            lower = conservative_lower_bound(
+                depth_m, intrinsics, self.config, self.temporal_revision_profile
+            )
+            revise_after_rays(
+                self.grid, self.temporal_revision, camera_origin_ned, points_ned,
+                obstacle_endpoint_mask, max_range_m=self.config.max_depth_m,
+                occupied_uncertainty_m=self.config.depth_occupied_uncertainty_m,
+                intrinsics=intrinsics, pose=camera_to_ned, lower=lower,
+                occupied_vertical_bounds=occupied_vertical_bounds,
+            )
         ego_voxel_cleared_occupied = self.grid.mark_ego_voxel_free(
             camera_origin_ned
         )
@@ -307,6 +334,22 @@ class SpatialNavigator:
                 self.config.occupied_evidence_window_frames
             ),
         }
+
+    def plan_v21(self, current, goal):
+        """Run the v21 entry searches on the monocular map only."""
+        result = self.plan(current, goal, allow_initial_escape=True)
+        if result.success:
+            return result
+        trace = []
+        result = try_straight_entry(
+            self, current, goal, result, SpatialNavigator.plan, trace, allow_initial_escape=True
+        )
+        if not result.success:
+            result = try_curved_entry(self, current, goal, result, SpatialNavigator.plan, trace)
+            if result.success:
+                result.diagnostics['initial_escape_required'] = True
+        result.diagnostics['v21_entry_search'] = trace
+        return result
 
     def plan(self, current_position_ned_m, requested_goal_ned_m, *,
              candidate_validator=None, max_candidates=16, recovery_frontiers=False, allow_initial_escape=False):
@@ -942,13 +985,21 @@ class SpatialNavigator:
             and voxel not in self._inflated_obstacles()
         )
 
+    def position_is_inflated(self, position_ned_m):
+        """Indica se a pose está na região de um obstáculo com sua margem."""
+        return self.grid.world_to_voxel(position_ned_m) in self._inflated_obstacles()
+
     def _inflated_obstacles(self):
-        return self.grid.inflated_occupied_voxels(
+        blocked = self.grid.inflated_occupied_voxels(
             self.config.drone_clearance_radius_m,
             self.config.drone_vertical_clearance_m,
-            include_pending=self.config.protect_pending_obstacles,
+            include_pending=(self.config.protect_pending_obstacles
+                             and self.config.inflate_pending_obstacles),
             include_hypotheses=self.config.interval_hypothesis_fusion,
         )
+        if self.config.protect_pending_obstacles and not self.config.inflate_pending_obstacles:
+            blocked.update(self.grid.pending_occupied_voxels())
+        return blocked
 
     def _arrival_point_in_voxel(self, current, requested_goal, voxel):
         """Encontra chegada no interior do voxel selecionado, sem abrir celulas."""

@@ -12,9 +12,29 @@ Abordagens tradicionais dividem o problema em percepção, mapeamento, planejame
 
 Uma câmera monocular registra a cena em duas dimensões e não preserva diretamente a escala métrica. A profundidade precisa ser inferida por perspectiva, textura, tamanho relativo, sombreamento, movimento ou conhecimento aprendido \cite{Vyas2022,Arampatzakis2024}. Estimadores recentes de profundidade monocular alcançam bons resultados, mas ainda enfrentam problemas de generalização, incerteza e custo computacional \cite{RealTimeMonocular2022,Liu2023,Dhanushkodi2025}. O Depth Anything V2 combina um modelo professor de maior capacidade, imagens sintéticas e pseudo-rótulos em imagens reais. Seus autores também disponibilizam variantes ajustadas para profundidade métrica \cite{DepthAnythingV2}. 
 
+A Figura~\ref{fig:retroprojecao-conceito} mostra como um quadro RGB e sua profundidade estimada podem gerar pontos tridimensionais no referencial da câmera.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{figuras/metodologia_rgb_profundidade_3d.png}
+\caption{Mesmo quadro do replay: RGB, profundidade monocular e retroprojeção isométrica, com câmera na origem óptica e profundidade em metros.}
+\label{fig:retroprojecao-conceito}
+\legend{Fonte: elaborado pelo autor a partir dos dados do replay monocular.}
+\end{figure}
+
 \section{Representação tridimensional e planejamento}
 
 Um mapa de profundidade associa uma distância a cada pixel, mas essas distâncias ainda estão no referencial da câmera. Com os parâmetros intrínsecos, cada pixel pode ser reprojetado como um ponto tridimensional. A pose da câmera permite transformar esses pontos para um referencial comum e acumular observações ao longo do voo. Uma grade de ocupação divide o espaço em células livres, ocupadas ou ainda não observadas e atualiza essas hipóteses conforme novas observações chegam \cite{Elfes1989}. Estruturas baseadas em octrees permitem representar esse tipo de mapa com diferentes níveis de resolução \cite{Hornung2013}.
+
+A Figura~\ref{fig:subdivisao-conceitual} ilustra a subdivisão hierárquica de uma octree. A implementação deste trabalho utiliza uma grade esparsa de resolução fixa.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{figuras/metodologia_octree.png}
+\caption{Subdivisão hierárquica conceitual de uma octree. A implementação deste trabalho utiliza uma grade esparsa de resolução fixa.}
+\label{fig:subdivisao-conceitual}
+\legend{Fonte: elaborado pelo autor com base em \citeonline{Hornung2013}.}
+\end{figure}
 
 O planejamento procura conectar origem e destino respeitando as regiões livres da representação. Entre as estratégias de busca em grafos está o A*, que combina custo acumulado e estimativa do custo restante \cite{Hart1968}. Estratégias de exploração podem escolher objetivos próximos à fronteira com o desconhecido \cite{Yamauchi1997}. A travessia de voxels permite verificar as células percorridas por um segmento \cite{AmanatidesWoo1987}. A configuração adotada neste estudo é apresentada no capítulo de implementação.
 
@@ -23,6 +43,16 @@ O planejamento procura conectar origem e destino respeitando as regiões livres 
 O fluxo óptico descreve o deslocamento aparente de pontos ou regiões entre quadros. Lucas--Kanade estima deslocamentos locais \cite{LucasKanade1981}, enquanto Shi--Tomasi seleciona pontos adequados ao rastreamento \cite{ShiTomasi1994}. Obstáculos próximos tendem a produzir movimento aparente maior durante o avanço, mas o fluxo também depende da rotação, da translação e da geometria da cena.
 
 Resolução, frequência, borramento e incerteza das correspondências afetam a qualidade do sinal \cite{SimoneGodio2022,Peidong2021,Estimation2109}. Por isso, o fluxo deve ser analisado junto à atitude e ao movimento do veículo. A odometria visual estima o movimento da câmera a partir de imagens sucessivas. Essa combinação também aparece em odometria visual e em sistemas de prevenção de colisões \cite{Tarrio2015,Garcia2016,Xiao2021}.
+
+A Figura~\ref{fig:fluxo-conceito} mostra os deslocamentos aparentes entre dois quadros e o intervalo usado para associar os sinais.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{figuras/metodologia_fluxo_intervalo.png}
+\caption{Fluxo entre dois quadros e esquema do intervalo visual. As cores distinguem profundidades de referência abaixo e acima da mediana dos pontos válidos. O GT é usado somente para ilustrar a distância relativa. Rotação e translação influenciam os vetores, portanto um vetor maior não garante menor distância.}
+\label{fig:fluxo-conceito}
+\legend{Fonte: elaborado pelo autor a partir de quadros registrados no simulador.}
+\end{figure}
 
 \section{Aprendizado com dados tabulares}
 
@@ -42,27 +72,7 @@ O Gazebo permite configurar física, cenário e sensores \cite{Koenig7803}, enqu
 
 Mesmo assim, processos concorrentes e pequenas diferenças temporais podem produzir trajetórias distintas. Por isso, cada voo completo é tratado como uma unidade experimental, e a divisão dos dados ocorre por execução.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.98\linewidth]{figuras/metodologia_rgb_profundidade_3d.pdf}
-\caption{Mesmo quadro real do replay: RGB, profundidade monocular e retroprojeção isométrica, com câmera na origem óptica e profundidade em metros.}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.98\linewidth]{figuras/metodologia_fluxo_intervalo.pdf}
-\caption{Fluxo entre dois quadros reais e esquema do intervalo visual. As cores distinguem profundidades de referência abaixo e acima da mediana dos pontos válidos. O GT é usado somente para ilustrar a distância relativa. Rotação e translação influenciam os vetores, portanto um vetor maior não garante menor distância.}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.98\linewidth]{figuras/metodologia_octree.pdf}
-\caption{Arquitetura tabular e subdivisão hierárquica conceitual. A implementação utiliza grade de resolução fixa.}
-\end{figure}
-
 \chapter{Trabalhos Relacionados}\label{cap:relacionados}
-
-
 
 A revisão reuniu trabalhos sobre navegação de drones, profundidade monocular, fluxo óptico, integração visual-inercial, aprendizado aplicado à percepção e explicabilidade. A busca priorizou artigos recentes e referências clássicas necessárias para explicar os métodos utilizados. A seleção não é apresentada como uma revisão sistemática. Seu objetivo é posicionar a pergunta investigada e comparar escolhas próximas às deste trabalho.
 

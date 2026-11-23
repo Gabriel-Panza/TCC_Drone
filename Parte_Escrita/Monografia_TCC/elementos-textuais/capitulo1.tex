@@ -6,7 +6,7 @@ A navegação visual de veículos aéreos não tripulados (UAVs, do inglês \emp
 
 O desempenho de um sistema de navegação também depende da relação entre percepção, planejamento e execução do voo \cite{Loquercio2021}. Uma imagem contém muitos pixels. Um obstáculo fino ocupa poucos deles, de modo que seu erro pode ser alto mesmo quando a média global é baixa. Uma distância superestimada pode indicar uma passagem inexistente no mapa. Nesse caso, a estimativa pode atender a um critério numérico de profundidade e ainda representar um obstáculo como espaço livre. Por isso, interessa avaliar tanto a qualidade da estimativa quanto as consequências de seu uso em um mapa de ocupação.
 
-Este trabalho adota a perspectiva de investigar os dados antes de aumentar a complexidade da arquitetura. O desenvolvimento começou com um fluxo reativo que gerou trajetórias e imagens da câmera, deslocamentos aparentes entre quadros e medições do giroscópio e do acelerômetro. A partir desses registros, o foco passou para a organização dos sinais, a análise dos erros e a comparação controlada de modelos. Em uma segunda etapa, a investigação incorporou mapeamento tridimensional e planejamento com A* \cite{Hart1968}, para verificar se a profundidade estimada produzia informação espacial utilizável.
+Este trabalho investiga a qualidade dos dados e sua utilidade para a navegação antes de adotar modelos de percepção mais complexos ou integrar suas estimativas ao planejamento de voo. O desenvolvimento começou com um fluxo reativo que gerou trajetórias e imagens da câmera, deslocamentos aparentes entre quadros e medições do giroscópio e do acelerômetro. A partir desses registros, o foco passou para a organização dos sinais, a análise dos erros e a comparação controlada de modelos. Em uma segunda etapa, a investigação incorporou mapeamento tridimensional e planejamento com A* \cite{Hart1968}, para verificar se a profundidade estimada produzia informação espacial utilizável.
 
 \section{Problema e posição defendida}
 
@@ -22,9 +22,10 @@ O percurso contém superfícies do solo, troncos e copas, com espaços abertos e
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=.95\linewidth]{figuras/metodologia_cenas_contexto.pdf}
+\includegraphics[width=.95\linewidth]{figuras/metodologia_cenas_contexto.png}
 \caption{Quadros 1, 25, 46 e 67 do registro de desenvolvimento utilizado no replay monocular final. São imagens reais do simulador. As marcações manuais destacam um trecho visualmente aberto e um tronco, sem detecção semântica automática ou certificação de espaço livre.}
 \label{fig:contexto-revisado}
+\legend{Fonte: elaborado pelo autor a partir de imagens registradas no Gazebo.}
 \end{figure}
 
 \section{Perguntas de pesquisa}

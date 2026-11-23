@@ -64,6 +64,7 @@ class MonocularMetricDepthNode(Node):
             input_aspect_tolerance=float(
                 self.declare_parameter('input_aspect_tolerance', 0.03).value
             ),
+            onnx_cpu_threads=self.declare_parameter('onnx_cpu_threads', 0).value,
         )
         self.bridge = CvBridge()
         self.pre_resize_width = int(self.declare_parameter('rgb_pre_resize_width', 0).value)

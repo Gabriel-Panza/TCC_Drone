@@ -26,6 +26,7 @@ class MetricDepthOnnx:
         use_cuda=False,
         backend="opencv",
         input_aspect_tolerance=0.03,
+        onnx_cpu_threads=0,
     ):
         path = Path(model_path).expanduser()
         if not path.is_file():
@@ -68,8 +69,16 @@ class MetricDepthOnnx:
                 raise RuntimeError(
                     f"provider {provider} indisponivel; encontrados: {available}"
                 )
+            if onnx_cpu_threads < 0:
+                raise ValueError("onnx_cpu_threads deve ser zero ou positivo")
+            session_options = None
+            if not use_cuda and onnx_cpu_threads:
+                session_options = ort.SessionOptions()
+                session_options.intra_op_num_threads = onnx_cpu_threads
+                session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
             self.session = ort.InferenceSession(
                 str(path),
+                sess_options=session_options,
                 providers=[provider],
             )
             model_input = self.session.get_inputs()[0]

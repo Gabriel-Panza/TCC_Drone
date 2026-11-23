@@ -13,6 +13,8 @@ No eixo tabular, 35 execuções formam o treino final, duas compõem a validaç�
 
 No eixo espacial, a bateria final de referência contém as dez execuções consecutivas registradas entre \texttt{run\_20260831\_082418\_723471} e \texttt{run\_20260831\_084356\_708163}. O arquivo completo possui 103 diretórios de execuções completas, mas eles não formam um único conjunto: versões diferentes reutilizaram subconjuntos para desenvolvimento, treino e diagnóstico. Para evitar dupla contagem, cada diretório recebeu uma categoria principal exclusiva: 69 são de desenvolvimento e diagnóstico, 20 de treino da v19, dez da bateria final de referência, dois históricos reservados, um de calibração da v19 e um de desenvolvimento de modelos anteriores. Essas seis classes somam exatamente 103. Execuções de foco e portão permanecem marcadores secundários porque se sobrepõem a essas classes.
 
+A Tabela~\ref{tab:mono-composicao-espacial} apresenta essa classificação sem sobreposição entre as categorias principais.
+
 \begin{table}[htb]
 \centering
 \caption{Classificação principal exclusiva das execuções espaciais.}
@@ -51,7 +53,7 @@ A Figura~\ref{fig:mono-curva-aprendizado} mostra o MAE no teste fixo. Entre 9 e 
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.pdf}
+    \includegraphics[width=\textwidth]{figuras/resultados_curva_aprendizado.png}
     \caption{MAE da MLP com representação seno/cosseno nos cinco marcos. As barras são IC95 da média entre cinco sementes, calculados com distribuição $t$ e $n=5$; representam variação algorítmica no mesmo teste fixo, não novas coletas.}
     \label{fig:mono-curva-aprendizado}
     \legend{Fonte: elaborado pelo autor.}
@@ -61,7 +63,7 @@ Na MLP de referência com ângulos originais e semente 42, a menor perda de vali
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.pdf}
+    \includegraphics[width=\textwidth]{figuras/resultados_curvas_loss.png}
     \caption{Curvas de perda da MLP com ângulos originais e semente 42, no marco de 40 execuções.}
     \label{fig:mono-loss}
     \legend{Fonte: elaborado pelo autor.}
@@ -101,7 +103,7 @@ A Figura~\ref{fig:mono-ablacao} compara gradientes e ablação. Os gradientes co
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.pdf}
+    \includegraphics[width=\textwidth]{figuras/resultados_explicabilidade_ablacao.png}
     \caption{Sensibilidade por gradientes e efeito da retirada dos grupos de entradas. Cada configuração usa cinco sementes; as barras são IC95 do efeito agregado, calculados com distribuição $t$ e $n=5$ depois de obter a média dos seis alvos em cada semente.}
     \label{fig:mono-ablacao}
     \legend{Fonte: elaborado pelo autor.}
@@ -131,6 +133,8 @@ Diferença de imagem & -1,58 \\
 As dez execuções completaram os três objetivos, totalizando 30 objetivos alcançados. Houve 156 tentativas de planejamento, 147 sucessos e 132 caminhos adotados. As nove tentativas sem solução não encerraram as missões: o controlador interrompeu o avanço quando necessário e voltou a planejar após novas observações. A bateria registrou 50 vetos de caminho ativo e 50 frenagens concluídas. Nenhum caminho adotado foi classificado como inseguro pelo guardião de referência. Esses números valem para a rota fixa e o cenário simulado avaliados, não demonstram segurança geral. A duração média foi 77,37~s, com desvio de 4,49~s e intervalo observado de 72,93 a 85,97~s. O intervalo de confiança de 95\% para essa média, calculado com distribuição $t$ e dez execuções, foi de 74,16 a 80,58~s. O planejamento levou em média 99,18~ms, com desvio padrão de 67,14~ms, mediana de 100,72~ms, percentil 95 de 217,30~ms e intervalo observado de 3,69 a 298,91~ms nas 156 tentativas.
 
 Os intervalos das demais métricas usam bootstrap das dez execuções completas, com 10.000 reamostragens e semente 42. Essa unidade evita supor independência entre tentativas da mesma missão. Os IC95 foram: sucesso de planejamento de 90,67\% a 97,40\%. Falso espaço livre de 0,289 a 0,342. Precisão de ocupação de 1,000 a 1,000. Revocação de 0,564 a 0,604. E médias de vetos e frenagens de 3,4 a 6,6 por execução. Eles descrevem somente a variabilidade da rota observada.
+
+A Tabela~\ref{tab:mono-bateria-individual} apresenta os resultados por execução, e a Tabela~\ref{tab:mono-bateria} reúne os indicadores da bateria completa.
 
 \begin{table}[htb]
 \centering
@@ -268,6 +272,8 @@ Sete versões atenderam aos critérios de profundidade por pixel, mas nenhuma pa
 
 A reprovação da v19 caracteriza a configuração completa de percepção e mapeamento. Os 77 quadros integrados também dependem da seleção temporal e da sincronização. Falso espaço livre e disponibilidade de planos dependem da estimativa, das margens e da atualização da grade. Sem intervenções controladas nesses componentes, não é possível atribuir toda a reprovação à rede. A ausência de colisão nos caminhos avaliados também não compensa a baixa disponibilidade de planos, pois um sistema que não avança não resolve a tarefa.
 
+A Tabela~\ref{tab:evidencias-alcance} relaciona os resultados às interpretações sustentadas pelos experimentos e aos limites de cada comparação.
+
 \begin{table}[htb]
 \centering
 \caption{Evidências do caso e limites de interpretação.}
@@ -300,11 +306,14 @@ Na validação de desenvolvimento com 77 quadros e 17 pedidos correlacionados, f
 
 O mapa estimado e a escolha dos caminhos usam RGB, profundidade monocular e poses fornecidas pelo registro. O GT é empregado como supervisão no treinamento e como referência na avaliação, mas não escolhe os caminhos do replay final. O conjunto participou do desenvolvimento, portanto não é teste independente. A versão não atingiu os critérios de 100 quadros e 80\% de sucesso e não foi liberada para voo. O estudo foi encerrado nessa configuração, mantendo as ampliações como trabalhos futuros.
 
+A Figura~\ref{fig:monocular-final} compara a disponibilidade de caminhos nas configurações avaliadas sobre os mesmos 17 pedidos de desenvolvimento.
+
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\linewidth]{figuras/resultados_monocular_final.pdf}
+\includegraphics[width=0.95\linewidth]{figuras/resultados_monocular_final.png}
 \caption{Evolução das configurações na mesma validação de desenvolvimento. Cada barra usa 17 pedidos correlacionados. O limiar de 80\% não foi alterado após observar os resultados.}
 \label{fig:monocular-final}
+\legend{Fonte: elaborado pelo autor a partir dos 17 pedidos da validação de desenvolvimento.}
 \end{figure}
 
 Na curva de perda da MLP tabular, a redução continuada da perda de treino após a melhor época de validação, acompanhada de aumento da perda de teste, é compatível com sobreajuste. A parada antecipada escolhe os pesos pela validação, não pelo teste. Essa curva não corresponde ao treinamento da rede monocular densa e não garante generalização para novos cenários.

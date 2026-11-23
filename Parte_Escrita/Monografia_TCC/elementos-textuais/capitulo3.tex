@@ -11,6 +11,8 @@ A proposta é avaliar a ocupação e os caminhos antes de integrar ao voo um est
 
 A metodologia foi organizada para responder a cinco perguntas: se o aumento do número de execuções melhora a previsão das mudanças de proximidade. Se os resultados permanecem estáveis entre sementes e modelos de referência. Quais grupos de entradas contribuem para a previsão. Quanto do erro do modelo em duas etapas vem da classificação do evento e quanto permanece na regressão. E se uma estimativa monocular aprovada por métricas de profundidade também permite construir caminhos espaciais seguros. Para isso, cada execução é tratada como uma unidade experimental, os sinais são sincronizados em uma representação comum e os modelos são avaliados com validação e teste fixos. Também são usados modelos de referência, várias sementes, análise de eventos, atribuição por gradientes e ablação de grupos de entradas.
 
+A Figura~\ref{fig:fluxo-dois-eixos} resume a análise tabular e a avaliação espacial, indicando o papel da profundidade de referência.
+
 \begin{figure}[htb]
 \centering
 \fbox{\begin{minipage}{0.92\textwidth}

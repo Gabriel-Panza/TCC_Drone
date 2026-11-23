@@ -7,6 +7,7 @@ import cv2
 import rclpy
 import threading
 from collections import deque
+from copy import deepcopy
 from dataclasses import asdict, replace
 from pathlib import Path
 from datetime import datetime
@@ -26,6 +27,7 @@ from spatial_mapping import (
 )
 from spatial_mapping.metrics import depth_metrics, occupancy_metrics
 from spatial_mapping.execution import (
+    active_path_prefix_before_veto,
     RecoveryCandidatePolicy,
     RecoveryProgressGuard,
     evaluate_path_handoff,
@@ -36,10 +38,13 @@ from spatial_mapping.execution import (
     recovery_brake_decision,
     plan_publication_decision,
     waypoint_advance_decision,
+    short_observation_path,
+    validated_path_prefix,
 )
 from spatial_mapping.recorder import SpatialRunRecorder
 from spatial_mapping.snapshot import capture_planning_snapshot, write_planning_snapshot
-from spatial_mapping.visualization import render_top_down
+from spatial_mapping.temporal import PoseHistory
+from spatial_mapping.visualization import render_top_down, render_top_down_voxels
 
 try:
     from px4_msgs.msg import SensorCombined
@@ -79,8 +84,15 @@ class DroneOffboardNode(Node):
     def __init__(self):
         super().__init__('drone_offboard_node')
 
+        v21_profile_path = self.declare_parameter('spatial_temporal_revision_profile', '').value
+        self.spatial_v21 = bool(v21_profile_path)
         self.spatial_async_mapping = bool(self.declare_parameter('spatial_async_mapping', False).value)
-        self.spatial_sensor_group = MutuallyExclusiveCallbackGroup() if self.spatial_async_mapping else None
+        self.spatial_sensor_group = (
+            MutuallyExclusiveCallbackGroup() if self.spatial_async_mapping or self.spatial_v21 else None
+        )
+        pose_group = (MutuallyExclusiveCallbackGroup()
+                      if self.spatial_v21 and not self.spatial_async_mapping
+                      else self.spatial_sensor_group)
         self.spatial_observation_runtime = None
 
         qos_profile = QoSProfile(
@@ -99,7 +111,7 @@ class DroneOffboardNode(Node):
 
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition, '/fmu/out/vehicle_local_position_v1', self.pos_callback, qos_profile,
-            callback_group=self.spatial_sensor_group)
+            callback_group=pose_group)
 
         # Inicializa a ponte de conversão ROS -> OpenCV
         self.bridge = CvBridge()
@@ -490,6 +502,9 @@ class DroneOffboardNode(Node):
             protect_pending_obstacles=bool(
                 self.declare_parameter('spatial_protect_pending_obstacles', False).value
             ),
+            inflate_pending_obstacles=bool(
+                self.declare_parameter('spatial_inflate_pending_obstacles', True).value
+            ),
             obstacle_vertical_band_m=float(
                 self.declare_parameter(
                     'spatial_obstacle_vertical_band_m',
@@ -533,9 +548,31 @@ class DroneOffboardNode(Node):
                 self.declare_parameter('spatial_connectivity', 26).value
             ),
         )
-        self.spatial_estimated_navigator = SpatialNavigator(spatial_config)
+        self.spatial_last_integrated_depth_stamp_s = None
+        self.spatial_v21_reference_stamp_s = None
+        self.spatial_v21_reference_max_age_s = float(
+            self.declare_parameter('spatial_v21_reference_max_age_s', 0.60).value
+        )
+        self.spatial_v21_capture_poses = PoseHistory(capacity=96) if self.spatial_v21 else None
+        self.spatial_v21_rgb = deque(maxlen=48) if self.spatial_v21 else None
+        self.spatial_v21_last_mapping_rgb_s = None
+        if self.spatial_v21:
+            if self.spatial_depth_source != 'monocular_topic':
+                raise ValueError('A revisao v21 requer profundidade monocular')
+            profile = Path(__file__).resolve().parent / v21_profile_path
+            self.spatial_estimated_navigator = SpatialNavigator(
+                spatial_config, temporal_revision_profile=json.loads(profile.read_text())
+            )
+        else:
+            self.spatial_estimated_navigator = SpatialNavigator(spatial_config)
         reference_config = replace(
             spatial_config,
+            drone_clearance_radius_m=float(
+                self.declare_parameter(
+                    'spatial_reference_clearance_radius_m',
+                    spatial_config.drone_clearance_radius_m,
+                ).value
+            ),
             obstacle_vertical_band_m=float(
                 self.declare_parameter(
                     'spatial_reference_obstacle_vertical_band_m',
@@ -554,6 +591,8 @@ class DroneOffboardNode(Node):
             depth_free_space_margin_ratio=0.,
             depth_free_space_margin_max_m=None,
             depth_occupied_uncertainty_m=0.,
+            **({'free_observations_required': 1, 'protect_pending_obstacles': False}
+               if self.spatial_v21 else {}),
         )
         self.spatial_reference_navigator = (
             SpatialNavigator(reference_config)
@@ -570,6 +609,7 @@ class DroneOffboardNode(Node):
         self.spatial_goal_settle_source_index = None
         self.spatial_goal_settle_count = 0
         self.spatial_current_plan = None
+        self.spatial_prefix_arrival_rgb_stamp_s = None
         self.spatial_reference_plan = None
         self.spatial_path_waypoints = []
         self.spatial_path_index = 0
@@ -611,6 +651,7 @@ class DroneOffboardNode(Node):
         self.spatial_recovery_abort_requested = None
         self.spatial_last_recovery_diagnostics = {}
         self.spatial_consecutive_short_plans = 0
+        self.spatial_last_short_plan_observation = None
         self.spatial_wait_scan_active = False
         self.spatial_wait_scan_started_s = None
         self.spatial_wait_scan_exhausted = False
@@ -729,11 +770,14 @@ class DroneOffboardNode(Node):
         self.last_pan_delta_rad = 0.0
         self.last_pan_delta_source = 'none'
 
+        camera_group = (MutuallyExclusiveCallbackGroup()
+                        if self.spatial_v21 and not self.spatial_async_mapping
+                        else self.spatial_sensor_group)
         self.camera_sub = self.create_subscription(
             Image, 
             '/world/baylands/model/x500_mono_cam_0/link/camera_link/sensor/camera/image',
             self.image_callback, 
-            qos_profile_sensor_data, callback_group=self.spatial_sensor_group)
+            qos_profile_sensor_data, callback_group=camera_group)
 
         if self.depth_gt_topic:
             self.depth_gt_sub = self.create_subscription(
@@ -787,7 +831,7 @@ class DroneOffboardNode(Node):
             VehicleAttitude, 
             '/fmu/out/vehicle_attitude', 
             self.attitude_callback, 
-            qos_profile, callback_group=self.spatial_sensor_group)
+            qos_profile, callback_group=pose_group)
 
         self.current_x = None
         self.current_y = None
@@ -875,6 +919,30 @@ class DroneOffboardNode(Node):
             self.declare_parameter('use_dt_normalized_control', False).value
         )
         self.timer = self.create_timer(self.dt, self.timer_callback)
+        self.spatial_v21_command = None
+        self.spatial_v21_map_revision = 0
+        self.spatial_v21_validated_segment = None
+        self.spatial_v21_map_busy_continue_ticks = 0
+        self.spatial_v21_map_busy_brake_ticks = 0
+        self.spatial_v21_heartbeat_stop = threading.Event()
+        self.spatial_v21_heartbeat_sent = 0
+        self.spatial_v21_heartbeat_max_gap_s = 0.0
+        self.spatial_v21_heartbeat = None
+        if self.spatial_v21 and self.spatial_execute_path and not self.spatial_async_mapping:
+            self.spatial_v21_heartbeat = threading.Thread(
+                target=self.executar_heartbeat_v21, name='v21-offboard-heartbeat', daemon=True,
+            )
+        self.spatial_show_live_topdown = (
+            self.spatial_v21 and self.spatial_show_topdown and not self.spatial_async_mapping
+        )
+        self.spatial_v21_mapping_timer = None
+        if self.spatial_v21 and not self.spatial_async_mapping and not self.spatial_collect_legacy_metrics:
+            self.spatial_v21_mapping_timer = self.create_timer(
+                0.1, self.processar_ultimo_rgb_v21, callback_group=MutuallyExclusiveCallbackGroup()
+            )
+        self.spatial_v21_map_updated_at = None
+        self.spatial_v21_display_snapshot = None
+        self.spatial_v21_next_render_at = 0.0
 
         if self.spatial_enabled:
             self.evasao_visual_ativa = self.spatial_collect_legacy_metrics
@@ -1113,7 +1181,8 @@ class DroneOffboardNode(Node):
             self.ciclos += 1
             return
 
-        self.publish_offboard_control_mode()
+        if getattr(self, 'spatial_v21_heartbeat', None) is None:
+            self.publish_offboard_control_mode()
 
         if self.ciclos == 50:
             runtime = getattr(self, 'spatial_observation_runtime', None)
@@ -1125,7 +1194,10 @@ class DroneOffboardNode(Node):
 
         if self.voo_iniciado:
             if self.spatial_enabled:
-                self.navegar_com_mapa_espacial()
+                if getattr(self, 'spatial_v21_heartbeat', None) is not None:
+                    self.navegar_v21_sem_esperar_mapa()
+                else:
+                    self.navegar_com_mapa_espacial()
             else:
                 self.navegar_por_waypoints(self.control_dt_s)
             
@@ -1359,6 +1431,38 @@ class DroneOffboardNode(Node):
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
+
+    def navegar_v21_sem_esperar_mapa(self):
+        """Keep the controller ticking even while mapping owns the map lock."""
+        if self.spatial_lock.acquire(blocking=False):
+            try:
+                self.navegar_com_mapa_espacial()
+            finally:
+                self.spatial_lock.release()
+            return
+
+        current = np.asarray([self.current_x, self.current_y, self.current_z])
+        segment = self.spatial_v21_validated_segment
+        if segment is not None:
+            path, index, revision, checked_at, start, target = segment
+            with self.spatial_plan_lock:
+                if (
+                    path is self.spatial_path_waypoints and index == self.spatial_path_index
+                    and not self.spatial_recovery_active
+                    and self.spatial_execution_brake_started_s is None
+                    and self.spatial_goal_settle_started_s is None
+                    and not self.missao_concluida
+                    and revision == self.spatial_v21_map_revision
+                    and time.monotonic() - checked_at <= 2.0
+                    and segment_tracking_diagnostics(current, start, target)['cross_track_m'] <= 0.35
+                ):
+                    self.spatial_v21_map_busy_continue_ticks += 1
+                    self.publicar_setpoint_posicao(target)
+                    return
+
+        if self.spatial_takeoff_complete:
+            self.spatial_v21_map_busy_brake_ticks += 1
+            self.publicar_setpoint_frenagem(current[2], self.current_yaw)
 
     def navegar_com_mapa_espacial(self):
         """Segue pontos do A* com setpoints de posicao executados pelo PX4."""
@@ -1677,10 +1781,16 @@ class DroneOffboardNode(Node):
         )
 
         with self.spatial_plan_lock:
-            path = list(self.spatial_path_waypoints)
+            active_path = self.spatial_path_waypoints
+            path = list(active_path)
             path_index = self.spatial_path_index
             recovery_active = self.spatial_recovery_active
             path_origin = self.spatial_path_origin
+            active_plan = getattr(self, 'spatial_current_plan', None)
+        prefix_active = (
+            not recovery_active and active_plan is not None
+            and 'v21_validated_prefix' in active_plan.diagnostics
+        )
 
         path_missing = path_index >= len(path)
         if path_missing and recovery_active:
@@ -1695,7 +1805,7 @@ class DroneOffboardNode(Node):
         if plan_expired and not recovery_active:
             if path_missing:
                 self.solicitar_plano_espacial(current, global_goal, now_s)
-            else:
+            elif not prefix_active:
                 with self.spatial_lock:
                     path_safe = self.spatial_estimated_navigator.path_is_safe(
                         current,
@@ -1718,7 +1828,7 @@ class DroneOffboardNode(Node):
                         )
                     else:
                         self.spatial_last_plan_request_s = now_s
-                else:
+                elif not getattr(self, 'spatial_v21', False):
                     self.solicitar_plano_espacial(current, global_goal, now_s)
 
         if path_index >= len(path):
@@ -1746,6 +1856,15 @@ class DroneOffboardNode(Node):
                             duration_s=scan_elapsed_s,
                         )
                 else:
+                    scan_target = (
+                        active_plan.diagnostics.get('recovery_scan_target_ned_m')
+                        if active_plan is not None else None
+                    )
+                    if scan_target is not None:
+                        hold_yaw = self.yaw_para_objetivo(
+                            np.asarray(scan_target, dtype=float),
+                            origin_ned_m=self.spatial_hold_position,
+                        )
                     phase = (
                         2.0
                         * math.pi
@@ -1773,10 +1892,14 @@ class DroneOffboardNode(Node):
                 waypoint_acceptance_radius_m,
                 self.spatial_strict_entry_acceptance_radius_m,
             )
+        prefix_endpoint = prefix_active and path_index == len(path) - 1
+        if prefix_endpoint:
+            waypoint_acceptance_radius_m = self.spatial_strict_entry_acceptance_radius_m
         # Do not consume a terminal waypoint while still outside the global
         # arrival sphere. The normal global-goal check above ends the leg.
         terminal_arrival_pending = (
             not recovery_active
+            and not prefix_endpoint
             and path_index == len(path) - 1
             and goal_arrival_pending(
                 current, local_target, global_goal,
@@ -1811,20 +1934,29 @@ class DroneOffboardNode(Node):
             )
             self.spatial_last_tracking_record_s = now_s
 
+        live_v21 = getattr(self, 'spatial_v21_heartbeat', None) is not None
+        segment = self.spatial_v21_validated_segment if live_v21 else None
+        needs_v21_validation = live_v21 and (
+            segment is None or segment[0] is not active_path or segment[1] != path_index
+            or segment[2] != self.spatial_v21_map_revision
+        )
         validate_now = (
             not recovery_active
             and (
-                self.spatial_last_execution_validation_s is None
+                needs_v21_validation or self.spatial_last_execution_validation_s is None
                 or now_s - self.spatial_last_execution_validation_s
                 >= self.spatial_execution_validation_interval_s
             )
         )
         if validate_now:
+            safe_prefix = None
             with self.spatial_lock:
                 execution_safety_check = (
                     self.spatial_estimated_navigator
                     .initial_escape_path_safety_diagnostics
                     if self.spatial_strict_entry_waypoint and path_index == 0
+                    else self.spatial_estimated_navigator.path_safety_diagnostics
+                    if prefix_active
                     else self.spatial_estimated_navigator
                     .path_safety_allowing_dynamic_initial_escape
                 )
@@ -1841,29 +1973,48 @@ class DroneOffboardNode(Node):
                         self.spatial_reference_navigator
                         .initial_escape_path_safety_diagnostics
                         if self.spatial_strict_entry_waypoint and path_index == 0
+                        else self.spatial_reference_navigator.path_safety_diagnostics
+                        if prefix_active
                         else self.spatial_reference_navigator
                         .path_safety_allowing_dynamic_initial_escape
                     )
                     reference_safety = reference_safety_check(
                         current, path[path_index:]
                     )
+                if (getattr(self, 'spatial_v21', False) and active_plan is not None
+                        and self.spatial_reference_safety_veto):
+                    estimated = self.spatial_estimated_navigator
+                    safe_prefix = active_path_prefix_before_veto(
+                        current, path[path_index:], estimated, self.spatial_reference_navigator,
+                        estimated_safety=estimated_safety, reference_safety=reference_safety,
+                        standoff_m=estimated.config.frontier_standoff_m, min_length_m=0.50,
+                    )
             self.spatial_last_execution_validation_s = now_s
             if not estimated_safety['safe'] or not reference_safety['safe']:
+                if live_v21:
+                    self.spatial_v21_validated_segment = None
                 self.spatial_active_path_veto_count += 1
                 details = {
                     'estimated_path_safety': estimated_safety,
                     'reference_path_safety': reference_safety,
                     'tracking': tracking,
                 }
+                if safe_prefix is not None:
+                    waypoints, distance = safe_prefix
+                    if self.manter_trecho_ativo_v21(
+                        active_plan, path, path_index, waypoints, distance,
+                        current, now_s, details,
+                    ):
+                        self.publicar_setpoint_posicao(waypoints[0])
+                    return
                 invalidated = self.invalidar_caminho_espacial(
                     current, now_s, path, path_index, 'active_path_veto',
                     reason='active_path_unsafe_from_actual_pose',
                     diagnostics=details,
                 )
-                if invalidated:
-                    self.iniciar_frenagem_execucao(
-                        current, now_s, local_target[2]
-                    )
+                if not invalidated:
+                    return
+                self.iniciar_frenagem_execucao(current, now_s, local_target[2])
                 self.get_logger().warning(
                     'Caminho ativo inseguro desde a pose real; freando antes de replanejar.'
                 )
@@ -1872,6 +2023,39 @@ class DroneOffboardNode(Node):
                     yaw_target=self.yaw_para_objetivo(
                         global_goal, origin_ned_m=current,
                     ),
+                )
+                return
+            if live_v21:
+                self.spatial_v21_validated_segment = (
+                    active_path, path_index, self.spatial_v21_map_revision,
+                    time.monotonic(), current, local_target,
+                )
+
+        if prefix_endpoint:
+            stopped = (
+                np.linalg.norm(current - local_target) <= waypoint_acceptance_radius_m
+                and tracking['speed_m_s'] <= self.spatial_goal_settle_speed_m_s
+            )
+            observation_stamp = getattr(self, 'spatial_last_observation_stamp_s', None)
+            if not stopped:
+                self.spatial_prefix_arrival_rgb_stamp_s = None
+            elif self.spatial_prefix_arrival_rgb_stamp_s is None:
+                # The estimator can still be processing a frame received in flight.
+                self.spatial_prefix_arrival_rgb_stamp_s = max(
+                    stamp for stamp in (self.last_rgb_stamp_s, observation_stamp, float('-inf'))
+                    if stamp is not None
+                )
+                if self.spatial_recorder is not None:
+                    self.spatial_recorder.record_state(
+                        now_s, 'v21_prefix_waiting_for_observation', position_ned_m=current,
+                        endpoint_ned_m=local_target, plan_reason=active_plan.reason,
+                    )
+            if (
+                not stopped or observation_stamp is None
+                or observation_stamp <= self.spatial_prefix_arrival_rgb_stamp_s
+            ):
+                self.publicar_setpoint_posicao(
+                    local_target, yaw_target=self.yaw_para_objetivo(global_goal, origin_ned_m=current)
                 )
                 return
 
@@ -1883,7 +2067,9 @@ class DroneOffboardNode(Node):
                 path_index,
                 waypoint_acceptance_radius_m,
                 terminal_arrival_pending=terminal_arrival_pending,
-                allow_initial_escape=(recovery_active or self.spatial_strict_entry_waypoint),
+                allow_initial_escape=(
+                    not prefix_active and (recovery_active or self.spatial_strict_entry_waypoint)
+                ),
             )
             if (
                 transition['advance']
@@ -1899,7 +2085,9 @@ class DroneOffboardNode(Node):
                     path_index,
                     waypoint_acceptance_radius_m,
                     terminal_arrival_pending=terminal_arrival_pending,
-                    allow_initial_escape=(recovery_active or self.spatial_strict_entry_waypoint),
+                    allow_initial_escape=(
+                        not prefix_active and (recovery_active or self.spatial_strict_entry_waypoint)
+                    ),
                 )
                 transition['reference_decision'] = reference_transition
                 if not reference_transition['advance']:
@@ -1999,6 +2187,8 @@ class DroneOffboardNode(Node):
                 if path_index > 0:
                     self.spatial_strict_entry_waypoint = False
             if path_index >= len(path):
+                if prefix_endpoint:
+                    self.spatial_last_plan_request_s = None
                 if self.spatial_recovery_active:
                     self.finalizar_recuperacao_espacial(current)
                 self.spatial_hold_position = current.copy()
@@ -2222,6 +2412,30 @@ class DroneOffboardNode(Node):
             )
         return unchanged
 
+    def manter_trecho_ativo_v21(self, plan, path, index, waypoints, distance,
+                               current, now_s, diagnostics):
+        """Publish only the still-safe portion of the same active plan."""
+        prefix = {'endpoint_ned_m': waypoints[-1], 'remaining_length_m': distance}
+        with self.spatial_plan_lock:
+            if (self.spatial_current_plan is not plan or self.spatial_path_index != index
+                    or self.spatial_path_waypoints != path):
+                return False
+            self.spatial_current_plan = replace(
+                plan, reason='v21_active_path_truncated',
+                diagnostics={**plan.diagnostics, 'v21_validated_prefix': prefix},
+            )
+            self.spatial_path_waypoints = path[:index] + waypoints
+            self.spatial_strict_entry_waypoint = False
+            self.spatial_prefix_arrival_rgb_stamp_s = None
+            self.spatial_plan_generation += 1
+        self.get_logger().info(f'A* trecho ativo mantido: {distance:.2f} m antes do veto.')
+        if self.spatial_recorder is not None:
+            self.spatial_recorder.record_state(
+                now_s, 'v21_active_path_truncated', position_ned_m=current,
+                prefix=prefix, diagnostics=diagnostics,
+            )
+        return True
+
     def registrar_posicao_espacial_segura(self, current):
         """Mantem pontos espacados da trajetoria para uma eventual retirada."""
 
@@ -2237,6 +2451,8 @@ class DroneOffboardNode(Node):
                 return
         with self.spatial_lock:
             is_safe = self.spatial_estimated_navigator.position_is_safe(current)
+            if is_safe and getattr(self, 'spatial_v21', False) and self.spatial_reference_safety_veto:
+                is_safe = self.spatial_reference_navigator.position_is_safe(current)
         if is_safe:
             self.spatial_safe_position_history.append(tuple(current))
 
@@ -2279,16 +2495,16 @@ class DroneOffboardNode(Node):
                 and self.spatial_reference_navigator
                 is not self.spatial_estimated_navigator
             ):
-                reference_safe = (
-                    self.spatial_reference_navigator
-                    .path_avoids_obstacles_allowing_initial_escape(
-                        current,
-                        waypoints,
+                reference = self.spatial_reference_navigator
+                if getattr(self, 'spatial_v21', False):
+                    safety = reference.path_safety_allowing_dynamic_initial_escape(current, waypoints)
+                    recovery_diag['reference_path_safety'] = safety
+                    reference_safe = safety['safe']
+                else:
+                    reference_safe = reference.path_avoids_obstacles_allowing_initial_escape(
+                        current, waypoints,
                     )
-                    and self.spatial_reference_navigator.position_is_safe(
-                        waypoints[-1]
-                    )
-                )
+                reference_safe = reference_safe and reference.position_is_safe(waypoints[-1])
         recovery_diag['estimated_destination_and_escape_safe'] = bool(estimated_safe)
         recovery_diag['reference_destination_and_escape_safe'] = bool(reference_safe)
         if not estimated_safe or not reference_safe:
@@ -2396,6 +2612,116 @@ class DroneOffboardNode(Node):
         )
         self.spatial_plan_thread.start()
 
+    def planejar_v21_com_veto(self, navigator, current, global_goal):
+        """Try complete plans before advancing along a checked prefix."""
+        plan = navigator.plan_v21(current, global_goal)
+        reference = self.spatial_reference_navigator
+        if not plan.success or not self.spatial_reference_safety_veto or reference is navigator:
+            return plan
+
+        short_candidates = []
+
+        def check_candidate(candidate):
+            original = candidate.waypoints_ned_m
+            first = next(
+                (index for index, point in enumerate(original)
+                 if np.linalg.norm(np.asarray(point) - current) > self.spatial_waypoint_acceptance_radius_m),
+                len(original),
+            )
+            waypoints = original[first:]
+            strict_entry = bool(candidate.diagnostics.get('initial_escape_required'))
+            estimated_check = (navigator.initial_escape_path_safety_diagnostics
+                               if strict_entry else navigator.path_safety_diagnostics)
+            estimated_safe = estimated_check(current, waypoints)['safe']
+            if first and not estimated_safe:
+                waypoints = original
+                strict_entry = True
+                estimated_safe = estimated_check(current, original)['safe']
+            if not estimated_safe:
+                return {'accepted': False, 'reason': 'unsafe_executable_path'}
+            length = self.distancia_restante_no_caminho(current, waypoints)
+            if candidate.reason == 'local_subgoal' and length < self.spatial_min_executable_path_m:
+                short = short_observation_path(
+                    current, global_goal, original, navigator, reference,
+                    min_length_m=0.50,
+                    max_length_m=self.spatial_min_executable_path_m,
+                    arrival_radius_m=self.spatial_strict_entry_acceptance_radius_m,
+                )
+                if short['accepted']:
+                    short_candidates.append((candidate, short))
+                return {
+                    'accepted': False, 'reason': 'insufficient_executable_length',
+                    'short_observation': short,
+                }
+            check_path = (reference.initial_escape_path_safety_diagnostics
+                          if strict_entry
+                          else reference.path_safety_allowing_dynamic_initial_escape)
+            safety = check_path(current, waypoints)
+            return {
+                'accepted': safety['safe'],
+                'reason': safety['failure_reason'],
+            }
+
+        primary_check = check_candidate(plan)
+        if primary_check['accepted']:
+            return plan
+        plan.diagnostics['v21_primary_candidate_check'] = primary_check
+        alternative = navigator.plan(
+            current, global_goal, allow_initial_escape=True,
+            candidate_validator=check_candidate,
+            max_candidates=self.spatial_recovery_candidate_limit,
+        )
+        if alternative.success:
+            return alternative
+        plan.diagnostics['v21_guarded_alternatives'] = alternative.diagnostics.get('candidate_search')
+        if primary_check['reason'] == 'unknown':
+            strict_entry = plan.diagnostics.get('initial_escape_required')
+            estimated_check = (navigator.initial_escape_path_safety_diagnostics
+                               if strict_entry else navigator.path_safety_diagnostics)
+            reference_check = (reference.initial_escape_path_safety_diagnostics
+                               if strict_entry else reference.path_safety_diagnostics)
+            standoff = navigator.config.frontier_standoff_m
+            prefix = validated_path_prefix(
+                current, plan.waypoints_ned_m,
+                lambda points: (estimated_check(current, points)['safe']
+                                and reference_check(current, points)['safe']),
+                standoff_m=standoff,
+                min_length_m=self.spatial_min_executable_path_m,
+            )
+            if prefix is not None:
+                waypoints, distance = prefix
+                endpoint = waypoints[-1]
+                progress = np.linalg.norm(global_goal - current) - np.linalg.norm(global_goal - endpoint)
+                if progress >= navigator.config.min_subgoal_progress_m:
+                    plan.diagnostics['v21_validated_prefix'] = {
+                        'original_length_m': plan.path_length_m,
+                        'standoff_m': standoff,
+                        'endpoint_ned_m': endpoint,
+                    }
+                    path_voxels = []
+                    for start, end in zip([current, *waypoints[:-1]], waypoints):
+                        for voxel in navigator.grid.segment_voxels(start, end):
+                            if not path_voxels or voxel != path_voxels[-1]:
+                                path_voxels.append(voxel)
+                    plan.waypoints_ned_m = waypoints
+                    plan.path_voxels = path_voxels
+                    plan.selected_goal_ned_m = endpoint
+                    plan.path_length_m = distance
+                    plan.reason = 'v21_validated_prefix'
+                    return plan
+        if short_candidates:
+            selected, short = max(short_candidates, key=lambda item: item[1]['progress_m'])
+            endpoint = selected.waypoints_ned_m[-1]
+            selected.diagnostics['v21_guarded_alternatives'] = plan.diagnostics['v21_guarded_alternatives']
+            selected.diagnostics['v21_validated_prefix'] = {'endpoint_ned_m': endpoint}
+            selected.diagnostics['v21_short_observation'] = short
+            selected.diagnostics['initial_escape_required'] = False
+            selected.selected_goal_ned_m = endpoint
+            selected.path_length_m = short['length_m']
+            selected.reason = 'v21_short_observation'
+            return selected
+        return plan
+
     def _calcular_plano_espacial(
         self,
         current,
@@ -2443,6 +2769,7 @@ class DroneOffboardNode(Node):
                         and self.spatial_reference_navigator
                         is not planning_navigator
                     ),
+                    reference_known_free_required=getattr(self, 'spatial_v21', False),
                     max_candidates=self.spatial_recovery_candidate_limit,
                 )
                 if guard is not None and guard.goal_index == goal_index else None
@@ -2461,7 +2788,9 @@ class DroneOffboardNode(Node):
                 if self.spatial_recorder is not None else None
             )
             snapshot_capture_ms = (time.perf_counter() - snapshot_started) * 1000
-            if candidate_policy is None:
+            if candidate_policy is None and getattr(self, 'spatial_v21', False):
+                plan = self.planejar_v21_com_veto(planning_navigator, current, global_goal)
+            elif candidate_policy is None:
                 plan = planning_navigator.plan(
                     current, global_goal, allow_initial_escape=True
                 )
@@ -2476,6 +2805,16 @@ class DroneOffboardNode(Node):
                     recovery_frontiers=candidate_policy.explore_frontiers,
                 )
                 plan.diagnostics['recovery_candidate_policy'] = candidate_policy.as_dict()
+                if not plan.success and candidate_policy.reference_known_free_required:
+                    attempts = plan.diagnostics.get('candidate_search', {}).get('attempts', [])
+                    scan_target = next(
+                        (attempt['validation']['observation_target_ned_m']
+                         for attempt in attempts
+                         if 'observation_target_ned_m' in attempt['validation']),
+                        None,
+                    )
+                    if scan_target is not None:
+                        plan.diagnostics['recovery_scan_target_ned_m'] = scan_target
             reference_plan = (
                 plan
                 if self.spatial_reference_navigator is planning_navigator
@@ -2486,6 +2825,7 @@ class DroneOffboardNode(Node):
         plan.diagnostics.update(plan_generation_diagnostics)
 
         short_plan_rejected = False
+        reference_unobserved = False
         waypoints = list(plan.waypoints_ned_m) if plan.success else []
         strict_entry_waypoint = False
         if plan.success:
@@ -2493,6 +2833,7 @@ class DroneOffboardNode(Node):
             original_waypoint_count = len(waypoints)
             while (
                 waypoints
+                and 'v21_validated_prefix' not in plan.diagnostics
                 and np.linalg.norm(np.asarray(waypoints[0]) - current)
                 <= self.spatial_waypoint_acceptance_radius_m
             ):
@@ -2592,22 +2933,28 @@ class DroneOffboardNode(Node):
             is not self.spatial_estimated_navigator
         ):
             with self.spatial_lock:
-                reference_path_safe = (
-                    self.spatial_reference_navigator
-                    .path_avoids_obstacles_allowing_initial_escape(
-                        current,
-                        waypoints,
-                    )
+                reference = self.spatial_reference_navigator
+                reference_avoids_obstacles = reference.path_avoids_obstacles_allowing_initial_escape(
+                    current, waypoints
                 )
+                reference_path_safe = reference_avoids_obstacles
+                if reference_path_safe and getattr(self, 'spatial_v21', False):
+                    check = (reference.initial_escape_path_safety_diagnostics
+                             if strict_entry_waypoint
+                             else reference.path_safety_allowing_dynamic_initial_escape)
+                    reference_execution_safety = check(current, waypoints)
+                    plan.diagnostics['reference_execution_safety'] = reference_execution_safety
+                    reference_path_safe = reference_execution_safety['safe']
+                    reference_unobserved = reference_execution_safety['failure_reason'] == 'unknown'
                 reference_first_collision_voxel = (
                     None
-                    if reference_path_safe
+                    if reference_avoids_obstacles
                     else self.spatial_reference_navigator
                     .first_obstacle_reentry_voxel(current, waypoints)
                 )
             plan.diagnostics['reference_safety_veto_enabled'] = True
             plan.diagnostics['reference_path_avoids_obstacles'] = bool(
-                reference_path_safe
+                reference_avoids_obstacles
             )
             if reference_first_collision_voxel is not None:
                 plan.diagnostics['reference_first_collision_voxel'] = tuple(
@@ -2667,6 +3014,8 @@ class DroneOffboardNode(Node):
                 candidate_handoff_safety_check = (
                     planning_navigator.initial_escape_path_safety_diagnostics
                     if candidate_initial_escape
+                    else planning_navigator.path_safety_diagnostics
+                    if 'v21_validated_prefix' in plan.diagnostics
                     else planning_navigator.path_safety_allowing_dynamic_initial_escape
                 )
                 candidate_safety = candidate_handoff_safety_check(
@@ -2690,6 +3039,17 @@ class DroneOffboardNode(Node):
                         waypoints and self.spatial_reference_navigator
                         .path_avoids_obstacles_allowing_initial_escape(handoff_current, waypoints)
                     )
+                    validated_prefix = 'v21_validated_prefix' in plan.diagnostics
+                    check_recovery_reference = (
+                        candidate_policy is not None and candidate_policy.reference_known_free_required
+                    )
+                    if candidate_reference_safe and (validated_prefix or check_recovery_reference):
+                        reference = self.spatial_reference_navigator
+                        check = (reference.initial_escape_path_safety_diagnostics
+                                 if strict_entry_waypoint
+                                 else reference.path_safety_diagnostics if validated_prefix
+                                 else reference.path_safety_allowing_dynamic_initial_escape)
+                        candidate_reference_safe = check(handoff_current, waypoints)['safe']
             # Evidence may have grown while A* held the map lock. Recheck the
             # current guard and live pose, not only the worker's frozen copy.
             live_guard_allowed = frontier_safety is None or frontier_safety['observable']
@@ -2790,9 +3150,12 @@ class DroneOffboardNode(Node):
                     f'{handoff["reason"]}.'
                 )
             else:
-                plan.adopted_for_execution = True
                 with self.spatial_plan_lock:
+                    if request_generation != getattr(self, 'spatial_plan_generation', 0):
+                        return
+                    plan.adopted_for_execution = True
                     self.spatial_current_plan = plan
+                    self.spatial_prefix_arrival_rgb_stamp_s = None
                     self.spatial_path_waypoints = waypoints
                     self.spatial_path_index = 0
                     self.spatial_strict_entry_waypoint = strict_entry_waypoint
@@ -2824,8 +3187,29 @@ class DroneOffboardNode(Node):
                 current_is_safe = self.spatial_estimated_navigator.position_is_safe(
                     current
                 )
+                if getattr(self, 'spatial_v21', False) and self.spatial_reference_safety_veto:
+                    reference = self.spatial_reference_navigator
+                    reference_position_safe = reference.position_is_safe(current)
+                    plan.diagnostics['failure_reference_position_safe'] = reference_position_safe
+                    # Unknown space calls for observation. An obstacle margin
+                    # already covering the live pose calls for a checked retreat.
+                    if not reference_position_safe and reference.position_is_inflated(current):
+                        current_is_safe = False
+                        plan.diagnostics['recovery_trigger'] = 'reference_pose_in_obstacle_margin'
             if short_plan_rejected:
-                self.spatial_consecutive_short_plans += 1
+                if getattr(self, 'spatial_v21', False):
+                    observation = plan.diagnostics['observation_source_stamp_s']
+                    observation_key = (goal_index, observation) if observation is not None else None
+                    new_observation = (
+                        observation_key is not None
+                        and observation_key != getattr(self, 'spatial_last_short_plan_observation', None)
+                    )
+                    plan.diagnostics['short_plan_counted_new_observation'] = new_observation
+                    if new_observation:
+                        self.spatial_last_short_plan_observation = observation_key
+                        self.spatial_consecutive_short_plans += 1
+                else:
+                    self.spatial_consecutive_short_plans += 1
             else:
                 self.spatial_consecutive_short_plans = 0
             force_recovery = (
@@ -2846,7 +3230,10 @@ class DroneOffboardNode(Node):
                         self.spatial_last_recovery_rejection_reason
                     )
             with self.spatial_plan_lock:
-                self.spatial_current_plan = plan
+                if request_generation != getattr(self, 'spatial_plan_generation', 0):
+                    return
+                if not (preserve_path_on_failure and path_still_available):
+                    self.spatial_current_plan = plan
                 if recovery_waypoints:
                     self.spatial_plan_generation = (
                         getattr(self, 'spatial_plan_generation', 0) + 1
@@ -2888,7 +3275,7 @@ class DroneOffboardNode(Node):
                     if self.spatial_recovery_guard is not None and not current_is_safe:
                         self.spatial_recovery_abort_requested = 'unsafe_after_recovery'
                     if (
-                        (short_plan_rejected or recovery_return_rejected
+                        (short_plan_rejected or recovery_return_rejected or reference_unobserved
                          or self.spatial_recovery_guard is not None)
                         and not self.spatial_wait_scan_exhausted
                     ):
@@ -2969,6 +3356,53 @@ class DroneOffboardNode(Node):
             target[0] - origin[0],
         )
 
+    def executar_heartbeat_v21(self):
+        """Schedule Offboard publishing independently of ROS callback dispatch."""
+        last_sent = None
+        deadline = time.monotonic()
+        stop = self.spatial_v21_heartbeat_stop
+        while not stop.is_set() and rclpy.ok():
+            if self.publicar_heartbeat_v21():
+                sent_at = time.monotonic()
+                if last_sent is not None:
+                    self.spatial_v21_heartbeat_max_gap_s = max(
+                        self.spatial_v21_heartbeat_max_gap_s, sent_at - last_sent,
+                    )
+                self.spatial_v21_heartbeat_sent += 1
+                last_sent = sent_at
+            now = time.monotonic()
+            deadline += self.dt
+            if deadline <= now:
+                deadline = now + self.dt
+            stop.wait(deadline - now)
+
+    def publicar_heartbeat_v21(self):
+        """Keep PX4 Offboard healthy while mapping, without sending old motion commands."""
+        if self.current_z is None or self.missao_concluida or self.encerrando:
+            return False
+        self.publish_offboard_control_mode()
+        command = self.spatial_v21_command
+        if command is None:
+            return True
+        setpoint, time_issued = command
+        msg = deepcopy(setpoint)
+        if time.perf_counter() - time_issued > 0.25:
+            altitude = msg.position[2] if np.isfinite(msg.position[2]) else self.current_z
+            msg.position = [float('nan'), float('nan'), float(altitude)]
+            msg.velocity = [0.0, 0.0, float('nan')]
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.trajectory_setpoint_publisher.publish(msg)
+        return True
+
+    def encaminhar_setpoint_espacial(self, msg):
+        runtime = getattr(self, 'spatial_observation_runtime', None)
+        if runtime is not None:
+            runtime.cache_command(msg)
+        elif getattr(self, 'spatial_v21_heartbeat', None) is not None:
+            self.spatial_v21_command = (msg, time.perf_counter())
+        else:
+            self.trajectory_setpoint_publisher.publish(msg)
+
     def publicar_setpoint_frenagem(self, altitude_ned_m, yaw_target):
         """Pede ao PX4 velocidade horizontal zero sem voltar a uma pose antiga."""
 
@@ -2984,11 +3418,7 @@ class DroneOffboardNode(Node):
         msg.yaw = float(yaw_target)
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        runtime = getattr(self, 'spatial_observation_runtime', None)
-        if runtime is None:
-            self.trajectory_setpoint_publisher.publish(msg)
-        else:
-            runtime.cache_command(msg)
+        self.encaminhar_setpoint_espacial(msg)
 
     def publicar_setpoint_posicao(self, target_ned_m, yaw_target=None):
         """Publica apenas posicao e yaw, deixando o controle dinamico no PX4."""
@@ -3013,11 +3443,7 @@ class DroneOffboardNode(Node):
         msg.yaw = float(yaw)
         msg.yawspeed = float('nan')
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        runtime = getattr(self, 'spatial_observation_runtime', None)
-        if runtime is None:
-            self.trajectory_setpoint_publisher.publish(msg)
-        else:
-            runtime.cache_command(msg)
+        self.encaminhar_setpoint_espacial(msg)
 
     def calcular_yaw_com_look_ahead(self, target_x, target_y):
         """ 
@@ -3331,12 +3757,55 @@ class DroneOffboardNode(Node):
         with self.sensor_state_lock:
             depth = self.latest_depth_estimated
             timestamp_s = self.latest_depth_estimated_stamp_s
-        if depth is None or timestamp_s is None:
+            if depth is None or timestamp_s is None:
+                return None, None
+            age_s = abs(float(rgb_stamp_s) - float(timestamp_s))
+            if age_s > self.monocular_depth_max_age_s:
+                return None, age_s
+        return depth.copy(), age_s
+
+    def obter_observacao_v21(self, rgb_stamp_s, reference_stamp_s):
+        """Associate inference with the pose of the RGB frame that produced it."""
+        with self.sensor_state_lock:
+            depth = self.latest_depth_estimated
+            source_stamp_s = self.latest_depth_estimated_stamp_s
+            rgb_history = tuple(self.spatial_v21_rgb)
+        if depth is None or source_stamp_s is None:
             return None, None
-        age_s = abs(float(rgb_stamp_s) - float(timestamp_s))
+        last = self.spatial_last_integrated_depth_stamp_s
+        if (last is not None and source_stamp_s <= last) or source_stamp_s > rgb_stamp_s:
+            return None, None
+        age_s = rgb_stamp_s - source_stamp_s
         if age_s > self.monocular_depth_max_age_s:
             return None, age_s
-        return depth.copy(), age_s
+        capture_pose = self.spatial_v21_capture_poses.at(source_stamp_s)
+        if capture_pose is None:
+            return None, None
+        source_rgb = next((msg for stamp, msg in reversed(rgb_history)
+                           if stamp == source_stamp_s), None)
+        if source_rgb is None:
+            return None, None
+        reference_pose = (
+            self.spatial_v21_capture_poses.at(reference_stamp_s)
+            if reference_stamp_s is not None else None
+        )
+        reference_transform = (
+            camera_to_ned_transform(*reference_pose, self.camera_translation_body_m,
+                                    self.camera_rotation_body_from_optical)
+            if reference_pose is not None else None
+        )
+        return {
+            'depth': depth,
+            'age_s': age_s,
+            'source_stamp_s': source_stamp_s,
+            'position': capture_pose[0],
+            'attitude': capture_pose[1],
+            'reference_stamp_s': reference_stamp_s if reference_pose is not None else None,
+            'reference_transform': reference_transform,
+            'reference_position': reference_pose[0] if reference_pose is not None else None,
+            'pose_timestamp_policy': 'pose_at_rgb_receipt_then_interpolated_by_source_header',
+            'source_rgb': source_rgb,
+        }, age_s
 
     def intrinsics_para_shape(self, image_width, image_height, shape):
         """Escala a matriz intrinseca RGB para a resolucao do mapa de profundidade."""
@@ -3349,6 +3818,59 @@ class DroneOffboardNode(Node):
             cy=float(self.K[1, 2]) * depth_height / image_height,
         )
 
+    def altitude_da_faixa_de_voo_v21(self):
+        """Use the commanded NED altitude independently of pitch and heave."""
+        if self.spatial_execute_path and self.lista_alvos_absolutos:
+            return float(self.lista_alvos_absolutos[self.wp_atual_index][2])
+        return None
+
+    def atualizar_referencia_v21(self, rgb_stamp_s, image_width, image_height, flight_z):
+        """Update the veto map using the GT timestamp and its own pose."""
+        reference = self.spatial_reference_navigator
+        if reference is self.spatial_estimated_navigator:
+            return
+        with self.sensor_state_lock:
+            depth_gt = self.latest_depth_gt
+            reference_stamp_s = self.latest_depth_gt_stamp_s
+        if depth_gt is None or not 0 <= rgb_stamp_s - reference_stamp_s <= self.spatial_v21_reference_max_age_s:
+            return
+        pose = self.spatial_v21_capture_poses.at(reference_stamp_s)
+        if pose is None:
+            return
+        with self.spatial_lock:
+            last = self.spatial_v21_reference_stamp_s
+            if last is not None and reference_stamp_s - last < 0.5:
+                return
+            position, attitude = pose
+            transform = camera_to_ned_transform(
+                position, attitude,
+                self.camera_translation_body_m, self.camera_rotation_body_from_optical,
+            )
+            depth = cv2.resize(depth_gt, (640, 480), interpolation=cv2.INTER_NEAREST)
+            intrinsics = self.intrinsics_para_shape(image_width, image_height, depth.shape)
+            reference.integrate_depth(
+                depth, intrinsics, transform,
+                obstacle_reference_ned_z=position[2] if flight_z is None else flight_z,
+                confine_occupied_rays_to_band=flight_z is not None,
+            )
+            self.spatial_v21_reference_stamp_s = reference_stamp_s
+            return True
+
+    def processar_ultimo_rgb_v21(self):
+        """Integrate the latest observation without blocking RGB pose capture."""
+        with self.sensor_state_lock:
+            if not self.spatial_v21_rgb:
+                return
+            stamp_s, msg = self.spatial_v21_rgb[-1]
+        if stamp_s == self.spatial_v21_last_mapping_rgb_s:
+            return
+        self.spatial_v21_last_mapping_rgb_s = stamp_s
+        depth_gt, _, _, reference_stamp_s, _ = self.obter_depth_gt_sincronizado(msg, stamp_s)
+        self.processar_mapeamento_espacial(
+            None, depth_gt, stamp_s, msg.width, msg.height,
+            reference_stamp_s=reference_stamp_s,
+        )
+
     def processar_mapeamento_espacial(
         self,
         rgb_bgr,
@@ -3357,6 +3879,7 @@ class DroneOffboardNode(Node):
         image_width,
         image_height,
         observation=None,
+        reference_stamp_s=None,
     ):
         """Atualiza mapas estimado e ideal e registra um frame sincronizado."""
 
@@ -3365,16 +3888,29 @@ class DroneOffboardNode(Node):
         if self.spatial_execute_path and not self.spatial_takeoff_complete:
             return
         self.spatial_frames_seen += 1
-        if observation is None and self.spatial_frames_seen % self.spatial_process_every_n != 0:
+        timer_driven = getattr(self, 'spatial_v21_mapping_timer', None) is not None
+        if (observation is None and not timer_driven
+                and self.spatial_frames_seen % self.spatial_process_every_n != 0):
             return
         if self.current_x is None or not self.attitude_received:
             return
 
-        if observation is None:
+        live_v21 = observation is None and getattr(self, 'spatial_v21', False)
+        flight_z = self.altitude_da_faixa_de_voo_v21() if live_v21 else None
+        if live_v21:
+            observation, estimated_age_s = self.obter_observacao_v21(rgb_stamp_s, reference_stamp_s)
+            estimated_depth = None if observation is None else observation['depth']
+            if observation is not None and observation['reference_transform'] is None:
+                depth_gt = None
+        elif observation is None:
             estimated_depth, estimated_age_s = self.obter_depth_estimado_sincronizado(rgb_stamp_s, depth_gt)
         else:
             estimated_depth, estimated_age_s = observation['depth'], observation['age_s']
         if estimated_depth is None:
+            if live_v21:
+                with self.spatial_lock:
+                    if self.atualizar_referencia_v21(rgb_stamp_s, image_width, image_height, flight_z):
+                        self.spatial_v21_map_revision += 1
             if estimated_age_s is None:
                 self.spatial_depth_missing_count += 1
             else:
@@ -3395,7 +3931,7 @@ class DroneOffboardNode(Node):
                     )
             if self.spatial_frames_seen % (self.spatial_process_every_n * 20) == 0:
                 age_detail = (
-                    'nenhuma profundidade recebida'
+                    'nenhuma nova profundidade com quadro e pose de origem disponiveis'
                     if estimated_age_s is None
                     else (
                         f'idade={estimated_age_s:.3f}s > '
@@ -3410,6 +3946,11 @@ class DroneOffboardNode(Node):
                     f'{age_detail}.'
                 )
             return
+
+        if getattr(self, 'spatial_v21', False):
+            estimated_depth = cv2.resize(estimated_depth, (640, 480), interpolation=cv2.INTER_NEAREST)
+            if depth_gt is not None:
+                depth_gt = cv2.resize(depth_gt, (640, 480), interpolation=cv2.INTER_NEAREST)
 
         position = (np.array([self.current_x, self.current_y, self.current_z], dtype=float)
                     if observation is None else observation['position'])
@@ -3428,17 +3969,20 @@ class DroneOffboardNode(Node):
         )
 
         with self.spatial_lock:
+            if live_v21:
+                self.atualizar_referencia_v21(rgb_stamp_s, image_width, image_height, flight_z)
             integration_started = time.perf_counter()
             estimated_stats = self.spatial_estimated_navigator.integrate_depth(
                 estimated_depth,
                 estimated_intrinsics,
                 camera_to_ned,
-                obstacle_reference_ned_z=position[2],
+                obstacle_reference_ned_z=position[2] if flight_z is None else flight_z,
+                confine_occupied_rays_to_band=flight_z is not None,
             )
             reference_stats = None
             if self.spatial_reference_navigator is self.spatial_estimated_navigator:
                 reference_stats = estimated_stats
-            elif depth_gt is not None:
+            elif depth_gt is not None and not live_v21:
                 reference_intrinsics = self.intrinsics_para_shape(
                     image_width,
                     image_height,
@@ -3450,6 +3994,8 @@ class DroneOffboardNode(Node):
                     camera_to_ned if observation is None else observation['reference_transform'],
                     obstacle_reference_ned_z=(position[2] if observation is None else observation['reference_position'][2]),
                 )
+                if getattr(self, 'spatial_v21', False):
+                    self.spatial_v21_reference_stamp_s = rgb_stamp_s
             estimated_stats['integration_time_ms'] = (
                 time.perf_counter() - integration_started
             ) * 1000.0
@@ -3459,11 +4005,17 @@ class DroneOffboardNode(Node):
             }
             if observation is not None:
                 self.spatial_last_observation_stamp_s = observation['source_stamp_s']
+                if live_v21:
+                    self.spatial_last_integrated_depth_stamp_s = observation['source_stamp_s']
+                    self.spatial_v21_map_updated_at = time.monotonic()
+                    self.spatial_v21_map_revision += 1
         self.spatial_frames_integrated += 1
 
         frame_depth_metrics = None
         reference_for_metrics = None
-        if depth_gt is not None:
+        if depth_gt is not None and (not live_v21 or abs(
+            observation['source_stamp_s'] - observation['reference_stamp_s']
+        ) <= self.depth_gt_max_age_s):
             reference_for_metrics = cv2.resize(
                 depth_gt,
                 (estimated_depth.shape[1], estimated_depth.shape[0]),
@@ -3477,7 +4029,10 @@ class DroneOffboardNode(Node):
 
         if self.spatial_recorder is not None:
             save_size = (self.spatial_frame_width, self.spatial_frame_height)
-            rgb_saved = cv2.resize(rgb_bgr, save_size, interpolation=cv2.INTER_AREA)
+            source_rgb = observation['source_rgb'] if live_v21 else None
+            recording_rgb = (self.bridge.imgmsg_to_cv2(source_rgb, desired_encoding='bgr8')
+                             if source_rgb is not None else rgb_bgr)
+            rgb_saved = cv2.resize(recording_rgb, save_size, interpolation=cv2.INTER_AREA)
             estimated_saved = cv2.resize(
                 estimated_depth,
                 save_size,
@@ -3485,15 +4040,15 @@ class DroneOffboardNode(Node):
             )
             reference_saved = (
                 None
-                if depth_gt is None
-                else cv2.resize(depth_gt, save_size, interpolation=cv2.INTER_NEAREST)
+                if reference_for_metrics is None
+                else cv2.resize(reference_for_metrics, save_size, interpolation=cv2.INTER_NEAREST)
             )
             saved_intrinsics = estimated_intrinsics.scaled(
                 self.spatial_frame_width / estimated_depth.shape[1],
                 self.spatial_frame_height / estimated_depth.shape[0],
             )
             self.spatial_recorder.record_frame(
-                timestamp_s=rgb_stamp_s,
+                timestamp_s=observation['source_stamp_s'] if live_v21 else rgb_stamp_s,
                 rgb_bgr=rgb_saved,
                 estimated_depth_m=estimated_saved,
                 reference_depth_m=reference_saved,
@@ -3506,14 +4061,17 @@ class DroneOffboardNode(Node):
                     'temporal_alignment': (None if observation is None else {
                         'source_stamp_s': observation['source_stamp_s'],
                         'reference_stamp_s': observation['reference_stamp_s'],
-                        'reference_camera_to_ned': observation['reference_transform'].tolist(),
+                        'reference_camera_to_ned': (observation['reference_transform'].tolist()
+                                                    if observation['reference_transform'] is not None else None),
                         'pose_timestamp_policy': observation['pose_timestamp_policy'],
+                        'rgb_recorded_stamp_s': (observation['source_stamp_s']
+                                                 if source_rgb is not None else rgb_stamp_s),
                     }),
                 },
                 depth_metrics=frame_depth_metrics,
             )
 
-        if self.spatial_show_topdown:
+        if self.spatial_show_topdown and not live_v21:
             with self.spatial_plan_lock:
                 path = list(self.spatial_path_waypoints)
             target = (
@@ -3529,6 +4087,42 @@ class DroneOffboardNode(Node):
                     path_ned_m=path,
                 )
             cv2.imshow('Mapa espacial 3D - projecao superior', topdown)
+
+    def desenhar_mapa_v21(self):
+        """Keep the live pose and window responsive during depth integration."""
+        now = time.monotonic()
+        if self.current_x is None or now < self.spatial_v21_next_render_at:
+            return
+        self.spatial_v21_next_render_at = now + 0.2
+        snapshot = self.spatial_v21_display_snapshot
+        updated_at = self.spatial_v21_map_updated_at
+        if (updated_at is not None and (snapshot is None or snapshot[0] != updated_at)
+                and self.spatial_lock.acquire(blocking=False)):
+            try:
+                grid = self.spatial_estimated_navigator.grid
+                snapshot = (
+                    self.spatial_v21_map_updated_at, grid.config.resolution_m,
+                    grid.free_voxels(), grid.occupied_voxels(),
+                )
+            finally:
+                self.spatial_lock.release()
+            self.spatial_v21_display_snapshot = snapshot
+        if snapshot is None:
+            return
+        updated_at, resolution, free_voxels, occupied_voxels = snapshot
+        with self.spatial_plan_lock:
+            path = self.spatial_path_waypoints[self.spatial_path_index:]
+        goal_index = self.wp_atual_index
+        target = (self.lista_alvos_absolutos[goal_index]
+                  if 0 <= goal_index < len(self.lista_alvos_absolutos) else None)
+        topdown = render_top_down_voxels(
+            free_voxels, occupied_voxels, resolution_m=resolution,
+            center_ned_m=(self.current_x, self.current_y, self.current_z),
+            target_ned_m=target, path_ned_m=path,
+            map_age_s=time.monotonic() - updated_at,
+        )
+        cv2.imshow('Mapa espacial 3D - projecao superior', topdown)
+        cv2.waitKey(1)
 
     def imu_raw_callback(self, msg):
         """
@@ -4682,6 +5276,17 @@ class DroneOffboardNode(Node):
                 return
             self.last_rgb_stamp_s = rgb_stamp_s
 
+        if (getattr(self, 'spatial_v21', False) and self.current_x is not None
+                and self.attitude_received):
+            position = [self.current_x, self.current_y, self.current_z]
+            self.spatial_v21_capture_poses.add(rgb_stamp_s, position, self.current_attitude_q)
+            with self.sensor_state_lock:
+                self.spatial_v21_rgb.append((rgb_stamp_s, msg))
+
+        if getattr(self, 'spatial_v21_mapping_timer', None) is not None:
+            self.rgb_frames_seen += 1
+            return
+
         resolucao_largura = msg.width
         resolucao_altura = msg.height
         # formato_ros = msg.encoding
@@ -4711,7 +5316,8 @@ class DroneOffboardNode(Node):
                     )
                     self.depth_gt_shape_warned = True
 
-                depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
+                if not self.spatial_enabled or self.spatial_collect_legacy_metrics:
+                    depth_gt_visual = self.criar_visualizacao_depth_gt(depth_gt)
 
             self.processar_mapeamento_espacial(
                 cv_image[:, :, :3],
@@ -4719,10 +5325,12 @@ class DroneOffboardNode(Node):
                 rgb_stamp_s,
                 resolucao_largura,
                 resolucao_altura,
+                reference_stamp_s=depth_stamp_s,
             )
 
             if self.spatial_enabled and not self.spatial_collect_legacy_metrics:
-                cv2.waitKey(1)
+                if not self.spatial_show_live_topdown:
+                    cv2.waitKey(1)
                 return
             
             # ---- COMPENSACAO DA IMAGEM (IMU + ATITUDE) ----
@@ -4869,6 +5477,10 @@ class DroneOffboardNode(Node):
                             'transition_veto_replans': self.spatial_transition_veto_replans,
                             'stale_plan_results': self.spatial_stale_plan_results,
                             'global_goal_settles': self.spatial_goal_settle_count,
+                            'v21_map_busy_continue_ticks': self.spatial_v21_map_busy_continue_ticks,
+                            'v21_map_busy_brake_ticks': self.spatial_v21_map_busy_brake_ticks,
+                            'v21_heartbeat_sent': self.spatial_v21_heartbeat_sent,
+                            'v21_heartbeat_max_gap_s': self.spatial_v21_heartbeat_max_gap_s,
                         },
                         'occupancy_metrics': map_metrics,
                     },

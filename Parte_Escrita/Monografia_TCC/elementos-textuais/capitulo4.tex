@@ -28,9 +28,11 @@ A trajetória é reconstruída pela soma dos deltas de posição, com origem rel
 
 A auditoria encontrou 6, 4, 5 e 1 intervalos de tempo não finitos, não positivos ou superiores a 1 s, respectivamente. Por isso, a linha é interrompida nesses limites, sem substituir ou eliminar os deltas usados na soma espacial. Os maiores deslocamentos registrados por atualização ficam entre 0,57 e 0,61 m. Isso não permite recuperar o tempo físico perdido nem garantir a ausência de outras falhas de aquisição. Esses logs são usados aqui para ilustração e não alteram os resultados tabulares ou espaciais consolidados.
 
+A Figura~\ref{fig:metodologia-trajetorias} apresenta os percursos das quatro execuções históricas usadas para ilustrar os registros.
+
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/metodologia_trajetorias.pdf}
+    \includegraphics[width=.80\linewidth]{figuras/metodologia_trajetorias.png}
     \caption{Trajetórias históricas em vista superior, com início, fim, sentido e quebras temporais identificados. As coordenadas são deslocamentos acumulados relativos.}
     \label{fig:metodologia-trajetorias}
     \legend{Fonte: elaborado pelo autor.}
@@ -40,28 +42,31 @@ A Figura~\ref{fig:metodologia-imu} mostra diferenças de velocidade angular, em 
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/metodologia_imu.pdf}
+    \includegraphics[width=.80\linewidth]{figuras/metodologia_imu.png}
     \caption{Diferenças das velocidades angulares de roll, pitch e yaw nas mesmas quatro execuções. As cores são constantes. O eixo horizontal usa a ordem das amostras, e não um tempo reconstruído a partir dos intervalos inválidos.}
     \label{fig:metodologia-imu}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=.95\linewidth]{figuras/metodologia_compensacao_rotacao.pdf}
-\caption{Algoritmo completo de compensação em dois quadros RGB registrados, usando atitude e giroscópio medidos no ULog correspondente. A coluna central respeita o intervalo de 0,66 s entre os quadros salvos, para o qual a regra original usa apenas a diferença de yaw. A coluna direita exercita a mistura atitude--giroscópio com contexto sensorial medido de 40 ms, explicitamente ilustrativo.}
-\label{fig:compensacao-revisada}
-\end{figure}
 A Figura~\ref{fig:compensacao-revisada} reaplica os corpos originais das funções do controlador para normalização do yaw, seleção/mistura de fontes e construção da homografia. O ULog fornece atitude e giroscópio medidos. Os quadros armazenados estão separados por 0,66 s, acima do limite original de 0,25 s para mistura com giroscópio. A reaplicação respeita esse limite. Uma coluna separada demonstra a mistura completa com medições tomadas em uma janela de 40 ms, que não representa um instante RGB anterior recuperado. O RGB registrado em 320 por 240 pixels é ampliado para a geometria de entrada da demonstração, sem recuperar detalhe perdido. A ordem exata dos callbacks ROS e as imagens intermediárias não foram preservadas, portanto não se afirma identidade com a saída histórica online. O estimador denso continua recebendo o RGB original.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=.95\linewidth]{figuras/metodologia_fluxograma_completo.pdf}
+\includegraphics[width=.80\linewidth]{figuras/metodologia_compensacao_rotacao.png}
+\caption{Algoritmo completo de compensação em dois quadros RGB registrados, usando atitude e giroscópio medidos no ULog correspondente. A coluna central respeita o intervalo de 0,66 s entre os quadros salvos, para o qual a regra original usa apenas a diferença de yaw. A coluna direita exercita a mistura atitude--giroscópio com contexto sensorial medido de 40 ms, explicitamente ilustrativo.}
+\label{fig:compensacao-revisada}
+\legend{Fonte: elaborado pelo autor a partir dos quadros RGB e dos registros inerciais.}
+\end{figure}
+
+Na Figura~\ref{fig:fluxograma-revisado}, (a)--(d) organizam sinais, compensação, intervalos e comparação tabular. Os grupos incluem sincronização, movimento, IMU/atitude, fluxo/risco, diferença de imagem e comandos. No ramo (e)--(h), o RGB alimenta a rede densa, a pose permite a retroprojeção e o mapa recebe revisão temporal antes do planejamento. A MLP tabular não alimenta a rede v21.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.80\linewidth]{figuras/metodologia_fluxograma_completo.png}
 \caption{Fluxo dos dois eixos, com etapas identificadas e quadro RGB real como exemplo. O GT fornece alvos tabulares e referência de avaliação espacial, sem escolher os caminhos monoculares.}
 \label{fig:fluxograma-revisado}
+\legend{Fonte: elaborado pelo autor.}
 \end{figure}
-Na Figura~\ref{fig:fluxograma-revisado}, (a)--(d) organizam sinais, compensação, intervalos e comparação tabular. Os grupos incluem sincronização, movimento, IMU/atitude, fluxo/risco, diferença de imagem e comandos. No ramo (e)--(h), o RGB alimenta a rede densa, a pose permite a retroprojeção e o mapa recebe revisão temporal antes do planejamento. A MLP tabular não alimenta a rede v21.
 
 \section{Processamento visual}
 
@@ -81,7 +86,7 @@ A Figura~\ref{fig:metodologia-intervalos} apresenta a duração dos intervalos n
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/metodologia_intervalos_visuais.pdf}
+    \includegraphics[width=.90\linewidth]{figuras/metodologia_intervalos_visuais.png}
     \caption{Distribuição dos 1.234 intervalos RGB válidos da base tabular histórica de 40 execuções, após os filtros documentados.}
     \label{fig:metodologia-intervalos}
     \legend{Fonte: elaborado pelo autor.}
@@ -91,27 +96,29 @@ A Figura~\ref{fig:metodologia-sincronizacao} coloca na mesma sequência o percen
 
 \begin{figure}[htb]
     \centering
-    \includegraphics[width=\textwidth]{figuras/metodologia_sincronizacao.pdf}
+    \includegraphics[width=.90\linewidth]{figuras/metodologia_sincronizacao.png}
     \caption{P90 do módulo do fluxo e variação da proporção de pixels a menos de 5 m nos mesmos intervalos válidos da última execução cronológica com pelo menos dez intervalos. Os eixos verticais têm unidades diferentes.}
     \label{fig:metodologia-sincronizacao}
     \legend{Fonte: elaborado pelo autor.}
 \end{figure}
 
+As Figuras~\ref{fig:grupos-revisados} e~\ref{fig:mlp-revisada} distinguem os descritores observados da arquitetura que os recebe. Os comandos reativos são entradas do eixo tabular, não da rede monocular densa.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=.95\linewidth]{figuras/metodologia_grupos_sinais.pdf}
+\includegraphics[width=.90\linewidth]{figuras/metodologia_grupos_sinais.png}
 \caption{Exemplos reais dos seis grupos de entradas no registro de 15/07/2026 às 16:34:28. Os gráficos compartilham a ordem dos intervalos válidos, sem implicar causalidade entre séries.}
 \label{fig:grupos-revisados}
+\legend{Fonte: elaborado pelo autor a partir dos intervalos registrados.}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=.95\linewidth]{figuras/metodologia_mlp.pdf}
+\includegraphics[width=.90\linewidth]{figuras/metodologia_mlp.png}
 \caption{MLP tabular: duas camadas ocultas, dropout no treino e seis saídas de variação de proximidade. O número de atributos depende da representação angular documentada.}
 \label{fig:mlp-revisada}
+\legend{Fonte: elaborado pelo autor a partir da configuração do modelo implementado.}
 \end{figure}
-As Figuras~\ref{fig:grupos-revisados} e~\ref{fig:mlp-revisada} distinguem os descritores observados da arquitetura que os recebe. Os comandos reativos são entradas do eixo tabular, não da rede monocular densa.
 
 \section{Notebook de análise}
 

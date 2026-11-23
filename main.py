@@ -322,6 +322,8 @@ def main(args=None):
     signal.signal(signal.SIGTERM, request_stop)
 
     try:
+        if controller_node.spatial_v21_heartbeat is not None:
+            controller_node.spatial_v21_heartbeat.start()
         controller_node.get_logger().info('Iniciando Controlador e Gravador de Dados simultaneamente...')
         while (
             rclpy.ok()
@@ -329,6 +331,8 @@ def main(args=None):
             and not getattr(controller_node, 'shutdown_requested', False)
         ):
             executor.spin_once(timeout_sec=0.2)
+            if controller_node.spatial_show_live_topdown:
+                controller_node.desenhar_mapa_v21()
         if stop_requested:
             controller_node.get_logger().info(
                 'Encerramento solicitado; iniciando sequencia segura.'
@@ -349,12 +353,19 @@ def main(args=None):
                         controller_node.land()
                         next_land_command = now + 1.0
                     executor.spin_once(timeout_sec=0.25)
+                    if controller_node.spatial_show_live_topdown:
+                        controller_node.desenhar_mapa_v21()
     except ExternalShutdownException:
         controller_node.get_logger().info('Encerramento automatico da missao solicitado.')
         logger_node.get_logger().info('Finalizando a gravacao do voo...')
     finally:
+        controller_node.spatial_v21_heartbeat_stop.set()
+        heartbeat = controller_node.spatial_v21_heartbeat
+        if heartbeat is not None and heartbeat.ident is not None:
+            heartbeat.join()
         executor.remove_node(controller_node)
         executor.remove_node(logger_node)
+        executor.shutdown()
         controller_node.destroy_node()
         logger_node.destroy_node() 
         if rclpy.ok():
