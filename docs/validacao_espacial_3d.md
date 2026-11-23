@@ -1,5 +1,7 @@
 # Validacao espacial 3D
 
+Este documento descreve a validação histórica. Para executar a rota ao vivo e consultar o registro posterior da v21 com veto de referência, veja [Reprodução ao vivo no Baylands](reproducao_ao_vivo.md).
+
 ## Papel no trabalho
 
 A validacao espacial testa se os sinais de proximidade estudados produzem informacao util para uma decisao de navegacao. Ela nao substitui a analise das metricas e nao inclui o desenvolvimento de um controlador. O resultado esperado e um mapa de ocupacao e uma sequencia de pontos de passagem. O PX4 continua responsavel por executar esses pontos.

@@ -2,6 +2,8 @@
 
 Este roteiro separa validacao geometrica, planejamento e voo. Nao habilite a etapa seguinte enquanto a anterior apresentar eixos invertidos, profundidade sem escala ou obstaculos fora de posicao.
 
+Para executar a rota completa no cenário Baylands, use o [guia de reprodução ao vivo](reproducao_ao_vivo.md). Ele cobre a instalação, os comandos dos dois modos e os registros das missões concluídas. As etapas manuais abaixo são para inspeção do pipeline.
+
 ## 1. Dependencias
 
 No ambiente ROS 2 do laboratorio:
@@ -129,15 +131,14 @@ Compare no `events.jsonl` os campos `mae_m`, `rmse_m` e `abs_rel`. Inspecione ta
 
 ## 7. Voo monocular com A*
 
-Esta etapa esta **bloqueada no resultado final**. O comando e apenas
-documental e nao deve ser executado enquanto o relatorio mantiver
-`monocular_sitl_battery=not_authorized`:
+A qualificação da entrega permanece descrita no protocolo histórico. Para reproduzir a demonstração ao vivo posterior, prepare os dois terminais conforme o [guia de reprodução](reproducao_ao_vivo.md#executar-e-conferir). No Terminal 2, rode:
 
 ```bash
-PYTHONNOUSERSITE=1 python3 main.py --ros-args \
-  --params-file config/spatial_monocular.yaml \
-  -p spatial_execute_path:=true
+cd ~/TCC_Drone
+bash scripts/run_monocular_v21_route.sh
 ```
+
+O runner carrega o estimador v21 e executa a mesma rota de três objetivos usada no ground truth. A referência pode vetar caminhos propostos pelo monocular. Confira `outcome=completed` em `summary.tsv`.
 
 ## Pipeline legado reativo
 

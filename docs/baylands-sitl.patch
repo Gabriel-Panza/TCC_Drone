@@ -1,0 +1,63 @@
+diff --git a/models/mono_cam/model.sdf b/models/mono_cam/model.sdf
+index de1a4ff..92ca2e0 100644
+--- a/models/mono_cam/model.sdf
++++ b/models/mono_cam/model.sdf
+@@ -65,6 +65,26 @@
+         <update_rate>30</update_rate>
+         <visualize>true</visualize>
+       </sensor>
++      <sensor name="sim_depth_ground_truth" type="depth_camera">
++        <gz_frame_id>camera_link</gz_frame_id>
++        <pose>0 0 0 0 0 0</pose>
++        <camera>
++          <horizontal_fov>1.74</horizontal_fov>
++          <image>
++            <width>1280</width>
++            <height>960</height>
++            <format>R_FLOAT32</format>
++          </image>
++          <clip>
++            <near>0.1</near>
++            <far>3000</far>
++          </clip>
++        </camera>
++        <always_on>1</always_on>
++        <update_rate>30</update_rate>
++        <visualize>false</visualize>
++        <topic>sim_depth_ground_truth</topic>
++      </sensor>
+       <gravity>true</gravity>
+       <velocity_decay />
+     </link>
+diff --git a/models/x500_mono_cam/model.sdf b/models/x500_mono_cam/model.sdf
+index 888714d..77f1629 100644
+--- a/models/x500_mono_cam/model.sdf
++++ b/models/x500_mono_cam/model.sdf
+@@ -6,12 +6,13 @@
+     </include>
+     <include merge='true'>
+       <uri>model://mono_cam</uri>
+-      <pose>.12 .03 .242 0 0 0</pose>
++      <pose>0.15 0 .22 0 0 0</pose>
+     </include>
++    <enable_wind>true</enable_wind>
+     <joint name="CameraJoint" type="fixed">
+       <parent>base_link</parent>
+       <child>camera_link</child>
+-      <pose relative_to="base_link">.12 .03 .242 0 0 0</pose>
++      <pose relative_to="base_link">0.15 0 .22 0 0 0</pose>
+     </joint>
+   </model>
+ </sdf>
+diff --git a/worlds/baylands.sdf b/worlds/baylands.sdf
+index a5a0674..8bd274a 100644
+--- a/worlds/baylands.sdf
++++ b/worlds/baylands.sdf
+@@ -45,6 +45,7 @@
+         <relative_to>park</relative_to>
+       </pose>
+     </include>
++    <wind> <linear_velocity>5 2 0</linear_velocity> </wind>
+     <spherical_coordinates>
+       <surface_model>EARTH_WGS84</surface_model>
+       <world_frame_orientation>ENU</world_frame_orientation>

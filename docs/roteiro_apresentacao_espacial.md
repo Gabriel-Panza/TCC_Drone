@@ -1,5 +1,11 @@
 # Roteiro curto para apresentacao
 
+## Demonstração no Gazebo
+
+Para mostrar a rota ao vivo, use o [guia da bateria ground truth e do voo monocular v21](reproducao_ao_vivo.md). A gravação de uma missão completa da v21 deve mostrar a execução ao vivo com veto de referência. O replay visual usa poses gravadas e deve ser identificado como replay.
+
+O resultado da v21 ao vivo foi uma missão completa com os três objetivos em 23/11/2026. Os 70,59% da entrega correspondem a 12 de 17 pedidos executáveis em replay offline. O relato abaixo descreve a etapa histórica da v19.
+
 ## Explicacao em linguagem de aluno
 
 O problema que motivou esta etapa foi simples: um erro medio de profundidade
